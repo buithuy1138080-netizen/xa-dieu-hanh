@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+backend/.venv/
+.venv/
+venv/
+env/
+
+# Alembic temp
+*.pyc
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/dist-ssr/
+
+# Environment / Secrets — KHÔNG BAO GIỜ commit
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.local
+
+# Database backups — chứa dữ liệu thật, KHÔNG push lên git
+backups/*.sql
+backups/*.dump
+*.sql
+*.dump
+
+# Uploads (user files, không push lên git)
+backend/uploads/
+backend/directive_uploads/
+backend/doc_uploads/
+backend/ocr_uploads/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code session data
+.claude/
+
+# Logs
+*.log
+logs/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Alembic — giữ versions, bỏ cache
+alembic/__pycache__/

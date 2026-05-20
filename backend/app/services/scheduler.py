@@ -1,0 +1,494 @@
+import logging
+from datetime import datetime, timedelta, timezone
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy import delete, select
+
+from app.core.database import AsyncSessionLocal
+from app.models.notification import Notification
+from app.models.task import Task
+
+log = logging.getLogger(__name__)
+scheduler = AsyncIOScheduler(timezone="UTC")
+
+NOTIF_ICONS = {
+    "reminder_3d": "⏰",
+    "reminder_1d": "⚠️",
+    "overdue":     "🚨",
+}
+
+
+async def _ensure_notif(
+    db,
+    user_id: int,
+    task_id: int | None,
+    ntype: str,
+    title: str,
+    body: str,
+    link_url: str | None = None,
+) -> Notification | None:
+    conditions = [
+        Notification.user_id == user_id,
+        Notification.type == ntype,
+    ]
+    if task_id is not None:
+        conditions.append(Notification.task_id == task_id)
+    exists = (await db.execute(select(Notification).where(*conditions))).scalar_one_or_none()
+    if exists:
+        return None
+    n = Notification(user_id=user_id, task_id=task_id, type=ntype,
+                     title=title, body=body, link_url=link_url)
+    db.add(n)
+    return n
+
+
+async def check_deadlines() -> None:
+    from app.services.ws_manager import manager
+
+    now = datetime.now(timezone.utc)
+    created: list[tuple[int, Notification]] = []
+
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Task).where(
+                    Task.due_date.isnot(None),
+                    Task.deleted_at.is_(None),
+                    Task.status.notin_(["completed", "cancelled"]),
+                )
+            )
+            tasks = result.scalars().all()
+
+            for task in tasks:
+                target = task.assignee_id or task.created_by
+                dl = task.due_date
+                deadline_utc = dl if dl.tzinfo else dl.replace(tzinfo=timezone.utc)
+                days = (deadline_utc - now).total_seconds() / 86400
+
+                if days <= 0:
+                    n = await _ensure_notif(
+                        db, target, task.id, "overdue",
+                        f"🚨 Quá hạn: {task.title}",
+                        f"Nhiệm vụ đã quá hạn từ {dl.strftime('%d/%m/%Y')}",
+                    )
+                elif days <= 1:
+                    n = await _ensure_notif(
+                        db, target, task.id, "reminder_1d",
+                        f"⚠️ Sắp đến hạn: {task.title}",
+                        f"Nhiệm vụ đến hạn ngày mai ({dl.strftime('%d/%m/%Y')})",
+                    )
+                elif days <= 3:
+                    n = await _ensure_notif(
+                        db, target, task.id, "reminder_3d",
+                        f"⏰ Nhắc nhở: {task.title}",
+                        f"Nhiệm vụ đến hạn trong {int(days) + 1} ngày ({dl.strftime('%d/%m/%Y')})",
+                    )
+                else:
+                    n = None
+
+                if n:
+                    created.append((target, n))
+
+            # ── Directive deadline checks ──────────────────────────────────
+            from app.models.directive import Directive, DirectiveUnit
+            from sqlalchemy.orm import selectinload as sl
+
+            dir_result = await db.execute(
+                select(Directive)
+                .options(sl(Directive.units))
+                .where(
+                    Directive.deadline.isnot(None),
+                    Directive.status == "active",
+                    Directive.deleted_at.is_(None),
+                )
+            )
+            directives = dir_result.scalars().all()
+
+            for directive in directives:
+                dl = directive.deadline
+                deadline_utc = dl if dl.tzinfo else dl.replace(tzinfo=timezone.utc)
+                days = (deadline_utc - now).total_seconds() / 86400
+
+                # Collect user IDs to notify: issuer + all unit users
+                targets = {directive.issuer_id}
+                for unit in directive.units:
+                    if unit.user_id:
+                        targets.add(unit.user_id)
+
+                link = f"/directives/{directive.id}"
+
+                for uid in targets:
+                    if days <= 0:
+                        n = await _ensure_notif(
+                            db, uid, None, f"directive_overdue_{directive.id}",
+                            f"Chỉ đạo quá hạn: {directive.title[:60]}",
+                            f"Chỉ đạo đã quá hạn từ {dl.strftime('%d/%m/%Y')}",
+                            link_url=link,
+                        )
+                    elif days <= 1:
+                        n = await _ensure_notif(
+                            db, uid, None, f"directive_1d_{directive.id}",
+                            f"Chỉ đạo sắp đến hạn: {directive.title[:60]}",
+                            f"Chỉ đạo đến hạn ngày mai ({dl.strftime('%d/%m/%Y')})",
+                            link_url=link,
+                        )
+                    elif days <= 3:
+                        n = await _ensure_notif(
+                            db, uid, None, f"directive_3d_{directive.id}",
+                            f"Nhắc nhở chỉ đạo: {directive.title[:60]}",
+                            f"Chỉ đạo đến hạn trong {int(days) + 1} ngày ({dl.strftime('%d/%m/%Y')})",
+                            link_url=link,
+                        )
+                    else:
+                        n = None
+                    if n:
+                        created.append((uid, n))
+
+            if created:
+                await db.flush()
+                payload = [
+                    (uid, n.id, n.title, n.body, n.task_id, n.type, n.link_url)
+                    for uid, n in created
+                ]
+                await db.commit()
+                for uid, nid, title, body, task_id, ntype, link_url in payload:
+                    await manager.send_to_user(uid, {
+                        "type": "notification",
+                        "id": nid,
+                        "notification_type": ntype,
+                        "title": title,
+                        "body": body,
+                        "task_id": task_id,
+                        "link_url": link_url,
+                    })
+                log.info("Scheduler: sent %d notification(s)", len(created))
+    except Exception:
+        log.exception("check_deadlines job failed")
+
+
+scheduler.add_job(
+    check_deadlines,
+    "interval",
+    hours=1,
+    id="check_deadlines",
+    replace_existing=True,
+    misfire_grace_time=60,
+)
+
+
+# ── Auto-report generation jobs ───────────────────────────────────────────────
+
+async def _auto_generate_report(report_type: str) -> None:
+    """Generate an automated report for the previous period."""
+    from datetime import date, timedelta
+    from app.models.report import Report as ReportModel
+    from app.services import report_engine, ai_summary_service
+    from sqlalchemy import select as sa_select
+
+    today = date.today()
+
+    if report_type == "monthly":
+        # Previous month
+        first_this = today.replace(day=1)
+        period_to = first_this - timedelta(days=1)
+        period_from = period_to.replace(day=1)
+    elif report_type == "quarterly":
+        # Previous quarter
+        q = (today.month - 1) // 3  # 0=Q1,1=Q2,2=Q3,3=Q4 (previous)
+        if q == 0: q = 4
+        q_start_month = (q - 1) * 3 + 1
+        from calendar import monthrange
+        period_from = date(today.year if q < 4 else today.year - 1, q_start_month, 1)
+        last_m = q_start_month + 2
+        period_to = date(period_from.year, last_m, monthrange(period_from.year, last_m)[1])
+    elif report_type == "annual":
+        period_from = date(today.year - 1, 1, 1)
+        period_to = date(today.year - 1, 12, 31)
+    else:
+        return
+
+    try:
+        async with AsyncSessionLocal() as db:
+            # Find first admin user
+            from app.models.user import User
+            admin = (await db.execute(
+                sa_select(User).where(User.role == "admin").limit(1)
+            )).scalar_one_or_none()
+            if not admin:
+                log.warning("Auto-report: no admin user found, skipping")
+                return
+
+            # Skip if a report for this exact period already exists
+            existing = (await db.execute(
+                sa_select(ReportModel).where(
+                    ReportModel.report_type == report_type,
+                    ReportModel.period_from == period_from,
+                    ReportModel.period_to == period_to,
+                )
+            )).scalar_one_or_none()
+            if existing:
+                log.info("Auto-report: already exists for %s %s–%s, skipping", report_type, period_from, period_to)
+                return
+
+            label = report_engine.make_period_label(period_from, period_to, report_type)
+            title = report_engine.make_report_title(report_type, label)
+
+            rpt = ReportModel(
+                report_type=report_type,
+                title=title,
+                period_label=label,
+                period_from=period_from,
+                period_to=period_to,
+                status="generating",
+                created_by=admin.id,
+            )
+            db.add(rpt)
+            await db.commit()
+            await db.refresh(rpt)
+
+            data = await report_engine.collect_data(db, period_from, period_to, report_type)
+            summary = ai_summary_service.generate_summary(data, report_type)
+            rpt.summary_data = data
+            rpt.ai_summary = summary
+            rpt.status = "done"
+            rpt.generated_at = datetime.now(timezone.utc)
+
+            notif = Notification(
+                user_id=admin.id,
+                type="report",
+                title="Báo cáo tự động đã sẵn sàng",
+                body=f"Hệ thống vừa tạo tự động: {title}",
+                link_url=f"/bao-cao/{rpt.id}",
+            )
+            db.add(notif)
+            await db.commit()
+            log.info("Auto-report generated: %s (id=%s)", title, rpt.id)
+    except Exception:
+        log.exception("Auto-report failed: type=%s", report_type)
+
+
+# Monthly: 1st of each month at 07:00
+scheduler.add_job(
+    _auto_generate_report,
+    "cron",
+    args=["monthly"],
+    day=1, hour=7, minute=0,
+    id="auto_report_monthly",
+    replace_existing=True,
+    misfire_grace_time=3600,
+)
+
+# Quarterly: Jan/Apr/Jul/Oct 1st at 07:30
+scheduler.add_job(
+    _auto_generate_report,
+    "cron",
+    args=["quarterly"],
+    month="1,4,7,10", day=1, hour=7, minute=30,
+    id="auto_report_quarterly",
+    replace_existing=True,
+    misfire_grace_time=3600,
+)
+
+# Annual: Jan 1st at 08:00
+scheduler.add_job(
+    _auto_generate_report,
+    "cron",
+    args=["annual"],
+    month=1, day=1, hour=8, minute=0,
+    id="auto_report_annual",
+    replace_existing=True,
+    misfire_grace_time=3600,
+)
+
+
+# ── Auto Google Sheet sync jobs ───────────────────────────────────────────────
+
+async def _run_auto_sync() -> None:
+    """Check all active SyncConfigs and trigger those whose interval is due."""
+    try:
+        from app.services.sync_engine import run_auto_sync_due
+        await run_auto_sync_due()
+    except Exception:
+        log.exception("Auto-sync check failed")
+
+
+scheduler.add_job(
+    _run_auto_sync,
+    "interval",
+    minutes=5,
+    id="auto_gsheet_sync",
+    replace_existing=True,
+    misfire_grace_time=120,
+)
+
+
+# ── Zalo notification jobs ────────────────────────────────────────────────────
+
+async def _zalo_task_warnings() -> None:
+    """Send Zalo alerts for tasks overdue or due within 3 days."""
+    from datetime import date, timedelta
+    from app.models.task import Task
+    from app.services.zalo_notify_engine import notify_event
+
+    today = datetime.now(timezone.utc)
+    warning_cutoff = today + timedelta(days=3)
+
+    try:
+        async with AsyncSessionLocal() as db:
+            # Overdue tasks
+            result = await db.execute(
+                select(Task).where(
+                    Task.due_date.isnot(None),
+                    Task.deleted_at.is_(None),
+                    Task.due_date < today,
+                    Task.status.notin_(["completed", "cancelled"]),
+                )
+            )
+            overdue = result.scalars().all()
+            for task in overdue:
+                target = task.assignee_id or task.created_by
+                due_utc = task.due_date if task.due_date.tzinfo else task.due_date.replace(tzinfo=timezone.utc)
+                days_late = max(0, (today - due_utc).days)
+                await notify_event(
+                    db, "task_overdue",
+                    context={
+                        "task_title": task.title,
+                        "days_late": days_late,
+                        "due_date": task.due_date.strftime("%d/%m/%Y"),
+                    },
+                    recipient_user_ids=[target],
+                    entity_type="task", entity_id=task.id,
+                    triggered_by="scheduler", dedup_hours=24,
+                )
+
+            # Tasks due within 3 days
+            result2 = await db.execute(
+                select(Task).where(
+                    Task.due_date.isnot(None),
+                    Task.deleted_at.is_(None),
+                    Task.due_date >= today,
+                    Task.due_date <= warning_cutoff,
+                    Task.status.notin_(["completed", "cancelled"]),
+                )
+            )
+            for task in result2.scalars().all():
+                target = task.assignee_id or task.created_by
+                due_utc = task.due_date if task.due_date.tzinfo else task.due_date.replace(tzinfo=timezone.utc)
+                days_left = max(0, (due_utc - today).days)
+                await notify_event(
+                    db, "task_warning",
+                    context={
+                        "task_title": task.title,
+                        "days_left": days_left,
+                        "due_date": task.due_date.strftime("%d/%m/%Y"),
+                    },
+                    recipient_user_ids=[target],
+                    entity_type="task", entity_id=task.id,
+                    triggered_by="scheduler", dedup_hours=24,
+                )
+    except Exception:
+        log.exception("Zalo task warnings job failed")
+
+
+async def _zalo_kpi_alerts() -> None:
+    """Send Zalo KPI alerts for KPIs below 70%."""
+    from app.models.kpi import KPI
+    from app.services.zalo_notify_engine import notify_event
+
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(KPI).where(
+                    KPI.progress < 70,
+                    KPI.status.notin_(["completed"]),
+                )
+            )
+            for kpi in result.scalars().all():
+                recipients = []
+                if kpi.responsible_user_id:
+                    recipients.append(kpi.responsible_user_id)
+                if kpi.created_by and kpi.created_by not in recipients:
+                    recipients.append(kpi.created_by)
+                if not recipients:
+                    continue
+                await notify_event(
+                    db, "kpi_low",
+                    context={
+                        "kpi_title": kpi.title,
+                        "progress": round(kpi.progress, 1),
+                        "target": round(kpi.target_value, 1),
+                    },
+                    recipient_user_ids=recipients,
+                    entity_type="kpi", entity_id=kpi.id,
+                    triggered_by="scheduler", dedup_hours=48,
+                )
+    except Exception:
+        log.exception("Zalo KPI alerts job failed")
+
+
+# Hourly task warnings (06:00–22:00)
+scheduler.add_job(
+    _zalo_task_warnings,
+    "interval",
+    hours=1,
+    id="zalo_task_warnings",
+    replace_existing=True,
+    misfire_grace_time=300,
+)
+
+# Daily KPI alert at 08:30
+scheduler.add_job(
+    _zalo_kpi_alerts,
+    "cron",
+    hour=8, minute=30,
+    id="zalo_kpi_alerts",
+    replace_existing=True,
+    misfire_grace_time=1800,
+)
+
+
+# ── Notification & log cleanup ────────────────────────────────────────────────
+
+_NOTIF_RETENTION_DAYS = 90   # keep read notifications for 90 days
+_ZALO_LOG_RETENTION_DAYS = 90
+
+
+async def _cleanup_old_records() -> None:
+    """Delete stale notifications and Zalo logs to prevent unbounded table growth."""
+    from app.models.zalo import ZaloLog
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=_NOTIF_RETENTION_DAYS)
+    zalo_cutoff = datetime.now(timezone.utc) - timedelta(days=_ZALO_LOG_RETENTION_DAYS)
+
+    try:
+        async with AsyncSessionLocal() as db:
+            # Remove read notifications older than retention window
+            notif_result = await db.execute(
+                delete(Notification).where(
+                    Notification.is_read.is_(True),
+                    Notification.created_at < cutoff,
+                )
+            )
+            # Remove Zalo delivery logs older than retention window
+            zalo_result = await db.execute(
+                delete(ZaloLog).where(ZaloLog.created_at < zalo_cutoff)
+            )
+            await db.commit()
+            log.info(
+                "Cleanup: removed %d notifications, %d zalo_logs",
+                notif_result.rowcount,
+                zalo_result.rowcount,
+            )
+    except Exception:
+        log.exception("Cleanup job failed")
+
+
+# Daily at 03:00 (low-traffic window)
+scheduler.add_job(
+    _cleanup_old_records,
+    "cron",
+    hour=3, minute=0,
+    id="cleanup_old_records",
+    replace_existing=True,
+    misfire_grace_time=3600,
+)
