@@ -3,6 +3,7 @@ import {
   Edit2, Eye, EyeOff, KeyRound, Lock, Plus, Search, Shield, Trash2, Users, X,
 } from 'lucide-react'
 import apiClient from '../../api/client'
+import AppLayout from '../../components/layout/AppLayout'
 import { useAuthStore } from '../../store/authStore'
 import { ROLE_LABELS, isAdminOrLeader } from '../../types'
 
@@ -20,9 +21,11 @@ interface StaffRecord {
   note: string | null
   role: string
   is_active: boolean
+  has_password: boolean
   department_id: number | null
   user_id: number | null
   department: { id: number; name: string; short_name: string | null } | null
+  user: { id: number; username: string; full_name: string | null } | null
 }
 
 const ROLE_OPTIONS = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }))
@@ -113,7 +116,7 @@ function StaffModal({ staff, departments, onSave, onClose }: {
           <h2 className="font-bold text-slate-800 text-lg">{isEdit ? 'Sửa nhân sự' : 'Thêm nhân sự mới'}</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+        <form id="staff-form" onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {error && <p className="text-red-600 text-sm bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
@@ -180,7 +183,7 @@ function StaffModal({ staff, departments, onSave, onClose }: {
         </form>
         <div className="flex justify-end gap-3 px-6 py-4 border-t bg-slate-50">
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition">Hủy</button>
-          <button type="submit" form="staff-form" onClick={handleSubmit as unknown as React.MouseEventHandler}
+          <button type="submit" form="staff-form"
             disabled={saving}
             className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-60">
             {saving ? 'Đang lưu...' : isEdit ? 'Lưu thay đổi' : 'Thêm nhân sự'}
@@ -193,7 +196,7 @@ function StaffModal({ staff, departments, onSave, onClose }: {
 
 // ── Password Reset Modal ───────────────────────────────────────────────────────
 
-function PasswordModal({ staff, onClose }: { staff: StaffRecord; onClose: () => void }) {
+function PasswordModal({ staff, onClose }: { staff: StaffRecord & { has_password: boolean }; onClose: () => void }) {
   const [pwd, setPwd] = useState('')
   const [showPwd, setShowPwd] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -218,12 +221,24 @@ function PasswordModal({ staff, onClose }: { staff: StaffRecord; onClose: () => 
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div className="flex items-center gap-2">
             <KeyRound size={18} className="text-blue-600" />
-            <h2 className="font-bold text-slate-800">Đặt lại mật khẩu</h2>
+            <h2 className="font-bold text-slate-800">{staff.has_password ? 'Đặt lại mật khẩu' : 'Cấp mật khẩu đăng nhập'}</h2>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
         </div>
         <div className="p-6 space-y-4">
-          <p className="text-sm text-slate-600">Đặt mật khẩu mới cho <span className="font-semibold">{staff.full_name}</span></p>
+          <p className="text-sm text-slate-600">
+            {staff.has_password ? 'Đặt lại mật khẩu cho' : 'Cấp mật khẩu đăng nhập cho'} <span className="font-semibold">{staff.full_name}</span>
+          </p>
+          {staff.email && (
+            <div className="bg-blue-50 text-blue-700 text-xs px-3 py-2 rounded-lg">
+              Đăng nhập bằng email: <span className="font-mono font-bold">{staff.email}</span>
+            </div>
+          )}
+          {!staff.email && (
+            <div className="bg-amber-50 text-amber-700 text-xs px-3 py-2 rounded-lg">
+              ⚠ Nhân sự chưa có email — hãy cập nhật email trước khi cấp mật khẩu
+            </div>
+          )}
           {done ? (
             <div className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-sm font-medium">Đặt lại mật khẩu thành công!</div>
           ) : (
@@ -279,8 +294,10 @@ export default function StaffPage() {
   }, [page, search, deptFilter, roleFilter])
 
   async function loadDepts() {
-    const { data } = await apiClient.get<Department[]>('/departments?size=100')
-    setDepartments(Array.isArray(data) ? data : [])
+    try {
+      const { data } = await apiClient.get('/departments')
+      setDepartments(Array.isArray(data) ? data : (data as { items?: Department[] }).items ?? [])
+    } catch { /* non-critical: dropdowns just stay empty */ }
   }
 
   async function loadStaff() {
@@ -314,13 +331,19 @@ export default function StaffPage() {
   const pages = Math.max(1, Math.ceil(total / SIZE))
 
   return (
+    <AppLayout>
     <div className="p-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <Users size={24} className="text-blue-600" /> Quản lý Nhân sự
           </h1>
-          <p className="text-slate-500 text-sm mt-1">{total} nhân sự · Tài khoản & phân quyền</p>
+          <p className="text-slate-500 text-sm mt-1">
+            {(search || deptFilter || roleFilter)
+              ? <>{total} nhân sự <span className="text-amber-500 font-medium">(đang lọc)</span> · <button onClick={() => { setSearch(''); setDeptFilter(''); setRoleFilter(''); setPage(1) }} className="text-blue-500 hover:underline">Xóa bộ lọc</button></>
+              : <>{total} nhân sự · Tài khoản &amp; phân quyền</>
+            }
+          </p>
         </div>
         {canManage && (
           <button onClick={() => { setEditing(null); setModalOpen(true) }}
@@ -336,7 +359,13 @@ export default function StaffPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }}
             placeholder="Tìm tên, chức vụ, mã nhân viên..."
-            className="w-full pl-9 pr-3 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            className="w-full pl-9 pr-8 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+          {search && (
+            <button onClick={() => { setSearch(''); setPage(1) }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <X size={14} />
+            </button>
+          )}
         </div>
         <select value={deptFilter} onChange={e => { setDeptFilter(e.target.value); setPage(1) }}
           className="border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 bg-white min-w-[150px]">
@@ -377,6 +406,9 @@ export default function StaffPage() {
                       <div>
                         <p className="font-medium text-slate-800">{s.full_name}</p>
                         <p className="text-xs text-slate-400">{s.employee_code ?? '—'}</p>
+                        {s.user && (
+                          <p className="text-xs text-blue-600 font-mono mt-0.5">@{s.user.username}</p>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -393,7 +425,9 @@ export default function StaffPage() {
                     {s.is_active
                       ? <span className="text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">Hoạt động</span>
                       : <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border">Đã khóa</span>}
-                    {!s.user_id && <p className="text-xs text-amber-500 mt-0.5">Chưa có TK</p>}
+                    {s.has_password
+                      ? <p className="text-xs text-blue-600 mt-0.5 flex items-center gap-1">✓ Có thể đăng nhập</p>
+                      : <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">⚠ Chưa có mật khẩu</p>}
                   </td>
                   {canManage && (
                     <td className="px-4 py-3">
@@ -402,8 +436,8 @@ export default function StaffPage() {
                           className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
                           <Edit2 size={14} />
                         </button>
-                        <button onClick={() => setPwdModal(s)} title="Đặt lại mật khẩu"
-                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition">
+                        <button onClick={() => setPwdModal(s)} title={s.has_password ? 'Đặt lại mật khẩu' : 'Cấp mật khẩu đăng nhập'}
+                          className={`p-1.5 rounded-lg transition ${s.has_password ? 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50' : 'text-amber-500 bg-amber-50 hover:bg-amber-100'}`}>
                           <KeyRound size={14} />
                         </button>
                         <button onClick={() => handleToggleActive(s)} title={s.is_active ? 'Khóa tài khoản' : 'Mở khóa'}
@@ -452,5 +486,6 @@ export default function StaffPage() {
         <PasswordModal staff={pwdModal} onClose={() => { setPwdModal(null); loadStaff() }} />
       )}
     </div>
+    </AppLayout>
   )
 }

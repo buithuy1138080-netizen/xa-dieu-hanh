@@ -48,6 +48,24 @@ class Task(Base):
     directive_id: Mapped[int | None] = mapped_column(
         ForeignKey("directives.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    source_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+    program_id: Mapped[int | None] = mapped_column(
+        ForeignKey("programs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    parent_task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # ── 6 Rõ ─────────────────────────────────────────────────────────────────
+    expected_output: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completion_condition: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confirmed_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    rejection_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── People ────────────────────────────────────────────────────────────────
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
@@ -63,6 +81,10 @@ class Task(Base):
         ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
+    # ── Classification (task_type discriminates nq57 vs regular) ──────────────
+    task_type: Mapped[str] = mapped_column(String(20), default="regular", index=True)
+    task_group: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
     # ── Settings ─────────────────────────────────────────────────────────────
     reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     overdue_warning: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -76,6 +98,9 @@ class Task(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 
     # ── Relationships ─────────────────────────────────────────────────────────
+    parent: Mapped["Task | None"] = relationship("Task", foreign_keys=[parent_task_id], remote_side="Task.id", lazy="noload", overlaps="subtasks")
+    subtasks: Mapped[list["Task"]] = relationship("Task", foreign_keys=[parent_task_id], lazy="noload", overlaps="parent")
+
     creator: Mapped[User] = relationship("User", foreign_keys=[created_by])
     updater: Mapped[User | None] = relationship("User", foreign_keys=[updated_by])
     assignee: Mapped[User | None] = relationship("User", foreign_keys=[assignee_id])

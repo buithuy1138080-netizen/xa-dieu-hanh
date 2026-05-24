@@ -349,7 +349,7 @@ export default function ReportDetailPage() {
                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
                   <h3 className="font-semibold text-slate-700 mb-4">KPI theo danh mục</h3>
                   {(kpis?.by_category ?? []).length > 0 ? (
-                    <ResponsiveContainer width="100%" height={Math.max(200, (kpis?.by_category.length ?? 0) * 42)}>
+                    <ResponsiveContainer width="100%" height={Math.max(200, (kpis?.by_category?.length ?? 0) * 42)}>
                       <BarChart data={kpis?.by_category} layout="vertical" margin={{ left: 0, right: 48 }}>
                         <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                         <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 11, fill: '#94a3b8' }} />

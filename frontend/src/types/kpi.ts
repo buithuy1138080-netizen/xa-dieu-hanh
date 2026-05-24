@@ -1,5 +1,5 @@
 export type KPIStatus = 'on_track' | 'at_risk' | 'behind' | 'completed'
-export type KPIPeriod = 'monthly' | 'quarterly' | 'yearly'
+export type KPIPeriod = 'monthly' | 'quarterly' | 'yearly' | 'five_year'
 export type NQ57Status = 'pending' | 'in_progress' | 'completed' | 'delayed'
 
 export interface UserMin {
@@ -48,6 +48,7 @@ export interface KPIRead {
   month: number | null
   status: KPIStatus
   deadline: string | null
+  program_id: number | null
   responsible_unit: string | null
   responsible_department_id: number | null
   responsible_department: DeptMin | null
@@ -98,6 +99,7 @@ export interface KPICreate {
   month?: number | null
   status?: KPIStatus
   deadline?: string | null
+  program_id?: number | null
   responsible_unit?: string
   responsible_department_id?: number | null
   responsible_user_id?: number | null
@@ -128,6 +130,17 @@ export interface KPIChartItem {
 
 // ─── NQ57 ────────────────────────────────────────────────────────────────────
 
+export interface DocMin {
+  id: number
+  doc_number: string | null
+  title: string
+}
+
+export interface DirectiveMin {
+  id: number
+  title: string
+}
+
 export interface NQ57TaskRead {
   id: number
   code: string | null
@@ -145,6 +158,11 @@ export interface NQ57TaskRead {
   responsible_user: UserMin | null
   responsible_staff: StaffMin | null
   kpi: KPIMin | null
+  coordinating_dept_ids: number[]
+  program_id: number | null
+  incoming_document_id: number | null
+  outgoing_document_id: number | null
+  directive_id: number | null
   creator: UserMin
   created_at: string
   updated_at: string | null
@@ -161,6 +179,9 @@ export interface NQ57ProgressRead {
 
 export interface NQ57TaskReadDetail extends NQ57TaskRead {
   progress_entries: NQ57ProgressRead[]
+  incoming_document: DocMin | null
+  outgoing_document: DocMin | null
+  directive: DirectiveMin | null
 }
 
 export interface NQ57TaskCreate {
@@ -178,6 +199,11 @@ export interface NQ57TaskCreate {
   responsible_user_id?: number | null
   responsible_staff_id?: number | null
   kpi_id?: number | null
+  coordinating_dept_ids?: number[]
+  program_id?: number | null
+  incoming_document_id?: number | null
+  outgoing_document_id?: number | null
+  directive_id?: number | null
 }
 
 export interface NQ57Stats {

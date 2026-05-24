@@ -35,3 +35,7 @@ class Staff(Base):
 
     user: Mapped[User | None] = relationship("User")
     department: Mapped[Department | None] = relationship("Department", back_populates="staff")
+
+    @property
+    def has_password(self) -> bool:
+        return self.password_hash is not None

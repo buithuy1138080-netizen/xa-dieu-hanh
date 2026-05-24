@@ -1,20 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Bar, BarChart, CartesianGrid, Cell,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import apiClient from '../../api/client'
 import { kpiApi } from '../../api/kpi'
+import { programsApi } from '../../api/programs'
+import type { Program } from '../../api/programs'
+import ExcelImportModal from '../../components/common/ExcelImportModal'
 import KPIStatusBadge from '../../components/kpi/KPIStatusBadge'
 import AppLayout from '../../components/layout/AppLayout'
+import { useAuthStore } from '../../store/authStore'
+import { isAdminOrLeader } from '../../types'
 import type { KPIChartItem, KPICreate, KPIPeriod, KPIRead, KPIStats, KPIStatus } from '../../types/kpi'
 
 interface DeptMin { id: number; name: string; short_name: string | null }
 interface StaffItem { id: number; full_name: string; position: string | null; employee_code: string | null; department_id: number | null }
 
 const CURRENT_YEAR = new Date().getFullYear()
-const YEARS = [CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR + 1]
+// Năm 2025 → 2031 theo nhiệm kỳ nghị quyết
+const YEARS = [2025, 2026, 2027, 2028, 2029, 2030, 2031]
 
 const STATUS_PIE_COLORS: Record<KPIStatus, string> = {
   on_track: '#22c55e',
@@ -26,6 +32,7 @@ const STATUS_PIE_COLORS: Record<KPIStatus, string> = {
 const CATEGORIES = ['Kinh tế', 'Xã hội', 'Hành chính', 'Môi trường', 'Hạ tầng', 'Văn hóa', 'An ninh', 'Khác']
 const PERIODS: { value: KPIPeriod; label: string }[] = [
   { value: 'yearly', label: 'Năm' },
+  { value: 'five_year', label: '05 năm' },
   { value: 'quarterly', label: 'Quý' },
   { value: 'monthly', label: 'Tháng' },
 ]
@@ -63,6 +70,9 @@ function ProgressRing({ progress, size = 64 }: { progress: number; size?: number
 
 export default function KPIDashboardPage() {
   const navigate = useNavigate()
+  const currentUser = useAuthStore(s => s.user)
+  const canManage = isAdminOrLeader(currentUser)
+  const [searchParams] = useSearchParams()
   const [stats, setStats] = useState<KPIStats | null>(null)
   const [chart, setChart] = useState<KPIChartItem[]>([])
   const [kpis, setKpis] = useState<KPIRead[]>([])
@@ -70,36 +80,62 @@ export default function KPIDashboardPage() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [saving, setSaving] = useState(false)
   const [depts, setDepts] = useState<DeptMin[]>([])
   const [staffList, setStaffList] = useState<StaffItem[]>([])
+  const [programs, setPrograms] = useState<Program[]>([])
 
   // Filters
-  const [year, setYear] = useState(CURRENT_YEAR)
+  const [year, setYear] = useState<number | ''>(CURRENT_YEAR)
   const [statusFilter, setStatusFilter] = useState<KPIStatus | ''>('')
+  const [overdueOnly, setOverdueOnly] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [programFilter, setProgramFilter] = useState<number | ''>(() => {
+    const pid = searchParams.get('program_id')
+    return pid ? Number(pid) : ''
+  })
   const [search, setSearch] = useState('')
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const SIZE = 15
 
-  // Form state
+  // Active stat card = which card is currently filtering the list
+  const activeCard = overdueOnly ? 'overdue' : statusFilter
+
+  function handleCardClick(key: KPIStatus | '' | 'overdue') {
+    if (key === '' || key === activeCard) {
+      setStatusFilter(''); setOverdueOnly(false)
+    } else if (key === 'overdue') {
+      setStatusFilter(''); setOverdueOnly(true)
+    } else {
+      setStatusFilter(key as KPIStatus); setOverdueOnly(false)
+    }
+  }
+
+  // Form state — pre-fill program_id if coming from program context
+  const initProgramId = (() => { const pid = searchParams.get('program_id'); return pid ? Number(pid) : undefined })()
   const [form, setForm] = useState<KPICreate>({
     title: '', target_value: 100, current_value: 0,
     period: 'yearly', year: CURRENT_YEAR,
+    ...(initProgramId ? { program_id: initProgramId } : {}),
   })
 
   const loadAll = useCallback(async (p = 1, q = search) => {
     setLoading(true)
     try {
+      const yearParam = year || undefined
+      const programParam = programFilter || undefined
       const [s, c, k] = await Promise.allSettled([
-        kpiApi.stats(year),
-        kpiApi.chart({ year }),
+        kpiApi.stats(yearParam, programParam),
+        kpiApi.chart({ year: yearParam }),
         kpiApi.list({
           page: p, size: SIZE,
-          year,
+          year: yearParam,
           search: q || undefined,
           status: statusFilter || undefined,
           category: categoryFilter || undefined,
+          overdue_only: overdueOnly || undefined,
+          program_id: programParam,
         }),
       ])
       if (s.status === 'fulfilled') setStats(s.value.data)
@@ -112,9 +148,9 @@ export default function KPIDashboardPage() {
     } finally {
       setLoading(false)
     }
-  }, [year, statusFilter, categoryFilter, search])
+  }, [year, statusFilter, categoryFilter, search, overdueOnly, programFilter])
 
-  useEffect(() => { loadAll(1) }, [year, statusFilter, categoryFilter])
+  useEffect(() => { loadAll(1) }, [year, statusFilter, categoryFilter, overdueOnly, programFilter])
   useEffect(() => {
     if (searchRef.current) clearTimeout(searchRef.current)
     searchRef.current = setTimeout(() => loadAll(1, search), 400)
@@ -123,6 +159,7 @@ export default function KPIDashboardPage() {
   useEffect(() => {
     apiClient.get<DeptMin[]>('/departments').then(r => setDepts(r.data)).catch(() => {})
     apiClient.get<{ items: StaffItem[] }>('/staff?active_only=true&size=200').then(r => setStaffList(r.data.items)).catch(() => {})
+    programsApi.list().then(r => setPrograms(r.data)).catch(() => {})
   }, [])
 
   // Chart data for pie
@@ -164,61 +201,114 @@ export default function KPIDashboardPage() {
             <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center text-xl">📊</div>
             <div>
               <h1 className="text-xl font-bold text-slate-800">KPI Dashboard</h1>
-              <p className="text-sm text-slate-500 mt-0.5">Theo dõi chỉ số hiệu quả thực thi</p>
+              {programFilter
+                ? <p className="text-sm text-violet-600 mt-0.5 font-medium">
+                    {programs.find(p => p.id === programFilter)?.name ?? `Chương trình #${programFilter}`}
+                  </p>
+                : <p className="text-sm text-slate-500 mt-0.5">Theo dõi chỉ số hiệu quả thực thi</p>
+              }
             </div>
           </div>
           <div className="flex items-center gap-3">
             <select
+              value={programFilter}
+              onChange={e => setProgramFilter(e.target.value ? Number(e.target.value) : '')}
+              className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none text-slate-600"
+            >
+              <option value="">Tất cả chương trình</option>
+              {programs.map(p => <option key={p.id} value={p.id}>{p.short_name || p.name}</option>)}
+            </select>
+            <select
               value={year}
-              onChange={e => setYear(Number(e.target.value))}
+              onChange={e => setYear(e.target.value ? Number(e.target.value) : '')}
               className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none"
             >
+              <option value="">Tất cả năm</option>
               {YEARS.map(y => <option key={y} value={y}>Năm {y}</option>)}
             </select>
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-semibold hover:bg-violet-700 transition"
-            >
-              + Thêm KPI
-            </button>
+            {canManage && (
+              <button
+                onClick={() => setShowImport(true)}
+                className="flex items-center gap-2 px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 transition"
+              >
+                <span className="text-violet-600">📥</span> Import Excel
+              </button>
+            )}
+            {canManage && (
+              <button
+                onClick={() => setShowForm(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-semibold hover:bg-violet-700 transition"
+              >
+                + Thêm KPI
+              </button>
+            )}
           </div>
         </div>
 
-        {/* KPI Stats Cards */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-          {[
-            { label: 'Tổng KPI',       value: stats?.total ?? 0,     icon: '📋', cls: 'text-slate-700',  bg: 'bg-slate-50' },
-            { label: 'Đúng tiến độ',   value: stats?.on_track ?? 0,  icon: '✅', cls: 'text-green-600', bg: 'bg-green-50' },
-            { label: 'Có rủi ro',      value: stats?.at_risk ?? 0,   icon: '⚠️', cls: 'text-amber-600', bg: 'bg-amber-50' },
-            { label: 'Chậm tiến độ',   value: stats?.behind ?? 0,    icon: '🔴', cls: 'text-red-600',   bg: 'bg-red-50' },
-          ].map(c => (
-            <div key={c.label} className={`rounded-2xl p-5 border border-slate-100 shadow-sm ${c.bg}`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{c.label}</p>
-                  <p className={`text-4xl font-bold mt-1 ${c.cls}`}>{c.value}</p>
+        <ExcelImportModal
+          open={showImport}
+          onClose={() => setShowImport(false)}
+          module="kpi"
+          moduleName="Chỉ tiêu KPI"
+          templateFileName="mau_import_kpi.xlsx"
+          onSuccess={() => { setShowImport(false); loadAll() }}
+        />
+
+        {/* KPI Stats Cards — click to filter */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
+          {([
+            { key: '' as const,          label: 'TỔNG KPI',      value: stats?.total ?? 0,             icon: '🎯', color: 'text-slate-700',  ring: 'ring-slate-400',  bg: 'bg-slate-50'   },
+            { key: 'on_track' as const,  label: 'ĐÚNG TIẾN ĐỘ', value: stats?.on_track ?? 0,          icon: '✅', color: 'text-green-600', ring: 'ring-green-500', bg: 'bg-green-50'  },
+            { key: 'at_risk' as const,   label: 'CÓ RỦI RO',    value: stats?.at_risk ?? 0,           icon: '⚠️', color: 'text-amber-600', ring: 'ring-amber-500', bg: 'bg-amber-50'  },
+            { key: 'behind' as const,    label: 'CHẬM TIẾN ĐỘ', value: stats?.behind ?? 0,            icon: '🐢', color: 'text-red-600',   ring: 'ring-red-500',   bg: 'bg-red-50'    },
+            { key: 'completed' as const, label: 'HOÀN THÀNH',   value: stats?.completed ?? 0,         icon: '🏁', color: 'text-blue-600',  ring: 'ring-blue-500',  bg: 'bg-blue-50'   },
+            { key: 'overdue' as const,   label: 'QUÁ HẠN',      value: stats?.overdue ?? 0,           icon: '🔴', color: 'text-rose-600',  ring: 'ring-rose-500',  bg: 'bg-rose-50'   },
+            { key: null,                 label: 'TIẾN ĐỘ TB',   value: `${stats?.avg_progress ?? 0}%`, icon: '📈', color: 'text-violet-600', ring: '',              bg: 'bg-violet-50' },
+          ] as const).map(card => {
+            const isActive = card.key !== null && card.key === activeCard
+            const isClickable = card.key !== null
+            return (
+              <div
+                key={card.label}
+                onClick={isClickable ? () => handleCardClick(card.key as KPIStatus | '' | 'overdue') : undefined}
+                className={`
+                  rounded-xl p-4 border shadow-sm transition-all duration-150
+                  ${isClickable ? 'cursor-pointer select-none hover:shadow-md hover:-translate-y-0.5 active:scale-95' : ''}
+                  ${isActive
+                    ? `ring-2 ${card.ring} border-transparent ${card.bg}`
+                    : `bg-white border-slate-100 ${isClickable ? 'hover:border-slate-200' : ''}`
+                  }
+                `}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest leading-none mb-1.5">{card.label}</p>
+                    <p className={`text-2xl font-bold leading-none ${card.color}`}>{card.value}</p>
+                  </div>
+                  <span className="text-xl opacity-80">{card.icon}</span>
                 </div>
-                <span className="text-3xl">{c.icon}</span>
+                {isActive && (
+                  <p className="text-[9px] text-slate-500 mt-1.5 font-medium">Đang lọc ✕</p>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
-        {/* Additional stats */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-            <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">Hoàn thành</p>
-            <p className="text-3xl font-bold text-blue-600 mt-1">{stats?.completed ?? 0}</p>
+        {/* Active filter banner */}
+        {activeCard !== '' && (
+          <div className="flex items-center gap-2 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 text-xs text-violet-700 font-medium">
+            <span>Đang lọc theo:</span>
+            <span className="bg-violet-600 text-white px-2 py-0.5 rounded-full">
+              {activeCard === 'overdue' ? 'Quá hạn' :
+               activeCard === 'on_track' ? 'Đúng tiến độ' :
+               activeCard === 'at_risk' ? 'Có rủi ro' :
+               activeCard === 'behind' ? 'Chậm tiến độ' :
+               activeCard === 'completed' ? 'Hoàn thành' : activeCard}
+            </span>
+            <button onClick={() => handleCardClick('')} className="ml-auto text-violet-500 hover:text-violet-700 font-bold">✕ Xóa lọc</button>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-            <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">Tiến độ TB</p>
-            <p className="text-3xl font-bold text-violet-600 mt-1">{stats?.avg_progress ?? 0}%</p>
-          </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-            <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">Quá hạn</p>
-            <p className="text-3xl font-bold text-red-500 mt-1">{stats?.overdue ?? 0}</p>
-          </div>
-        </div>
+        )}
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
@@ -459,15 +549,22 @@ export default function KPIDashboardPage() {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className={lbl}>Chu kỳ</label>
-                  <select className={inp} value={form.period} onChange={e => setForm(p => ({ ...p, period: e.target.value as KPIPeriod }))}>
+                  <select className={inp} value={form.period} onChange={e => {
+                    const p = e.target.value as KPIPeriod
+                    setForm(prev => ({ ...prev, period: p, year: p === 'five_year' ? 2025 : prev.year }))
+                  }}>
                     {PERIODS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className={lbl}>Năm *</label>
-                  <select className={inp} value={form.year} onChange={e => setForm(p => ({ ...p, year: Number(e.target.value) }))}>
-                    {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
+                  <label className={lbl}>{form.period === 'five_year' ? 'Giai đoạn' : 'Năm *'}</label>
+                  {form.period === 'five_year' ? (
+                    <input className={inp} value="2025 – 2031" readOnly style={{ background: '#f8fafc', color: '#64748b', cursor: 'default' }} />
+                  ) : (
+                    <select className={inp} value={form.year} onChange={e => setForm(p => ({ ...p, year: Number(e.target.value) }))}>
+                      {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className={lbl}>Hạn hoàn thành</label>
@@ -506,6 +603,17 @@ export default function KPIDashboardPage() {
                   </select>
                 </div>
               </div>
+              {programs.length > 0 && (
+                <div>
+                  <label className={lbl}>Chương trình / Nghị quyết</label>
+                  <select className={inp} value={form.program_id ?? ''} onChange={e => setForm(p => ({ ...p, program_id: e.target.value ? Number(e.target.value) : null }))}>
+                    <option value="">-- Không liên kết --</option>
+                    {programs.map(prog => (
+                      <option key={prog.id} value={prog.id}>{prog.short_name ?? prog.code} — {prog.name.slice(0, 50)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="flex gap-3 pt-2 justify-end">
                 <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition">Hủy</button>
                 <button type="submit" disabled={saving} className="px-5 py-2 text-sm bg-violet-600 text-white rounded-lg font-semibold hover:bg-violet-700 disabled:opacity-50 transition">

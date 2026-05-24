@@ -91,15 +91,51 @@ async def _run_ocr_pipeline(ocr_id: int) -> None:
             doc.status = "processing"
             await db.commit()
 
-            # OCR is blocking I/O — run in thread pool
+            file_path = Path(doc.file_path)
+
+            # Gemini Vision pipeline — runs OCR + AI extraction in one pass
+            ai_result = await asyncio.to_thread(
+                ai_parser_service.parse_file_with_vision, file_path
+            )
+            doc.ai_result = ai_result
+
+            # Also store raw OCR text for search/display
             text, page_count = await asyncio.to_thread(
-                ocr_service.ocr_file, Path(doc.file_path)
+                ocr_service.ocr_file, file_path
             )
             doc.ocr_text = text
             doc.page_count = page_count
 
-            # AI parsing is CPU-only regex, fast enough inline
-            doc.ai_result = ai_parser_service.parse_document(text)
+            # Duplicate detection against recent confirmed documents
+            try:
+                from app.services.duplicate_detector import is_duplicate
+                from sqlalchemy import select as _select, and_
+                recent = await db.execute(
+                    _select(OcrDocument.ocr_text)
+                    .where(
+                        and_(
+                            OcrDocument.confirmed_at.isnot(None),
+                            OcrDocument.id != ocr_id,
+                            OcrDocument.ocr_text.isnot(None),
+                        )
+                    )
+                    .order_by(OcrDocument.created_at.desc())
+                    .limit(50)
+                )
+                existing_texts = [r for r in recent.scalars().all() if r]
+                if existing_texts and text:
+                    is_dup, dup_idx, dup_score = is_duplicate(text, existing_texts)
+                    if is_dup:
+                        doc.ai_result = {
+                            **ai_result,
+                            "canh_bao": (ai_result.get("canh_bao") or []) + [{
+                                "field": "duplicate",
+                                "message": f"Có thể trùng lặp với tài liệu đã lưu (độ tương đồng: {dup_score:.0%})",
+                            }],
+                        }
+            except Exception as dup_exc:
+                logger.warning("Duplicate detection skipped: %s", dup_exc)
+
             doc.status = "done"
             doc.processed_at = datetime.now(timezone.utc)
 
@@ -307,9 +343,17 @@ async def delete_ocr(
 
 @router.get("/status/engine")
 async def ocr_engine_status(_: User = Depends(get_current_user)):
-    """Check what OCR capabilities are available on this server."""
+    """Check what OCR/AI capabilities are available on this server."""
+    from app.services.duplicate_detector import EMBEDDINGS_OK, SKLEARN_OK, NUMPY_OK
+    from app.core.config import settings
     return {
-        "pytesseract": ocr_service.PYTESSERACT_OK,
-        "pymupdf": ocr_service.PYMUPDF_OK,
-        "tesseract_binary": ocr_service.is_ocr_available(),
+        "paddleocr":       ocr_service.PADDLEOCR_OK,
+        "pymupdf":         ocr_service.PYMUPDF_OK,
+        "gemini_api":      bool(settings.GEMINI_API_KEY),
+        "duplicate_detection": NUMPY_OK and (EMBEDDINGS_OK or SKLEARN_OK),
+        "duplicate_backend": (
+            "sentence-transformers" if EMBEDDINGS_OK
+            else "tfidf" if SKLEARN_OK
+            else "disabled"
+        ),
     }

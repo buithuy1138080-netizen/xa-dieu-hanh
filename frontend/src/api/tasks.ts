@@ -12,6 +12,7 @@ export interface TaskFilters {
   incoming_document_id?: number
   outgoing_document_id?: number
   directive_id?: number
+  program_id?: number
   coordinating_dept_id?: number
   overdue_only?: boolean
   due_before?: string

@@ -72,7 +72,28 @@ export interface NQ57StatsDash {
   avg_progress: number
 }
 
+export interface DocumentStats {
+  total: number
+  incoming: number
+  outgoing: number
+  pending: number
+  processed: number
+}
+
+export interface DashboardSummary {
+  tasks: DashboardStats
+  documents: DocumentStats
+  directives: DirectiveStats
+  kpi: KPIStatsDash
+  nq57: NQ57StatsDash
+  overdue_tasks: OverdueTask[]
+  upcoming_tasks: UpcomingTask[]
+}
+
 export const dashboardApi = {
+  // Single call replacing 8 individual calls
+  summary: () => apiClient.get<DashboardSummary>('/dashboard/summary'),
+  // Individual calls kept for backwards compatibility / granular refresh
   stats: () => apiClient.get<DashboardStats>('/dashboard/stats'),
   timeline: (days = 30) =>
     apiClient.get<TimelinePoint[]>('/dashboard/chart/timeline', { params: { days } }),
@@ -84,4 +105,5 @@ export const dashboardApi = {
   directiveStats: () => apiClient.get<DirectiveStats>('/dashboard/directive-stats'),
   kpiStats: () => apiClient.get<KPIStatsDash>('/dashboard/kpi-stats'),
   nq57Stats: () => apiClient.get<NQ57StatsDash>('/dashboard/nq57-stats'),
+  documentStats: () => apiClient.get<DocumentStats>('/dashboard/document-stats'),
 }

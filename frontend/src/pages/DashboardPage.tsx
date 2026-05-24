@@ -1,10 +1,10 @@
 import { motion } from 'framer-motion'
 import {
-  AlertTriangle, BarChart3, CheckCircle2,
+  AlertTriangle, BarChart3, Bell, CheckCircle2,
   FileText, ClipboardList, TrendingUp, Building2,
   ArrowRight, Activity, Target, Zap,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell,
@@ -12,17 +12,17 @@ import {
 } from 'recharts'
 import { dashboardApi } from '../api/dashboard'
 import type {
-  DashboardStats, DirectiveStats, KPIStatsDash, NQ57StatsDash,
-  OverdueTask, TimelinePoint, UnitPerformance,
+  DashboardStats, DirectiveStats, DocumentStats, KPIStatsDash, NQ57StatsDash,
+  OverdueTask, TimelinePoint, UpcomingTask, UnitPerformance,
 } from '../api/dashboard'
 import AppLayout from '../components/layout/AppLayout'
 
 const fadeUp = {
-  initial: { opacity: 0, y: 16 },
+  initial: { opacity: 0, y: 10 },
   animate: { opacity: 1, y: 0 },
 }
 
-function StatCard({
+const StatCard = memo(function StatCard({
   label, value, sub, colorClass, icon: Icon, href, delay = 0,
 }: {
   label: string; value: number | string; sub?: string
@@ -31,10 +31,9 @@ function StatCard({
   const inner = (
     <motion.div
       initial={fadeUp.initial} animate={fadeUp.animate}
-      transition={{ duration: 0.28, delay }}
-      className="relative bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group overflow-hidden"
+      transition={{ duration: 0.2, delay }}
+      className="relative bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group overflow-hidden"
     >
-      {/* Top accent line */}
       <div className={`absolute top-0 left-0 right-0 h-0.5 ${colorClass} opacity-80`} />
       <div className="p-5">
         <div className="flex items-start justify-between">
@@ -43,7 +42,7 @@ function StatCard({
             <p className="text-3xl font-bold text-slate-800 leading-none">{value}</p>
             {sub && <p className="text-xs text-slate-400 mt-1.5">{sub}</p>}
           </div>
-          <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${colorClass} group-hover:scale-110 transition-transform duration-200 shadow-lg`}>
+          <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${colorClass} group-hover:scale-105 transition-transform duration-200 shadow-lg`}>
             <Icon size={19} className="text-white" />
           </div>
         </div>
@@ -51,9 +50,9 @@ function StatCard({
     </motion.div>
   )
   return href ? <Link to={href} className="block">{inner}</Link> : inner
-}
+})
 
-function SectionHeader({ title, icon: Icon, href }: { title: string; icon: React.ElementType; href?: string }) {
+const SectionHeader = memo(function SectionHeader({ title, icon: Icon, href }: { title: string; icon: React.ElementType; href?: string }) {
   return (
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center gap-2.5">
@@ -70,6 +69,46 @@ function SectionHeader({ title, icon: Icon, href }: { title: string; icon: React
       )}
     </div>
   )
+})
+
+function DashboardSkeleton() {
+  return (
+    <div className="p-6 space-y-5 max-w-[1600px]">
+      <div className="skeleton h-7 w-48" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="bg-white rounded-2xl border border-slate-100 p-5 space-y-3">
+            <div className="skeleton h-2.5 w-20" />
+            <div className="skeleton h-8 w-14" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="bg-white rounded-2xl border border-slate-100 p-5 space-y-3">
+            <div className="skeleton h-4 w-24" />
+            <div className="skeleton h-28 w-full" />
+            <div className="skeleton h-3 w-full" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 p-5 space-y-3">
+          <div className="skeleton h-4 w-32" />
+          <div className="skeleton h-44 w-full" />
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-3">
+          <div className="skeleton h-4 w-28" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="space-y-1.5">
+              <div className="skeleton h-2.5 w-full" />
+              <div className="skeleton h-1.5 w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function DashboardPage() {
@@ -80,61 +119,51 @@ export default function DashboardPage() {
   const [directiveStats, setDirectiveStats] = useState<DirectiveStats | null>(null)
   const [kpiStats, setKpiStats] = useState<KPIStatsDash | null>(null)
   const [nq57Stats, setNq57Stats] = useState<NQ57StatsDash | null>(null)
+  const [docStats, setDocStats] = useState<DocumentStats | null>(null)
+  const [upcomingTasks, setUpcomingTasks] = useState<UpcomingTask[]>([])
   const [loading, setLoading] = useState(true)
   const [apiErrors, setApiErrors] = useState<string[]>([])
 
   useEffect(() => {
     setLoading(true)
     const errors: string[] = []
+    // 2 calls instead of 8: summary + timeline + unit-performance
     Promise.allSettled([
-      dashboardApi.stats(),
+      dashboardApi.summary(),
       dashboardApi.timeline(30),
-      dashboardApi.overdue(6),
       dashboardApi.unitPerformance(),
-      dashboardApi.directiveStats(),
-      dashboardApi.kpiStats(),
-      dashboardApi.nq57Stats(),
-    ]).then(([s, t, o, u, d, k, n]) => {
-      if (s.status === 'fulfilled') setStats(s.value.data)
-      else errors.push('Thống kê nhiệm vụ')
+    ]).then(([s, t, u]) => {
+      if (s.status === 'fulfilled') {
+        const d = s.value.data
+        setStats(d.tasks)
+        setOverdue(d.overdue_tasks)
+        setUpcomingTasks(d.upcoming_tasks)
+        setDirectiveStats(d.directives)
+        setKpiStats(d.kpi)
+        setNq57Stats(d.nq57)
+        setDocStats(d.documents)
+      } else {
+        errors.push('Tổng quan hệ thống')
+      }
       if (t.status === 'fulfilled') setTimeline(t.value.data)
-      if (o.status === 'fulfilled') setOverdue(o.value.data)
       if (u.status === 'fulfilled') setUnits(u.value.data)
-      else errors.push('Hiệu suất đơn vị')
-      if (d.status === 'fulfilled') setDirectiveStats(d.value.data)
-      if (k.status === 'fulfilled') setKpiStats(k.value.data)
-      if (n.status === 'fulfilled') setNq57Stats(n.value.data)
       if (errors.length) setApiErrors(errors)
     }).finally(() => setLoading(false))
   }, [])
 
-  const taskPieData = stats ? [
+  const taskPieData = useMemo(() => stats ? [
     { name: 'Chờ xử lý',     value: stats.pending,      color: '#94a3b8' },
     { name: 'Đang thực hiện', value: stats.in_progress,  color: '#3b82f6' },
     { name: 'Hoàn thành',     value: stats.completed,    color: '#22c55e' },
     { name: 'Đã huỷ',         value: stats.cancelled,    color: '#f87171' },
-  ].filter(d => d.value > 0) : []
+  ].filter(d => d.value > 0) : [], [stats])
 
   const completionRate = stats ? Math.round(stats.completion_rate) : 0
 
   if (loading) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-center h-full bg-[#f0f2f5]">
-          <div className="flex flex-col items-center gap-4">
-            <div className="relative w-16 h-16">
-              <div className="absolute inset-0 border-4 border-blue-100 rounded-full" />
-              <div className="absolute inset-0 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-4 h-4 bg-blue-600 rounded-full opacity-30 animate-pulse" />
-              </div>
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-semibold text-slate-700">Đang tải dữ liệu IOC</p>
-              <p className="text-xs text-slate-400 mt-1">Vui lòng chờ...</p>
-            </div>
-          </div>
-        </div>
+        <DashboardSkeleton />
       </AppLayout>
     )
   }
@@ -171,11 +200,11 @@ export default function DashboardPage() {
         {/* ── Row 1: Stat cards ── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatCard label="Tổng nhiệm vụ"   value={stats?.total ?? 0}       colorClass="bg-blue-500"    icon={Activity}      href="/tasks"      delay={0}    />
-          <StatCard label="Đang thực hiện"   value={stats?.in_progress ?? 0} colorClass="bg-indigo-500"  icon={Zap}           href="/tasks"      delay={0.05} />
-          <StatCard label="Hoàn thành"       value={stats?.completed ?? 0}   sub={`${completionRate}% tỷ lệ`} colorClass="bg-emerald-500" icon={CheckCircle2} delay={0.1} />
-          <StatCard label="Quá hạn"          value={stats?.overdue ?? 0}     colorClass="bg-red-500"     icon={AlertTriangle} href="/overdue"    delay={0.15} />
-          <StatCard label="Chỉ đạo"          value={directiveStats?.total ?? 0} sub={`${directiveStats?.active ?? 0} hoạt động`} colorClass="bg-amber-500" icon={ClipboardList} href="/directives" delay={0.2} />
-          <StatCard label="Văn bản"          value={0}                       sub="Đang cập nhật"         colorClass="bg-slate-500" icon={FileText} href="/documents"  delay={0.25} />
+          <StatCard label="Đang thực hiện"   value={stats?.in_progress ?? 0} colorClass="bg-indigo-500"  icon={Zap}           href="/tasks"      delay={0.02} />
+          <StatCard label="Hoàn thành"       value={stats?.completed ?? 0}   sub={`${completionRate}% tỷ lệ`} colorClass="bg-emerald-500" icon={CheckCircle2} delay={0.04} />
+          <StatCard label="Quá hạn"          value={stats?.overdue ?? 0}     colorClass="bg-red-500"     icon={AlertTriangle} href="/overdue"    delay={0.06} />
+          <StatCard label="Chỉ đạo"          value={directiveStats?.total ?? 0} sub={`${directiveStats?.active ?? 0} hoạt động`} colorClass="bg-amber-500" icon={ClipboardList} href="/directives" delay={0.08} />
+          <StatCard label="Văn bản"          value={docStats?.total ?? '—'}  sub={docStats ? `${docStats.incoming} đến · ${docStats.outgoing} đi` : undefined} colorClass="bg-slate-500" icon={FileText} href="/documents"  delay={0.1} />
         </div>
 
         {/* ── Row 2: KPI + NQ57 + Pie ── */}
@@ -207,7 +236,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                     <motion.div initial={{ width: 0 }} animate={{ width: `${kpiStats.avg_progress}%` }}
-                      transition={{ duration: 0.8, delay: 0.4 }}
+                      transition={{ duration: 0.5, delay: 0.2 }}
                       className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full" />
                   </div>
                 </div>
@@ -241,7 +270,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                     <motion.div initial={{ width: 0 }} animate={{ width: `${nq57Stats.avg_progress}%` }}
-                      transition={{ duration: 0.8, delay: 0.5 }}
+                      transition={{ duration: 0.5, delay: 0.25 }}
                       className="h-full bg-gradient-to-r from-teal-400 to-emerald-500 rounded-full" />
                   </div>
                 </div>
@@ -328,7 +357,7 @@ export default function DashboardPage() {
                     <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <motion.div
                         initial={{ width: 0 }} animate={{ width: `${u.completion_rate}%` }}
-                        transition={{ duration: 0.6 }}
+                        transition={{ duration: 0.4 }}
                         className={`h-full rounded-full ${u.completion_rate >= 80 ? 'bg-emerald-400' : u.completion_rate >= 50 ? 'bg-blue-400' : 'bg-red-400'}`}
                       />
                     </div>
@@ -341,7 +370,72 @@ export default function DashboardPage() {
           </motion.div>
         </div>
 
-        {/* ── Row 4: Overdue list + Unit bar ── */}
+        {/* ── Row 4: Hôm nay cần làm ── */}
+        {upcomingTasks.length > 0 && (
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+            className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-1 h-4 rounded-full bg-gradient-to-b from-amber-400 to-orange-500" />
+                <div className="w-6 h-6 rounded-lg bg-amber-50 flex items-center justify-center">
+                  <Bell size={13} className="text-amber-500" />
+                </div>
+                <h2 className="text-xs font-bold text-slate-700 uppercase tracking-[0.1em]">Hôm nay & Sắp đến hạn</h2>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                  {upcomingTasks.length}
+                </span>
+              </div>
+              <Link to="/tasks" className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 font-semibold transition-colors px-2.5 py-1 rounded-lg hover:bg-blue-50">
+                Xem tất cả <ArrowRight size={11} />
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {upcomingTasks.map(t => {
+                const isToday = t.days_left === 0
+                const isTomorrow = t.days_left === 1
+                const urgCls = isToday
+                  ? 'border-red-200 bg-red-50/40'
+                  : isTomorrow
+                  ? 'border-orange-200 bg-orange-50/30'
+                  : 'border-slate-200 bg-white'
+                const badgeCls = isToday
+                  ? 'bg-red-100 text-red-600'
+                  : isTomorrow
+                  ? 'bg-orange-100 text-orange-600'
+                  : 'bg-slate-100 text-slate-500'
+                const badgeLabel = isToday ? 'Hôm nay' : isTomorrow ? 'Ngày mai' : `${t.days_left} ngày`
+                return (
+                  <Link
+                    key={t.id}
+                    to={`/tasks/${t.id}`}
+                    className={`flex items-start gap-3 p-3 rounded-xl border hover:shadow-sm transition-all group ${urgCls}`}
+                  >
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isToday ? 'bg-red-100' : isTomorrow ? 'bg-orange-100' : 'bg-slate-100'}`}>
+                      <Bell size={12} className={isToday ? 'text-red-500' : isTomorrow ? 'text-orange-500' : 'text-slate-400'} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-semibold text-slate-700 truncate group-hover:text-blue-600 transition leading-tight">{t.title}</p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${badgeCls}`}>{badgeLabel}</span>
+                        {t.assignee_name && (
+                          <span className="text-[10px] text-slate-400 truncate">{t.assignee_name}</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                      t.priority === 'urgent' ? 'bg-red-100 text-red-600' :
+                      t.priority === 'high'   ? 'bg-orange-100 text-orange-600' :
+                      'bg-slate-100 text-slate-400'}`}>
+                      {t.priority === 'urgent' ? 'Khẩn' : t.priority === 'high' ? 'Cao' : 'TB'}
+                    </span>
+                  </Link>
+                )
+              })}
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Row 5: Overdue list + Unit bar ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
@@ -400,7 +494,7 @@ export default function DashboardPage() {
           </motion.div>
         </div>
 
-        {/* ── Row 5: Directive stats ── */}
+        {/* ── Row 6: Directive stats ── */}
         {directiveStats && directiveStats.total > 0 && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
             className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 hover:shadow-md transition-shadow">

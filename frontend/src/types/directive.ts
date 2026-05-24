@@ -134,6 +134,7 @@ export interface DirectiveCreate {
   doc_id?: number | null
   assignee_staff_id?: number | null
   responsible_department_id?: number | null
+  coordinating_dept_ids?: number[]
 }
 
 export interface DirectiveUpdate extends Partial<DirectiveCreate> {}

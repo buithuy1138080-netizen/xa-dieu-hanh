@@ -65,4 +65,33 @@ apiClient.interceptors.response.use(
   },
 )
 
+// ── Simple in-memory GET cache (TTL-based) ───────────────────────────────────
+const _cache = new Map<string, { data: any; ts: number }>()
+const CACHE_TTL: Record<string, number> = {
+  '/departments':        5 * 60_000, // 5 min
+  '/programs':           2 * 60_000, // 2 min
+  '/staff':              2 * 60_000, // 2 min
+}
+
+export function cachedGet<T = any>(url: string, params?: Record<string, any>) {
+  const ttl = Object.entries(CACHE_TTL).find(([k]) => url.startsWith(k))?.[1]
+  if (!ttl) return apiClient.get<T>(url, { params })
+
+  const key = url + (params ? JSON.stringify(params) : '')
+  const hit = _cache.get(key)
+  if (hit && Date.now() - hit.ts < ttl) {
+    return Promise.resolve({ data: hit.data as T })
+  }
+  return apiClient.get<T>(url, { params }).then(r => {
+    _cache.set(key, { data: r.data, ts: Date.now() })
+    return r
+  })
+}
+
+export function invalidateCache(prefix: string) {
+  for (const k of _cache.keys()) {
+    if (k.startsWith(prefix)) _cache.delete(k)
+  }
+}
+
 export default apiClient

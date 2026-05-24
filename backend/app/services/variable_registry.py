@@ -12,6 +12,9 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import func, select
+
+from app.core.config import settings
 from app.services import report_engine
 
 # ── Scalar variable catalog ────────────────────────────────────────────────────
@@ -72,7 +75,13 @@ async def resolve_variables(
     Collect all data and return a flat dict mapping variable_name → value.
     Includes both scalar values and list values (for loop expansion).
     """
+    from app.models.directive import Directive
+
     data = await report_engine.collect_data(db, period_from, period_to, "monthly")
+
+    directive_count = (await db.execute(
+        select(func.count(Directive.id)).where(Directive.deleted_at.is_(None))
+    )).scalar_one()
 
     tasks = data.get("tasks", {})
     kpis  = data.get("kpis", {})
@@ -104,7 +113,7 @@ async def resolve_variables(
     nq57_pct   = nq57.get("avg_progress", 0.0)
 
     scalars: dict[str, Any] = {
-        "ten_don_vi":              "UBND xã Bắc Hà",
+        "ten_don_vi":              settings.ORG_NAME,
         "ngay_bao_cao":            today.strftime("%d/%m/%Y"),
         "ky_bao_cao":             data["period"].get("label", ""),
         "tu_ngay":                 period_from.strftime("%d/%m/%Y"),
@@ -127,7 +136,7 @@ async def resolve_variables(
         "tong_nq57":               str(nq57_total),
         "nq57_hoan_thanh":         str(nq57_done),
         "ti_le_nq57":              f"{nq57_pct:.1f}%",
-        "tong_chi_dao":            "0",  # placeholder — directives module
+        "tong_chi_dao":            str(directive_count),
     }
 
     # ── List variables ───────────────────────────────────────────────────────────

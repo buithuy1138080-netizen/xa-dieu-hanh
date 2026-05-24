@@ -28,6 +28,7 @@ class NghiQuyet(Base):
     created_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     creator: Mapped[User] = relationship("User", foreign_keys=[created_by])
     muc_tieu: Mapped[list[MucTieuNQ]] = relationship(

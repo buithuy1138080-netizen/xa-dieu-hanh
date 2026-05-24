@@ -40,12 +40,17 @@ export interface DocumentRead {
   issuer: string | null
   responsible_department_id: number | null
   responsible_department: DeptMin | null
+  coordinating_dept_ids: number[]
   issue_date: string | null
   received_date: string | null
   deadline: string | null
   status: DocStatus
   priority: DocPriority
   summary: string | null
+  raw_text: string | null
+  ai_processed: boolean
+  keywords: string[]
+  domain: string | null
   file_name: string | null
   file_size: number
   file_mime: string | null
@@ -103,6 +108,7 @@ export interface DocumentCreate {
   category?: string
   issuer?: string
   responsible_department_id?: number | null
+  coordinating_dept_ids?: number[]
   issue_date?: string
   received_date?: string
   deadline?: string
@@ -120,4 +126,16 @@ export interface DocumentTaskCreate {
   priority: string
   deadline?: string
   assignee_id?: number | null
+  lead_department_id?: number | null
+}
+
+export interface AiParseResult {
+  doc_number: string | null
+  title: string | null
+  issuer: string | null
+  category: string | null
+  issue_date: string | null
+  summary: string | null
+  summary_points: string[] | null
+  keywords: string[] | null
 }

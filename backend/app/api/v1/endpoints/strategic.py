@@ -54,6 +54,7 @@ async def _get_project_detail(db: AsyncSession, project_id: int) -> StrategicPro
             selectinload(StrategicProject.project_manager),
             selectinload(StrategicProject.project_manager_staff),
             selectinload(StrategicProject.creator),
+            selectinload(StrategicProject.source_document),
         )
         .where(StrategicProject.id == project_id)
     )
@@ -111,6 +112,7 @@ async def list_projects(
         selectinload(StrategicProject.project_manager),
         selectinload(StrategicProject.project_manager_staff),
         selectinload(StrategicProject.creator),
+        selectinload(StrategicProject.source_document),
     )
     if project_status:
         stmt = stmt.where(StrategicProject.project_status == project_status)

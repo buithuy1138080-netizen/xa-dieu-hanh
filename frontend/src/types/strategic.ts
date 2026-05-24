@@ -38,6 +38,8 @@ export interface StrategicProject {
   project_name: string
   project_type: ProjectType
   nghi_quyet_id: number | null
+  source_document_id: number | null
+  source_document: { id: number; title: string; doc_number: string | null } | null
   muc_tieu_id: number | null
   description: string | null
   start_date: string | null
@@ -62,6 +64,7 @@ export interface StrategicProjectCreate {
   project_name: string
   project_type?: ProjectType
   nghi_quyet_id?: number
+  source_document_id?: number | null
   muc_tieu_id?: number
   description?: string
   start_date?: string

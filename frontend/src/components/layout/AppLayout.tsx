@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bell, Menu, X } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useNotifications } from '../../hooks/useNotifications'
+import AiChatWidget from '../ai/AiChatWidget'
 import MobileBottomNav from './MobileBottomNav'
 import NotificationBell from './NotificationBell'
 import Sidebar from './Sidebar'
@@ -18,8 +19,11 @@ export default function AppLayout({ children }: Props) {
   const { notifications, unreadCount, toasts, fetchNotifications, markRead, markAllRead, dismissToast } =
     useNotifications()
 
+  const openSidebar  = useCallback(() => setMobileSidebarOpen(true), [])
+  const closeSidebar = useCallback(() => setMobileSidebarOpen(false), [])
+
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f0f2f5]">
+    <div className="flex h-screen overflow-hidden bg-slate-50">
       {/* Mobile sidebar overlay */}
       <AnimatePresence>
         {mobileSidebarOpen && (
@@ -27,9 +31,9 @@ export default function AppLayout({ children }: Props) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.18 }}
             className="fixed inset-0 bg-black/50 z-40 md:hidden"
-            onClick={() => setMobileSidebarOpen(false)}
+            onClick={closeSidebar}
           />
         )}
       </AnimatePresence>
@@ -37,23 +41,22 @@ export default function AppLayout({ children }: Props) {
       {/* Sidebar — desktop: static; mobile: off-canvas drawer */}
       <div className={`
         fixed inset-y-0 left-0 z-50 md:relative md:z-auto md:flex md:shrink-0
-        transition-transform duration-300 ease-in-out
+        transition-transform duration-250 ease-[cubic-bezier(0.4,0,0.2,1)]
         ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
-        <Sidebar onClose={() => setMobileSidebarOpen(false)} />
+        <Sidebar onClose={closeSidebar} />
       </div>
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
 
         {/* Top header */}
-        <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 shrink-0 z-30">
+        <header className="h-14 bg-white border-b border-slate-200/80 shadow-sm flex items-center justify-between px-4 md:px-6 shrink-0 z-30">
           {/* Left */}
           <div className="flex items-center gap-3">
-            {/* Hamburger — mobile only */}
             <button
-              onClick={() => setMobileSidebarOpen(true)}
-              className="md:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+              onClick={openSidebar}
+              className="md:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors duration-150 active:scale-95"
               aria-label="Mở menu"
             >
               <Menu size={18} />
@@ -90,19 +93,25 @@ export default function AppLayout({ children }: Props) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto pb-16 md:pb-0">{children}</main>
+        <main className="flex-1 overflow-auto thin-scroll pb-16 md:pb-0">{children}</main>
       </div>
 
       {/* Mobile bottom navigation */}
       <MobileBottomNav />
 
+      {/* AI Chat Widget */}
+      <AiChatWidget />
+
       {/* Toast notifications */}
-      <div className="fixed bottom-20 right-3 md:bottom-6 md:right-6 z-50 flex flex-col gap-2.5 pointer-events-none max-w-[calc(100vw-24px)] md:max-w-none">
+      <div className="fixed bottom-20 right-3 md:bottom-6 md:right-6 z-50 flex flex-col gap-2 pointer-events-none max-w-[calc(100vw-24px)] md:max-w-none">
         {toasts.map((t) => (
-          <div
+          <motion.div
             key={t.id}
-            className="pointer-events-auto bg-white border border-slate-200/80 rounded-2xl shadow-2xl shadow-slate-300/40 w-full md:w-[340px] flex overflow-hidden"
-            style={{ animation: 'slideInRight 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+            initial={{ opacity: 0, x: 60, scale: 0.96 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 60, scale: 0.96 }}
+            transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+            className="pointer-events-auto bg-white border border-slate-200/80 rounded-2xl shadow-xl shadow-slate-300/30 w-full md:w-[340px] flex overflow-hidden"
           >
             <div className="w-1 bg-gradient-to-b from-blue-500 to-indigo-600 shrink-0" />
             <div className="flex gap-3 items-start p-4 flex-1 min-w-0">
@@ -117,17 +126,20 @@ export default function AppLayout({ children }: Props) {
                 {t.task_id && (
                   <button
                     onClick={() => { navigate(`/tasks/${t.task_id}`); dismissToast(t.id) }}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold whitespace-nowrap"
+                    className="text-xs text-blue-600 hover:text-blue-800 font-semibold whitespace-nowrap transition-colors"
                   >
                     Xem →
                   </button>
                 )}
-                <button onClick={() => dismissToast(t.id)} className="text-slate-300 hover:text-slate-500 transition-colors">
+                <button
+                  onClick={() => dismissToast(t.id)}
+                  className="text-slate-300 hover:text-slate-500 transition-colors p-0.5 rounded"
+                >
                   <X size={13} />
                 </button>
               </div>
             </div>
-          </div>
+          </motion.div>
         ))}
       </div>
     </div>

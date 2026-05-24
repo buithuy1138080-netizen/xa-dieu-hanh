@@ -1,13 +1,14 @@
 from datetime import date, datetime, timezone
 from math import ceil
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin_or_leader
 from app.models.department import Department
 from app.models.kpi import KPI, KPIHistory, KPIProgress
 from app.models.staff import Staff
@@ -27,7 +28,7 @@ from app.schemas.kpi import (
 router = APIRouter()
 
 VALID_STATUSES = {"on_track", "at_risk", "behind", "completed"}
-VALID_PERIODS = {"monthly", "quarterly", "yearly"}
+VALID_PERIODS = {"monthly", "quarterly", "yearly", "five_year"}
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -39,7 +40,9 @@ def _calc_progress(current: float, target: float) -> float:
 
 
 async def _get_or_404(db: AsyncSession, kpi_id: int) -> KPI:
-    k = (await db.execute(select(KPI).where(KPI.id == kpi_id))).scalar_one_or_none()
+    k = (await db.execute(
+        select(KPI).where(KPI.id == kpi_id, KPI.deleted_at.is_(None))
+    )).scalar_one_or_none()
     if not k:
         raise HTTPException(404, "Không tìm thấy KPI")
     return k
@@ -56,7 +59,7 @@ async def _full_detail(db: AsyncSession, kpi_id: int) -> KPI:
             selectinload(KPI.progress_entries).selectinload(KPIProgress.user),
             selectinload(KPI.history).selectinload(KPIHistory.user),
         )
-        .where(KPI.id == kpi_id)
+        .where(KPI.id == kpi_id, KPI.deleted_at.is_(None))
     )
     k = (await db.execute(stmt)).scalar_one_or_none()
     if not k:
@@ -73,7 +76,7 @@ async def _with_relations(db: AsyncSession, kpi_id: int) -> KPI:
             selectinload(KPI.responsible_staff),
             selectinload(KPI.creator),
         )
-        .where(KPI.id == kpi_id)
+        .where(KPI.id == kpi_id, KPI.deleted_at.is_(None))
     )
     return (await db.execute(stmt)).scalar_one()
 
@@ -104,10 +107,11 @@ async def list_kpis(
     year: int | None = Query(None),
     responsible_unit: str | None = Query(None),
     overdue_only: bool = Query(False),
+    program_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    conditions = []
+    conditions = [KPI.deleted_at.is_(None)]
     if search:
         conditions.append(or_(
             KPI.title.ilike(f"%{search}%"),
@@ -124,6 +128,8 @@ async def list_kpis(
         conditions.append(KPI.year == year)
     if responsible_unit:
         conditions.append(KPI.responsible_unit.ilike(f"%{responsible_unit}%"))
+    if program_id:
+        conditions.append(KPI.program_id == program_id)
     if overdue_only:
         now = date.today()
         conditions.append(and_(
@@ -132,7 +138,7 @@ async def list_kpis(
             KPI.status != "completed",
         ))
 
-    base_q = select(KPI).where(*conditions) if conditions else select(KPI)
+    base_q = select(KPI).where(*conditions)
     total = (await db.execute(select(func.count()).select_from(base_q.subquery()))).scalar_one()
 
     stmt = (
@@ -140,6 +146,7 @@ async def list_kpis(
         .options(
             selectinload(KPI.responsible_department),
             selectinload(KPI.responsible_user),
+            selectinload(KPI.responsible_staff),
             selectinload(KPI.creator),
         )
         .order_by(KPI.year.desc(), KPI.created_at.desc())
@@ -156,7 +163,7 @@ async def list_kpis(
 async def create_kpi(
     body: KPICreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_or_leader),
 ):
     progress = _calc_progress(body.current_value, body.target_value)
     k = KPI(**body.model_dump(), created_by=current_user.id, progress=progress)
@@ -173,11 +180,16 @@ async def create_kpi(
 @router.get("/stats", response_model=KPIStats)
 async def get_kpi_stats(
     year: int | None = Query(None),
+    program_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     today = date.today()
-    where = [KPI.year == year] if year else []
+    where = [KPI.deleted_at.is_(None)]
+    if year:
+        where.append(KPI.year == year)
+    if program_id:
+        where.append(KPI.program_id == program_id)
 
     row = (await db.execute(
         select(
@@ -215,12 +227,12 @@ async def get_kpi_chart(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    conds = []
+    conds = [KPI.deleted_at.is_(None)]
     if year:
         conds.append(KPI.year == year)
     if category:
         conds.append(KPI.category == category)
-    base = select(KPI).where(*conds) if conds else select(KPI)
+    base = select(KPI).where(*conds)
     rows = (await db.execute(base.order_by(KPI.progress.asc()))).scalars().all()
     return [
         {
@@ -254,7 +266,7 @@ async def update_kpi(
     kpi_id: int,
     body: KPIUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_or_leader),
 ):
     k = await _get_or_404(db, kpi_id)
     old_value = k.current_value
@@ -280,10 +292,10 @@ async def update_kpi(
 async def delete_kpi(
     kpi_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin_or_leader),
 ):
     k = await _get_or_404(db, kpi_id)
-    await db.delete(k)
+    k.deleted_at = datetime.now(timezone.utc)
     await db.commit()
 
 
@@ -322,3 +334,67 @@ async def record_progress(
         .where(KPIProgress.id == entry.id)
     )
     return (await db.execute(stmt)).scalar_one()
+
+
+# ── Excel Import ──────────────────────────────────────────────────────────────
+
+@router.get("/import/template")
+async def download_kpi_template(_: User = Depends(get_current_user)):
+    from app.services.excel_import import kpi_template
+    data = kpi_template()
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=mau_import_kpi.xlsx"},
+    )
+
+
+@router.post("/import")
+async def import_kpi_excel(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.excel_import import parse_kpi
+    if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "Chỉ chấp nhận file .xlsx hoặc .xls")
+
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File không được vượt quá 5 MB")
+
+    records, errors = parse_kpi(data)
+    if not records and errors:
+        raise HTTPException(422, {"errors": errors})
+
+    imported = 0
+    for r in records:
+        deadline = None
+        if r.get("deadline_str"):
+            try:
+                deadline = datetime.strptime(r["deadline_str"], "%d/%m/%Y").date()
+            except ValueError:
+                pass
+        current_val = r["current_value"]
+        target_val  = r["target_value"]
+        progress    = round(min(100.0, current_val / target_val * 100), 1) if target_val > 0 else 0.0
+        kpi = KPI(
+            code=r["code"],
+            title=r["title"],
+            category=r["category"],
+            unit=r["unit"],
+            target_value=target_val,
+            current_value=current_val,
+            progress=progress,
+            year=r["year"],
+            period=r["period"],
+            responsible_unit=r["responsible_unit"],
+            deadline=deadline,
+            status="on_track",
+            created_by=current_user.id,
+        )
+        db.add(kpi)
+        imported += 1
+
+    await db.commit()
+    return {"imported": imported, "errors": errors}

@@ -70,6 +70,7 @@ class DirectiveCreate(BaseModel):
     doc_id: int | None = None
     assignee_staff_id: int | None = None
     responsible_department_id: int | None = None
+    coordinating_dept_ids: list[int] = []
 
 
 class DirectiveUpdate(BaseModel):
@@ -82,6 +83,7 @@ class DirectiveUpdate(BaseModel):
     doc_id: int | None = None
     assignee_staff_id: int | None = None
     responsible_department_id: int | None = None
+    coordinating_dept_ids: list[int] | None = None
 
 
 class DirectiveStatusUpdate(BaseModel):

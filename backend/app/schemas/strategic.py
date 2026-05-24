@@ -34,6 +34,7 @@ class StrategicProjectCreate(BaseModel):
     project_name: str
     project_type: str = "project"
     nghi_quyet_id: int | None = None
+    source_document_id: int | None = None
     muc_tieu_id: int | None = None
     description: str | None = None
     start_date: date | None = None
@@ -52,6 +53,7 @@ class StrategicProjectUpdate(BaseModel):
     project_name: str | None = None
     project_type: str | None = None
     nghi_quyet_id: int | None = None
+    source_document_id: int | None = None
     muc_tieu_id: int | None = None
     description: str | None = None
     start_date: date | None = None
@@ -65,6 +67,13 @@ class StrategicProjectUpdate(BaseModel):
     project_manager_staff_id: int | None = None
 
 
+class DocMin(BaseModel):
+    model_config = {"from_attributes": True}
+    id: int
+    title: str
+    doc_number: str | None = None
+
+
 class StrategicProjectOut(BaseModel):
     model_config = {"from_attributes": True}
     id: int
@@ -72,6 +81,8 @@ class StrategicProjectOut(BaseModel):
     project_name: str
     project_type: str
     nghi_quyet_id: int | None = None
+    source_document_id: int | None = None
+    source_document: DocMin | None = None
     muc_tieu_id: int | None = None
     description: str | None = None
     start_date: date | None = None

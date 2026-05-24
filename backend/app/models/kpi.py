@@ -36,6 +36,26 @@ class KPI(Base):
     status: Mapped[str] = mapped_column(String(20), default="on_track")       # on_track/at_risk/behind/completed
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    # ── Liên kết chương trình (Sprint 1) ────────────────────────────────────
+    program_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("programs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    source_document_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+    parent_kpi_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("kpis.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    level: Mapped[int] = mapped_column(Integer, default=1)       # 1=lĩnh vực, 2=chỉ tiêu, 3=cụ thể
+    field: Mapped[str | None] = mapped_column(String(100), nullable=True)  # Hạ tầng số, Nhân lực số...
+    baseline_value: Mapped[float] = mapped_column(Float, default=0.0)
+    threshold_red: Mapped[float] = mapped_column(Float, default=50.0)
+    threshold_yellow: Mapped[float] = mapped_column(Float, default=80.0)
+    measurement_method: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    kpi_type: Mapped[str] = mapped_column(String(20), default="regular", index=True)
+    term_name: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     responsible_unit: Mapped[str | None] = mapped_column(String(200), nullable=True)
     responsible_department_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True
@@ -47,6 +67,7 @@ class KPI(Base):
     created_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     responsible_department: Mapped[Department | None] = relationship("Department", foreign_keys=[responsible_department_id])
     responsible_user: Mapped[User | None] = relationship("User", foreign_keys=[responsible_user_id])

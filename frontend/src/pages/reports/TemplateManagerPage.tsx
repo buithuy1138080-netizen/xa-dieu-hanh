@@ -3,6 +3,7 @@ import {
   BookTemplate, CheckCircle, ChevronDown, ChevronRight, Download, Eye,
   FileSpreadsheet, FileText, Info, Play, Plus, RefreshCw, Tag, Trash2, Upload,
 } from 'lucide-react'
+import AppLayout from '../../components/layout/AppLayout'
 import { reportTemplatesApi } from '../../api/reportTemplates'
 import type { RenderFormat, ReportTemplate, VariableCatalog } from '../../types/reportTemplate'
 import { CATEGORY_LABELS } from '../../types/reportTemplate'
@@ -432,6 +433,7 @@ export default function TemplateManagerPage() {
   })
 
   return (
+    <AppLayout>
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-6 py-4">
@@ -551,5 +553,6 @@ export default function TemplateManagerPage() {
       {showUpload && <UploadModal onClose={() => setShowUpload(false)} onSuccess={load} />}
       {renderTarget && <RenderModal tpl={renderTarget} onClose={() => setRenderTarget(null)} />}
     </div>
+    </AppLayout>
   )
 }

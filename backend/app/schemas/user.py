@@ -16,6 +16,7 @@ class UserCreate(UserBase):
 
 class UserRead(UserBase):
     id: int
+    email: str  # override: DB may store synthetic emails that don't pass strict validation
     is_active: bool
     created_at: datetime
     # Staff context — populated by /auth/me when a linked staff record exists

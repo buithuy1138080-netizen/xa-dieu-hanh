@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FileText, User } from 'lucide-react'
+import { Building2, FileText, User } from 'lucide-react'
 import apiClient from '../../api/client'
 import type { DirectiveCreate, DirectivePriority, DirectiveRead, DirectiveStatus } from '../../types/directive'
 
@@ -60,6 +60,7 @@ export default function DirectiveForm({ initial, onSubmit, onCancel, loading }: 
     doc_id: initial?.doc_id ?? null,
     assignee_staff_id: initial?.assignee_staff_id ?? null,
     responsible_department_id: initial?.responsible_department_id ?? null,
+    coordinating_dept_ids: [],
   })
 
   useEffect(() => {
@@ -85,6 +86,11 @@ export default function DirectiveForm({ initial, onSubmit, onCancel, loading }: 
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
+  function toggleCoordDept(deptId: number, checked: boolean) {
+    const cur = form.coordinating_dept_ids ?? []
+    set('coordinating_dept_ids', checked ? [...cur, deptId] : cur.filter((id) => id !== deptId))
+  }
+
   function handleSourceTypeChange(type: string) {
     setSourceType(type)
     set('doc_id', null)
@@ -98,6 +104,7 @@ export default function DirectiveForm({ initial, onSubmit, onCancel, loading }: 
       deadline: form.deadline ? (form.deadline + 'T23:59:59') : undefined,
       doc_id: form.doc_id || null,
       assignee_staff_id: form.assignee_staff_id || null,
+      coordinating_dept_ids: form.coordinating_dept_ids ?? [],
     }
     await onSubmit(payload)
   }
@@ -244,9 +251,14 @@ export default function DirectiveForm({ initial, onSubmit, onCancel, loading }: 
         </select>
       </div>
 
-      {/* Đơn vị chịu trách nhiệm */}
+      {/* Đơn vị thực hiện */}
       <div>
-        <label className={lbl}>Đơn vị chịu trách nhiệm</label>
+        <label className={lbl}>
+          <span className="flex items-center gap-1.5">
+            <Building2 size={11} className="text-blue-500" />
+            Đơn vị thực hiện
+          </span>
+        </label>
         <select
           className={inp}
           value={form.responsible_department_id ?? ''}
@@ -259,6 +271,36 @@ export default function DirectiveForm({ initial, onSubmit, onCancel, loading }: 
             </option>
           ))}
         </select>
+      </div>
+
+      {/* Đơn vị phối hợp */}
+      <div>
+        <label className={lbl}>
+          <span className="flex items-center gap-1.5">
+            <Building2 size={11} className="text-purple-500" />
+            Đơn vị phối hợp
+          </span>
+        </label>
+        {depts.length === 0 ? (
+          <p className="text-xs text-slate-400 italic">Đang tải danh sách đơn vị...</p>
+        ) : (
+          <div className="border border-slate-200 rounded-xl max-h-36 overflow-y-auto p-2 bg-white space-y-0.5">
+            {depts.map((d) => {
+              const checked = (form.coordinating_dept_ids ?? []).includes(d.id)
+              return (
+                <label key={d.id} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => toggleCoordDept(d.id, e.target.checked)}
+                    className="w-3.5 h-3.5 rounded accent-blue-600"
+                  />
+                  <span className="text-sm text-slate-700">{d.short_name ? `${d.short_name} — ` : ''}{d.name}</span>
+                </label>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Nội dung */}

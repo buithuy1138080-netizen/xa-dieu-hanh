@@ -5,12 +5,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin_or_leader
 from app.models.staff import Staff
 from app.models.directive import (
     Directive,
@@ -212,15 +212,38 @@ async def list_directives(
     )
 
 
+async def _add_coordinating_units(
+    db: AsyncSession, directive_id: int, dept_ids: list[int]
+) -> None:
+    if not dept_ids:
+        return
+    from app.models.department import Department
+    rows = (await db.execute(
+        select(Department.id, Department.name, Department.short_name)
+        .where(Department.id.in_(dept_ids))
+    )).all()
+    names = {r.id: r.short_name or r.name for r in rows}
+    for dept_id in dept_ids:
+        db.add(DirectiveUnit(
+            directive_id=directive_id,
+            unit_name=names.get(dept_id, f"Đơn vị #{dept_id}"),
+            department_id=dept_id,
+            role="Phối hợp",
+            progress=0,
+        ))
+
+
 @router.post("", response_model=DirectiveRead, status_code=status.HTTP_201_CREATED)
 async def create_directive(
     body: DirectiveCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_or_leader),
 ):
-    d = Directive(**body.model_dump(), created_by=current_user.id, progress=0)
+    coordinating_ids = body.coordinating_dept_ids or []
+    d = Directive(**body.model_dump(exclude={"coordinating_dept_ids"}), created_by=current_user.id, progress=0)
     db.add(d)
     await db.flush()
+    await _add_coordinating_units(db, d.id, coordinating_ids)
     _add_history(db, d.id, current_user.id, "created", new_status=d.status)
     await db.commit()
     return await _with_relations(db, d.id)
@@ -242,13 +265,20 @@ async def update_directive(
     directive_id: int,
     body: DirectiveUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_or_leader),
 ):
-    if current_user.role not in ("admin", "leader", "manager"):
-        raise HTTPException(403, "Cần quyền admin, leader hoặc manager để cập nhật chỉ đạo")
     d = await _get_or_404(db, directive_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    changes = body.model_dump(exclude_unset=True, exclude={"coordinating_dept_ids"})
+    for field, value in changes.items():
         setattr(d, field, value)
+    if "coordinating_dept_ids" in body.model_fields_set:
+        await db.execute(
+            delete(DirectiveUnit).where(
+                DirectiveUnit.directive_id == directive_id,
+                DirectiveUnit.role == "Phối hợp",
+            )
+        )
+        await _add_coordinating_units(db, directive_id, body.coordinating_dept_ids or [])
     _add_history(db, d.id, current_user.id, "updated")
     await db.commit()
     return await _with_relations(db, directive_id)
@@ -258,10 +288,8 @@ async def update_directive(
 async def delete_directive(
     directive_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_or_leader),
 ):
-    if current_user.role not in ("admin", "leader", "manager"):
-        raise HTTPException(403, "Cần quyền admin, leader hoặc manager để xóa chỉ đạo")
     d = await _get_or_404(db, directive_id)
     d.deleted_at = datetime.now(timezone.utc)
     _add_history(db, directive_id, current_user.id, "deleted")

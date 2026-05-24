@@ -21,6 +21,7 @@ export interface KPIListParams {
   period?: string
   year?: number
   overdue_only?: boolean
+  program_id?: number
 }
 
 export interface NQ57ListParams {
@@ -30,6 +31,7 @@ export interface NQ57ListParams {
   status?: string
   group?: string
   overdue_only?: boolean
+  department_id?: number
 }
 
 export const kpiApi = {
@@ -49,8 +51,8 @@ export const kpiApi = {
   delete: (id: number) =>
     apiClient.delete(`/kpi/${id}`),
 
-  stats: (year?: number) =>
-    apiClient.get<KPIStats>('/kpi/stats', { params: year ? { year } : undefined }),
+  stats: (year?: number, program_id?: number) =>
+    apiClient.get<KPIStats>('/kpi/stats', { params: { ...(year ? { year } : {}), ...(program_id ? { program_id } : {}) } }),
 
   chart: (params?: { year?: number; category?: string }) =>
     apiClient.get<KPIChartItem[]>('/kpi/chart', { params }),

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin_or_leader
 from app.models.department import Department
 from app.models.user import User
 
@@ -172,7 +172,7 @@ async def get_department_tree(
 async def create_department(
     body: DeptCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin_or_leader),
 ):
     d = Department(**body.model_dump())
     db.add(d)
@@ -196,7 +196,7 @@ async def update_department(
     dept_id: int,
     body: DeptUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin_or_leader),
 ):
     d = await _get_or_404(db, dept_id)
     for k, v in body.model_dump(exclude_none=True).items():
@@ -211,7 +211,7 @@ async def update_department(
 async def delete_department(
     dept_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin_or_leader),
 ):
     d = await _get_or_404(db, dept_id)
     await db.delete(d)

@@ -42,6 +42,13 @@ class DeptMin(BaseModel):
     code: str | None = None
 
 
+class UserMin(BaseModel):
+    model_config = {"from_attributes": True}
+    id: int
+    username: str
+    full_name: str | None = None
+
+
 class StaffRead(BaseModel):
     model_config = {"from_attributes": True}
     id: int
@@ -54,9 +61,11 @@ class StaffRead(BaseModel):
     note: str | None = None
     role: str
     is_active: bool
+    has_password: bool = False   # True nếu có thể đăng nhập
     department_id: int | None = None
     user_id: int | None = None
     department: DeptMin | None = None
+    user: UserMin | None = None
 
 
 class StaffCreate(BaseModel):
@@ -184,7 +193,7 @@ async def list_staff(
 
     stmt = (
         base_q
-        .options(selectinload(Staff.department))
+        .options(selectinload(Staff.department), selectinload(Staff.user))
         .order_by(Staff.full_name)
         .offset((page - 1) * size).limit(size)
     )

@@ -1,3 +1,69 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Smooth global rendering ──────────────────────────────── */
+*, *::before, *::after {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Custom sidebar scrollbar ─────────────────────────────── */
+.sidebar-scroll::-webkit-scrollbar         { width: 4px; }
+.sidebar-scroll::-webkit-scrollbar-track  { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb  { background: #CBD5E1; border-radius: 9999px; }
+.sidebar-scroll::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+.sidebar-scroll { scrollbar-width: thin; scrollbar-color: #CBD5E1 transparent; }
+
+/* ── Thin scrollbar for content areas ────────────────────── */
+.thin-scroll::-webkit-scrollbar        { width: 4px; height: 4px; }
+.thin-scroll::-webkit-scrollbar-track  { background: transparent; }
+.thin-scroll::-webkit-scrollbar-thumb  { background: #E2E8F0; border-radius: 9999px; }
+.thin-scroll::-webkit-scrollbar-thumb:hover { background: #CBD5E1; }
+.thin-scroll { scrollbar-width: thin; scrollbar-color: #E2E8F0 transparent; }
+
+/* ── Page transition ──────────────────────────────────────── */
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: pageEnter 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes pageFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Toast slide-in / out ─────────────────────────────────── */
+@keyframes slideInRight {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes slideOutRight {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(110%); opacity: 0; }
+}
+
+/* ── Skeleton shimmer ─────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* ── Nav ripple ───────────────────────────────────────────── */
+@keyframes navRipple {
+  from { transform: scale(0); opacity: 0.35; }
+  to   { transform: scale(2.5); opacity: 0; }
+}
+.nav-ripple { animation: navRipple 0.55s cubic-bezier(0.4,0,0.2,1) forwards; }
+
+/* ── Button press feedback ────────────────────────────────── */
+.btn-press:active { transform: scale(0.97); transition: transform 60ms ease; }

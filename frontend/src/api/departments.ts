@@ -1,4 +1,4 @@
-import apiClient from './client'
+import { cachedGet } from './client'
 
 export interface DeptRead {
   id: number
@@ -12,5 +12,5 @@ export interface DeptRead {
 }
 
 export const departmentsApi = {
-  list: () => apiClient.get<DeptRead[]>('/departments'),
+  list: () => cachedGet<DeptRead[]>('/departments'),
 }

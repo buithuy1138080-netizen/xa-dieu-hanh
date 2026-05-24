@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   AlertTriangle, BarChart2, BookOpen, ChevronDown, ChevronUp,
-  DollarSign, Edit2, FolderKanban, Layers, Loader2, Plus, Search,
+  DollarSign, Edit2, FileText, FolderKanban, Layers, Loader2, Plus, Search,
   Target, Trash2, TrendingUp, X,
 } from 'lucide-react'
 import {
@@ -9,7 +9,9 @@ import {
 } from 'recharts'
 import AppLayout from '../../components/layout/AppLayout'
 import apiClient from '../../api/client'
+import { documentsApi } from '../../api/documents'
 import strategicApi from '../../api/strategic'
+import type { DocumentRead } from '../../types/document'
 import type {
   BudgetPlan,
   BudgetPlanCreate,
@@ -128,6 +130,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 interface StaffItem { id: number; full_name: string; position: string | null; employee_code: string | null; department_id: number | null }
+interface DeptMin { id: number; name: string; short_name: string | null }
 
 // ─── Project Form ─────────────────────────────────────────────────────────────
 
@@ -147,14 +150,40 @@ function ProjectForm({ initial, onSave, onClose }: {
     priority_level: initial?.priority_level ?? 'medium',
     progress_percent: initial?.progress_percent ?? 0,
     responsible_department_id: initial?.responsible_department_id ?? undefined,
+    coordinating_department_ids: initial?.coordinating_departments?.map(d => d.id) ?? [],
     project_manager_id: initial?.project_manager_id ?? undefined,
     project_manager_staff_id: initial?.project_manager_staff_id ?? null,
+    source_document_id: initial?.source_document_id ?? null,
   })
   const [saving, setSaving] = useState(false)
   const [staffList, setStaffList] = useState<StaffItem[]>([])
+  const [depts, setDepts] = useState<DeptMin[]>([])
+
+  // Coordinating departments (multi-select)
+  const [coordDepts, setCoordDepts] = useState<DeptMin[]>(initial?.coordinating_departments ?? [])
+
+  // Document (văn bản) search
+  const [docSearch, setDocSearch] = useState('')
+  const [docResults, setDocResults] = useState<DocumentRead[]>([])
+  const [showDocPicker, setShowDocPicker] = useState(false)
+  const [selectedDoc, setSelectedDoc] = useState<{ id: number; title: string; doc_number: string | null } | null>(
+    initial?.source_document ?? null
+  )
+
   useEffect(() => {
     apiClient.get<{ items: StaffItem[] }>('/staff?active_only=true&size=200').then(r => setStaffList(r.data.items)).catch(() => {})
+    apiClient.get<DeptMin[]>('/departments').then(r => setDepts(r.data)).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!docSearch.trim()) { setDocResults([]); return }
+    const t = setTimeout(() => {
+      documentsApi.list({ search: docSearch, size: 10 })
+        .then(r => setDocResults(r.data.items))
+        .catch(() => {})
+    }, 300)
+    return () => clearTimeout(t)
+  }, [docSearch])
 
   const set = (k: keyof StrategicProjectCreate) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const val = e.target.value
@@ -191,6 +220,68 @@ function ProjectForm({ initial, onSave, onClose }: {
         <label className="block text-xs font-medium text-gray-600 mb-1">Mô tả</label>
         <textarea className="w-full border rounded-lg px-3 py-2 text-sm" rows={3} value={form.description ?? ''} onChange={set('description')} placeholder="Mô tả dự án..." />
       </div>
+
+      {/* Document (văn bản) picker */}
+      <div className="relative">
+        <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
+          <FileText size={12} className="text-blue-500" /> Văn bản căn cứ
+        </label>
+        {selectedDoc ? (
+          <div className="flex items-center gap-2 px-3 py-2 border border-blue-300 bg-blue-50 rounded-lg text-sm">
+            <FileText size={13} className="text-blue-500 shrink-0" />
+            <div className="flex-1 min-w-0">
+              {selectedDoc.doc_number && (
+                <span className="text-xs font-mono text-slate-400 mr-1">{selectedDoc.doc_number}</span>
+              )}
+              <span className="text-xs text-blue-800 truncate">{selectedDoc.title}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setSelectedDoc(null); setForm(f => ({ ...f, source_document_id: null })) }}
+              className="text-slate-400 hover:text-red-500"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-2.5 py-2 border border-gray-200 rounded-lg">
+            <Search size={13} className="text-gray-400 shrink-0" />
+            <input
+              type="text"
+              placeholder="Tìm văn bản căn cứ..."
+              value={docSearch}
+              onChange={e => { setDocSearch(e.target.value); setShowDocPicker(true) }}
+              onFocus={() => setShowDocPicker(true)}
+              onBlur={() => setTimeout(() => setShowDocPicker(false), 200)}
+              className="flex-1 text-xs outline-none text-gray-700 bg-transparent"
+            />
+          </div>
+        )}
+        {showDocPicker && docResults.length > 0 && (
+          <div className="absolute z-30 top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
+            {docResults.map(doc => (
+              <button
+                key={doc.id}
+                type="button"
+                onMouseDown={() => {
+                  setSelectedDoc({ id: doc.id, title: doc.title, doc_number: doc.doc_number })
+                  setForm(f => ({ ...f, source_document_id: doc.id }))
+                  setDocSearch('')
+                  setShowDocPicker(false)
+                }}
+                className="w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-blue-50 transition-colors"
+              >
+                <FileText size={13} className="text-slate-400 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  {doc.doc_number && <span className="text-[10px] font-mono text-slate-400 mr-1">{doc.doc_number}</span>}
+                  <span className="text-xs text-slate-700 line-clamp-1">{doc.title}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Ngày bắt đầu</label>
@@ -231,6 +322,68 @@ function ProjectForm({ initial, onSave, onClose }: {
           ))}
         </select>
       </div>
+
+      {/* Đơn vị phụ trách */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Đơn vị phụ trách</label>
+        <select
+          className="w-full border rounded-lg px-3 py-2 text-sm"
+          value={form.responsible_department_id ?? ''}
+          onChange={e => setForm(f => ({ ...f, responsible_department_id: e.target.value ? Number(e.target.value) : undefined }))}
+        >
+          <option value="">-- Chưa xác định --</option>
+          {depts.map(d => <option key={d.id} value={d.id}>{d.short_name ?? d.name}</option>)}
+        </select>
+      </div>
+
+      {/* Đơn vị phối hợp */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Đơn vị phối hợp</label>
+        {/* Chips hiện tại */}
+        {coordDepts.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {coordDepts.map(d => (
+              <span
+                key={d.id}
+                className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium"
+              >
+                {d.short_name ?? d.name}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = coordDepts.filter(x => x.id !== d.id)
+                    setCoordDepts(next)
+                    setForm(f => ({ ...f, coordinating_department_ids: next.map(x => x.id) }))
+                  }}
+                  className="hover:text-red-500 ml-0.5"
+                >
+                  <X size={10} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <select
+          className="w-full border rounded-lg px-3 py-2 text-sm"
+          value=""
+          onChange={e => {
+            const id = Number(e.target.value)
+            if (!id || coordDepts.some(d => d.id === id)) return
+            const dept = depts.find(d => d.id === id)
+            if (!dept) return
+            const next = [...coordDepts, dept]
+            setCoordDepts(next)
+            setForm(f => ({ ...f, coordinating_department_ids: next.map(d => d.id) }))
+          }}
+        >
+          <option value="">-- Thêm đơn vị phối hợp --</option>
+          {depts
+            .filter(d => !coordDepts.some(c => c.id === d.id) && d.id !== form.responsible_department_id)
+            .map(d => <option key={d.id} value={d.id}>{d.short_name ?? d.name}</option>)
+          }
+        </select>
+      </div>
+
       <div className="flex gap-3 pt-2">
         <button type="button" onClick={onClose} className="flex-1 border rounded-lg px-4 py-2 text-sm hover:bg-gray-50">Hủy</button>
         <button type="submit" disabled={saving} className="flex-1 bg-blue-600 text-white rounded-lg px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
@@ -378,12 +531,13 @@ function ProjectsTab() {
                 <th className="px-4 py-3 text-left">Tiến độ</th>
                 <th className="px-4 py-3 text-left">Thời gian</th>
                 <th className="px-4 py-3 text-left">Phòng ban</th>
+                <th className="px-4 py-3 text-left">Văn bản</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {projects.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-12 text-gray-400">Chưa có dự án nào</td></tr>
+                <tr><td colSpan={9} className="text-center py-12 text-gray-400">Chưa có dự án nào</td></tr>
               ) : projects.map(p => (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
@@ -411,6 +565,16 @@ function ProjectsTab() {
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">
                     {p.responsible_department?.short_name ?? p.responsible_department?.name ?? '—'}
+                  </td>
+                  <td className="px-4 py-3 text-xs">
+                    {p.source_document ? (
+                      <span className="inline-flex items-center gap-1 text-blue-600 hover:underline cursor-pointer" title={p.source_document.title}>
+                        <FileText size={11} />
+                        {p.source_document.doc_number ?? p.source_document.title.slice(0, 20)}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">

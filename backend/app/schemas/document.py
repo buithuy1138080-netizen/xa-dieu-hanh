@@ -4,7 +4,7 @@ from datetime import date, datetime
 from math import ceil
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic import AliasChoices
 
 T = TypeVar("T")
@@ -60,6 +60,7 @@ class DocumentCreate(BaseModel):
     category: str | None = None
     issuer: str | None = None
     responsible_department_id: int | None = None
+    coordinating_dept_ids: list[int] = []
     issue_date: date | None = None
     received_date: date | None = None
     deadline: datetime | None = None
@@ -76,6 +77,7 @@ class DocumentUpdate(BaseModel):
     category: str | None = None
     issuer: str | None = None
     responsible_department_id: int | None = None
+    coordinating_dept_ids: list[int] | None = None
     issue_date: date | None = None
     received_date: date | None = None
     deadline: datetime | None = None
@@ -99,12 +101,33 @@ class DocumentRead(BaseModel):
     issuer: str | None
     responsible_department_id: int | None
     responsible_department: DeptMin | None
+    coordinating_dept_ids: list[int] = []
+
+    @field_validator("coordinating_dept_ids", mode="before")
+    @classmethod
+    def _coerce_list(cls, v: object) -> list[int]:
+        return v if v is not None else []
     issue_date: date | None
     received_date: date | None
     deadline: datetime | None
     status: str
     priority: str
     summary: str | None
+    # AI extraction fields
+    raw_text: str | None = None
+    ai_processed: bool = False
+    keywords: list[str] = []
+    domain: str | None = None
+
+    @field_validator("keywords", mode="before")
+    @classmethod
+    def _coerce_keywords(cls, v: object) -> list[str]:
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [str(i) for i in v]
+        return []
+
     file_name: str | None
     file_size: int
     file_mime: str | None
@@ -161,6 +184,7 @@ class DocumentTaskCreate(BaseModel):
     priority: str = "medium"
     deadline: datetime | None = None
     assignee_id: int | None = None
+    lead_department_id: int | None = None
 
 
 # ─── Detail ───────────────────────────────────────────────────────────────────

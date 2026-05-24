@@ -15,3 +15,6 @@ from app.models.strategic import StrategicProject, BudgetPlan, FundingSource, Di
 from app.models.nghi_quyet import NghiQuyet, MucTieuNQ  # noqa: F401
 from app.models.kpi_chien_luoc import KpiCL, KpiCLTienDo  # noqa: F401
 from app.models.report_template import ReportTemplate  # noqa: F401
+from app.models.program import Tag, DocumentTag, Program, DocumentProgram  # noqa: F401
+from app.models.evidence import Evidence  # noqa: F401
+from app.models.ai_chat import AiChatSession, AiChatMessage  # noqa: F401

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import and_, case, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -126,6 +126,10 @@ class TaskRead(BaseModel):
     incoming_document_id: int | None = None
     outgoing_document_id: int | None = None
     directive_id: int | None = None
+    program_id: int | None = None
+    parent_task_id: int | None = None
+    task_type: str = "regular"
+    task_group: str | None = None
     created_by: int
     updated_by: int | None = None
     assignee_id: int | None = None
@@ -155,6 +159,7 @@ class TaskReadDetail(TaskRead):
     comments: list[TaskCommentRead] = []
     attachments: list[TaskAttachmentRead] = []
     audit_logs: list[TaskAuditRead] = []
+    subtasks: list["TaskRead"] = []
 
 
 class TaskCreate(BaseModel):
@@ -164,6 +169,8 @@ class TaskCreate(BaseModel):
     priority: str = "medium"
     start_date: date | None = None
     due_date: datetime | None = None
+    program_id: int | None = None
+    parent_task_id: int | None = None
     incoming_document_id: int | None = None
     outgoing_document_id: int | None = None
     directive_id: int | None = None
@@ -174,6 +181,14 @@ class TaskCreate(BaseModel):
     coordinating_department_ids: list[int] = []
     reminder_enabled: bool = False
 
+    @model_validator(mode='after')
+    def check_dates(self):
+        if self.start_date and self.due_date:
+            due = self.due_date.date() if isinstance(self.due_date, datetime) else self.due_date
+            if due < self.start_date:
+                raise ValueError('due_date phải lớn hơn hoặc bằng start_date')
+        return self
+
 
 class TaskUpdate(BaseModel):
     title: str | None = None
@@ -182,6 +197,8 @@ class TaskUpdate(BaseModel):
     priority: str | None = None
     start_date: date | None = None
     due_date: datetime | None = None
+    program_id: int | None = None
+    parent_task_id: int | None = None
     incoming_document_id: int | None = None
     outgoing_document_id: int | None = None
     directive_id: int | None = None
@@ -192,6 +209,14 @@ class TaskUpdate(BaseModel):
     coordinating_department_ids: list[int] | None = None
     reminder_enabled: bool | None = None
     completion_note: str | None = None
+
+    @model_validator(mode='after')
+    def check_dates(self):
+        if self.start_date and self.due_date:
+            due = self.due_date.date() if isinstance(self.due_date, datetime) else self.due_date
+            if due < self.start_date:
+                raise ValueError('due_date phải lớn hơn hoặc bằng start_date')
+        return self
 
 
 class TaskStatusUpdate(BaseModel):
@@ -309,6 +334,9 @@ _DETAIL_LOADS = [
     selectinload(Task.comments).selectinload(TaskComment.user),
     selectinload(Task.attachments),
     selectinload(Task.audit_logs).selectinload(TaskAuditLog.user),
+    selectinload(Task.subtasks).selectinload(Task.creator),
+    selectinload(Task.subtasks).selectinload(Task.assignee),
+    selectinload(Task.subtasks).selectinload(Task.lead_department),
 ]
 
 _LIST_LOADS = [
@@ -341,6 +369,73 @@ async def _audit(
         field=field, old_value=old, new_value=new,
     )
     db.add(log)
+
+
+async def _sync_directive_progress(db: AsyncSession, directive_id: int) -> None:
+    """Recalculate directive.progress from tasks that have directive_id = directive_id."""
+    from app.models.directive import Directive, DirectiveHistory
+
+    directive = await db.get(Directive, directive_id)
+    if not directive or directive.deleted_at is not None:
+        return
+
+    statuses = (await db.execute(
+        select(Task.status).where(
+            Task.directive_id == directive_id,
+            Task.deleted_at.is_(None),
+        )
+    )).scalars().all()
+
+    if not statuses:
+        return
+
+    done = sum(1 for s in statuses if s == "completed")
+    new_prog = int(done / len(statuses) * 100)
+
+    if new_prog == directive.progress:
+        return
+
+    old_prog = directive.progress
+    directive.progress = new_prog
+
+    if new_prog >= 100 and directive.status == "active":
+        directive.status = "completed"
+        db.add(DirectiveHistory(
+            directive_id=directive_id,
+            user_id=directive.issuer_id,
+            action="auto_completed",
+            old_status="active",
+            new_status="completed",
+            old_progress=old_prog,
+            new_progress=new_prog,
+        ))
+
+
+async def _sync_program_progress(db: AsyncSession, program_id: int) -> None:
+    """Recalculate program.progress_percent from tasks that have program_id = program_id."""
+    from app.models.program import Program
+
+    program = await db.get(Program, program_id)
+    if not program or program.deleted_at is not None:
+        return
+
+    statuses = (await db.execute(
+        select(Task.status).where(
+            Task.program_id == program_id,
+            Task.deleted_at.is_(None),
+        )
+    )).scalars().all()
+
+    if not statuses:
+        return
+
+    done = sum(1 for s in statuses if s == "completed")
+    new_prog = int(done / len(statuses) * 100)
+
+    if new_prog == program.progress_percent:
+        return
+
+    program.progress_percent = new_prog
 
 
 async def _set_departments(
@@ -400,6 +495,9 @@ async def list_tasks(
     incoming_document_id: int | None = None,
     outgoing_document_id: int | None = None,
     directive_id: int | None = None,
+    program_id: int | None = None,
+    parent_task_id: int | None = None,
+    task_type: str | None = None,
     overdue_only: bool = False,
     due_before: datetime | None = None,
     due_after: datetime | None = None,
@@ -412,7 +510,15 @@ async def list_tasks(
 ):
     q = select(Task).where(Task.deleted_at.is_(None))
 
-    if status:
+    if status == "overdue":
+        # Virtual status: tasks past due_date that are not completed/cancelled
+        _now = datetime.now(timezone.utc)
+        q = q.where(
+            Task.due_date.isnot(None),
+            Task.due_date < _now,
+            Task.status.notin_(["completed", "cancelled"]),
+        )
+    elif status:
         q = q.where(Task.status == status)
     if priority:
         q = q.where(Task.priority == priority)
@@ -430,6 +536,12 @@ async def list_tasks(
         q = q.where(Task.outgoing_document_id == outgoing_document_id)
     if directive_id:
         q = q.where(Task.directive_id == directive_id)
+    if program_id:
+        q = q.where(Task.program_id == program_id)
+    if parent_task_id:
+        q = q.where(Task.parent_task_id == parent_task_id)
+    if task_type:
+        q = q.where(Task.task_type == task_type)
     if due_before:
         q = q.where(Task.due_date <= due_before)
     if due_after:
@@ -479,6 +591,28 @@ async def create_task(
     if body.priority not in VALID_PRIORITIES:
         raise HTTPException(400, f"priority must be one of {VALID_PRIORITIES}")
 
+    # Validate FK references exist and are not soft-deleted
+    if body.incoming_document_id:
+        from app.models.document import Document
+        doc = await db.get(Document, body.incoming_document_id)
+        if not doc or getattr(doc, 'deleted_at', None):
+            raise HTTPException(404, "Văn bản đến không tồn tại")
+    if body.outgoing_document_id:
+        from app.models.document import Document
+        doc = await db.get(Document, body.outgoing_document_id)
+        if not doc or getattr(doc, 'deleted_at', None):
+            raise HTTPException(404, "Văn bản đi không tồn tại")
+    if body.directive_id:
+        from app.models.directive import Directive
+        d = await db.get(Directive, body.directive_id)
+        if not d or getattr(d, 'deleted_at', None):
+            raise HTTPException(404, "Chỉ đạo không tồn tại")
+    if body.program_id:
+        from app.models.program import Program
+        p = await db.get(Program, body.program_id)
+        if not p or getattr(p, 'deleted_at', None):
+            raise HTTPException(404, "Chương trình không tồn tại")
+
     task_code = await _next_task_code(db)
     t = Task(
         task_code=task_code,
@@ -493,6 +627,8 @@ async def create_task(
         incoming_document_id=body.incoming_document_id,
         outgoing_document_id=body.outgoing_document_id,
         directive_id=body.directive_id,
+        program_id=body.program_id,
+        parent_task_id=body.parent_task_id,
         created_by=current_user.id,
         assignee_id=body.assignee_id,
         assignee_staff_id=body.assignee_staff_id,
@@ -639,6 +775,7 @@ async def get_task(
         }
         for lg in t.audit_logs
     ]
+    d["subtasks"] = [TaskRead.model_validate(_to_read(sub)) for sub in t.subtasks]
     return TaskReadDetail.model_validate(d)
 
 
@@ -655,7 +792,7 @@ async def update_task(
         raise HTTPException(400, f"priority must be one of {VALID_PRIORITIES}")
 
     fields = ["title", "description", "content_summary", "priority", "start_date", "due_date",
-              "incoming_document_id", "outgoing_document_id", "directive_id",
+              "incoming_document_id", "outgoing_document_id", "directive_id", "program_id",
               "assignee_id", "assignee_staff_id", "supervising_user_id", "lead_department_id",
               "reminder_enabled", "completion_note"]
 
@@ -703,6 +840,12 @@ async def update_status(
             t.progress_percent = 10
 
     await _audit(db, t.id, current_user.id, "status_changed", "status", old_status, body.status)
+
+    if t.directive_id:
+        await _sync_directive_progress(db, t.directive_id)
+    if t.program_id:
+        await _sync_program_progress(db, t.program_id)
+
     await db.commit()
 
     task = await _get_task(db, t.id, detail=False)
@@ -733,6 +876,12 @@ async def update_progress(
         t.status = "in_progress"
 
     await _audit(db, t.id, current_user.id, "progress_updated", "progress_percent", str(old_pct), str(body.progress_percent))
+
+    if t.directive_id:
+        await _sync_directive_progress(db, t.directive_id)
+    if t.program_id:
+        await _sync_program_progress(db, t.program_id)
+
     await db.commit()
 
     task = await _get_task(db, t.id, detail=False)
@@ -897,3 +1046,75 @@ async def remove_department(
         raise HTTPException(404, "Department link not found")
     await db.delete(td)
     await db.commit()
+
+
+# ── Excel Import ──────────────────────────────────────────────────────────────
+
+@router.get("/import/template")
+async def download_task_template(_: User = Depends(get_current_user)):
+    from fastapi.responses import Response
+    from app.services.excel_import import task_template
+    data = task_template()
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=mau_import_nhiem_vu.xlsx"},
+    )
+
+
+@router.post("/import")
+async def import_tasks_excel(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.excel_import import parse_tasks
+    if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "Chỉ chấp nhận file .xlsx hoặc .xls")
+
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File không được vượt quá 5 MB")
+
+    records, errors = parse_tasks(data)
+    if not records and errors:
+        raise HTTPException(422, {"errors": errors})
+
+    VALID = {"low", "medium", "high", "urgent"}
+    imported = 0
+    for r in records:
+        due_dt = None
+        if r.get("due_date_str"):
+            try:
+                due_dt = datetime.strptime(r["due_date_str"], "%d/%m/%Y").replace(
+                    hour=17, minute=0, tzinfo=timezone.utc
+                )
+            except ValueError:
+                pass
+        start_dt = None
+        if r.get("start_date_str"):
+            try:
+                start_dt = datetime.strptime(r["start_date_str"], "%d/%m/%Y").date()
+            except ValueError:
+                pass
+        priority = r["priority"] if r["priority"] in VALID else "medium"
+        task_code = await _next_task_code(db)
+        t = Task(
+            task_code=task_code,
+            title=r["title"],
+            description=r["description"] or None,
+            content_summary=r["responsible_unit"] or None,
+            priority=priority,
+            status="pending",
+            progress_percent=0,
+            start_date=start_dt,
+            due_date=due_dt,
+            created_by=current_user.id,
+        )
+        db.add(t)
+        await db.flush()
+        await _audit(db, t.id, current_user.id, "created")
+        imported += 1
+
+    await db.commit()
+    return {"imported": imported, "errors": errors}

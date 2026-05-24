@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -31,6 +31,12 @@ class Document(Base):
     priority: Mapped[str] = mapped_column(String(20), nullable=False, default="normal")
     summary: Mapped[str | None] = mapped_column(Text)
 
+    # AI extraction fields
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_processed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
+    keywords: Mapped[list] = mapped_column(JSON, nullable=False, server_default="'[]'::json", default=list)
+    domain: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
     file_name: Mapped[str | None] = mapped_column(String(255))
     file_path: Mapped[str | None] = mapped_column(String(500))
     file_size: Mapped[int] = mapped_column(Integer, default=0)
@@ -48,6 +54,7 @@ class Document(Base):
     responsible_department_id: Mapped[int | None] = mapped_column(
         ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    coordinating_dept_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

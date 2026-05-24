@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import AppLayout from '../../components/layout/AppLayout'
 import { zaloApi } from '../../api/zalo'
 import type {
   ZaloChannel,
@@ -701,6 +702,7 @@ export default function ZaloNotifPage() {
   ] as const
 
   return (
+    <AppLayout>
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div>
@@ -756,5 +758,6 @@ export default function ZaloNotifPage() {
         </div>
       </div>
     </div>
+    </AppLayout>
   )
 }

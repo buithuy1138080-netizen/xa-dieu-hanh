@@ -84,6 +84,10 @@ export interface Task {
   incoming_document_id: number | null
   outgoing_document_id: number | null
   directive_id: number | null
+  program_id: number | null
+  parent_task_id: number | null
+  task_type: string
+  task_group: string | null
   created_by: number
   updated_by: number | null
   assignee_id: number | null
@@ -113,6 +117,7 @@ export interface TaskDetail extends Task {
   comments: TaskComment[]
   attachments: TaskAttachment[]
   audit_logs: TaskAuditLog[]
+  subtasks: Task[]
 }
 
 export interface TaskStats {
@@ -142,6 +147,8 @@ export interface TaskCreate {
   priority: TaskPriority
   start_date?: string
   due_date?: string
+  program_id?: number | null
+  parent_task_id?: number | null
   incoming_document_id?: number
   outgoing_document_id?: number
   directive_id?: number
@@ -160,6 +167,7 @@ export interface TaskUpdate {
   priority?: TaskPriority
   start_date?: string | null
   due_date?: string | null
+  parent_task_id?: number | null
   incoming_document_id?: number | null
   outgoing_document_id?: number | null
   directive_id?: number | null

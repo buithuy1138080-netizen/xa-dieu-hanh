@@ -18,7 +18,7 @@ import type {
   StrategicProjectUpdate,
 } from '../types/strategic'
 
-const BASE = '/api/v1/strategic'
+const BASE = '/strategic'
 
 // ── Projects ─────────────────────────────────────────────────────────────────
 

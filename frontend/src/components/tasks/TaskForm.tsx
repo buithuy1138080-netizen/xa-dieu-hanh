@@ -27,6 +27,8 @@ interface Props {
   task?: Task
   onClose: () => void
   onSuccess: () => void
+  initialProgramId?: number | null
+  initialParentTaskId?: number | null
 }
 
 const SOURCE_TABS: { id: SourceType; label: string; icon: React.ElementType; color: string }[] = [
@@ -52,13 +54,23 @@ function initSourceType(t?: Task): SourceType {
   return 'none'
 }
 
-export default function TaskForm({ task, onClose, onSuccess }: Props) {
+export default function TaskForm({ task, onClose, onSuccess, initialProgramId, initialParentTaskId }: Props) {
   // Basic fields
   const [title, setTitle] = useState(task?.title ?? '')
   const [description, setDescription] = useState(task?.description ?? '')
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? 'medium')
   const [dueDate, setDueDate] = useState(task?.due_date ? task.due_date.slice(0, 10) : '')
   const [startDate, setStartDate] = useState(task?.start_date ? task.start_date.slice(0, 10) : '')
+
+  // Parent task picker
+  const [parentTaskId, setParentTaskId] = useState<number | null>(
+    task?.parent_task_id ?? initialParentTaskId ?? null
+  )
+  const [parentTaskLabel, setParentTaskLabel] = useState('')
+  const [parentSearch, setParentSearch] = useState('')
+  const [parentTasks, setParentTasks] = useState<Task[]>([])
+  const [showParentPicker, setShowParentPicker] = useState(false)
+  const parentRef = useRef<HTMLDivElement>(null)
   const [assigneeId, setAssigneeId] = useState<string>(task?.assignee_id?.toString() ?? '')
   const [assigneeStaffId, setAssigneeStaffId] = useState<number | null>(
     (task as Task & { assignee_staff_id?: number | null })?.assignee_staff_id ?? null
@@ -137,7 +149,18 @@ export default function TaskForm({ task, onClose, onSuccess }: Props) {
     }
   }, [sourceType])
 
-  // Close source/assignee pickers on outside click
+  // Load parent task candidates when search changes
+  useEffect(() => {
+    if (!parentSearch.trim()) { setParentTasks([]); return }
+    const timer = setTimeout(() => {
+      tasksApi.list({ search: parentSearch, page_size: 10 })
+        .then((r) => setParentTasks(r.data.items.filter((t) => t.id !== task?.id)))
+        .catch(() => {})
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [parentSearch, task?.id])
+
+  // Close source/assignee/parent pickers on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (sourceRef.current && !sourceRef.current.contains(e.target as Node)) {
@@ -145,6 +168,9 @@ export default function TaskForm({ task, onClose, onSuccess }: Props) {
       }
       if (assigneeRef.current && !assigneeRef.current.contains(e.target as Node)) {
         setShowAssigneePicker(false)
+      }
+      if (parentRef.current && !parentRef.current.contains(e.target as Node)) {
+        setShowParentPicker(false)
       }
     }
     document.addEventListener('mousedown', handler)
@@ -193,7 +219,7 @@ export default function TaskForm({ task, onClose, onSuccess }: Props) {
     d.is_active && (
       !deptSearch ||
       d.name.toLowerCase().includes(deptSearch.toLowerCase()) ||
-      d.short_name.toLowerCase().includes(deptSearch.toLowerCase())
+      (d.short_name ?? '').toLowerCase().includes(deptSearch.toLowerCase())
     )
   )
 
@@ -244,6 +270,7 @@ export default function TaskForm({ task, onClose, onSuccess }: Props) {
           incoming_document_id: incoming_document_id as number | null | undefined,
           outgoing_document_id: outgoing_document_id as number | null | undefined,
           directive_id: directive_id as number | null | undefined,
+          parent_task_id: parentTaskId,
         }
         await tasksApi.update(task.id, payload)
       } else {
@@ -253,6 +280,8 @@ export default function TaskForm({ task, onClose, onSuccess }: Props) {
           priority,
           start_date: startDate || undefined,
           due_date: dueDate ? new Date(dueDate + 'T23:59:59').toISOString() : undefined,
+          program_id: initialProgramId ?? undefined,
+          parent_task_id: parentTaskId,
           assignee_id: assigneeId ? parseInt(assigneeId) : undefined,
           assignee_staff_id: assigneeStaffId ?? undefined,
           lead_department_id: leadDeptId ?? undefined,
@@ -318,6 +347,51 @@ export default function TaskForm({ task, onClose, onSuccess }: Props) {
                 placeholder="Mô tả ngắn..."
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
+            </div>
+
+            {/* Parent task picker */}
+            <div ref={parentRef} className="relative">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Nhiệm vụ cha</label>
+              {parentTaskId ? (
+                <div className="flex items-center gap-2 px-3 py-2 border border-blue-400 bg-blue-50 rounded-lg text-sm">
+                  <span className="flex-1 truncate text-blue-800 text-xs">{parentTaskLabel || `#${parentTaskId}`}</span>
+                  <button type="button" onClick={() => { setParentTaskId(null); setParentTaskLabel('') }} className="text-slate-400 hover:text-red-500">
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 px-2.5 py-2 border border-slate-300 rounded-lg">
+                  <Search size={13} className="text-slate-400 shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Tìm nhiệm vụ cha..."
+                    value={parentSearch}
+                    onChange={(e) => { setParentSearch(e.target.value); setShowParentPicker(true) }}
+                    onFocus={() => setShowParentPicker(true)}
+                    className="flex-1 text-xs outline-none text-slate-700 bg-transparent"
+                  />
+                </div>
+              )}
+              {showParentPicker && parentTasks.length > 0 && (
+                <div className="absolute z-30 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden max-h-40 overflow-y-auto">
+                  {parentTasks.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        setParentTaskId(t.id)
+                        setParentTaskLabel(`${t.task_code ? t.task_code + ' – ' : ''}${t.title}`)
+                        setParentSearch('')
+                        setShowParentPicker(false)
+                      }}
+                      className="w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-blue-50 transition-colors"
+                    >
+                      {t.task_code && <span className="text-[10px] font-mono text-slate-400 shrink-0 mt-0.5">{t.task_code}</span>}
+                      <span className="text-xs text-slate-700 line-clamp-1">{t.title}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-3 gap-3">

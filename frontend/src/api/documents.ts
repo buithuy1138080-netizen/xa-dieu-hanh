@@ -1,5 +1,6 @@
 import apiClient from './client'
 import type {
+  AiParseResult,
   DocumentCommentRead,
   DocumentCreate,
   DocumentRead,
@@ -63,4 +64,24 @@ export const documentsApi = {
 
   createTask: (id: number, body: DocumentTaskCreate) =>
     apiClient.post<DocumentTaskRead>(`/documents/${id}/tasks`, body),
+
+  upload: (file: File, doc_type = 'incoming') => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('doc_type', doc_type)
+    return apiClient.post<import('../types/document').DocumentRead>('/documents/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  export: (params?: DocListParams) =>
+    apiClient.get('/documents/export', { params, responseType: 'blob' }),
+
+  aiParse: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return apiClient.post<AiParseResult>('/documents/ai-parse', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 }

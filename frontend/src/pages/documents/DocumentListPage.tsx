@@ -1,11 +1,14 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Download, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { documentsApi } from '../../api/documents'
 import DocStatusBadge from '../../components/documents/DocStatusBadge'
 import DocTypeBadge from '../../components/documents/DocTypeBadge'
 import DocumentForm from '../../components/documents/DocumentForm'
+import DocumentUploadAI from '../../components/documents/DocumentUploadAI'
 import AppLayout from '../../components/layout/AppLayout'
+import { useAuthStore } from '../../store/authStore'
+import { isAdminOrLeader } from '../../types'
 import type { DocStatus, DocType, DocumentCreate, DocumentRead } from '../../types/document'
 
 const TYPE_TABS: { value: DocType | ''; label: string }[] = [
@@ -44,6 +47,8 @@ function isOverdue(deadline: string | null, status: string) {
 
 export default function DocumentListPage() {
   const navigate = useNavigate()
+  const currentUser = useAuthStore(s => s.user)
+  const canManage = isAdminOrLeader(currentUser)
   const [docs, setDocs] = useState<DocumentRead[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -51,6 +56,8 @@ export default function DocumentListPage() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [showUploadAI, setShowUploadAI] = useState(false)
 
   const [search, setSearch] = useState('')
   const [typeTab, setTypeTab] = useState<DocType | ''>('')
@@ -87,14 +94,38 @@ export default function DocumentListPage() {
     return () => { if (searchRef.current) clearTimeout(searchRef.current) }
   }, [search])
 
-  async function handleCreate(data: DocumentCreate) {
+  async function handleCreate(data: DocumentCreate, file?: File | null) {
     setSaving(true)
     try {
       const { data: doc } = await documentsApi.create(data)
+      if (file) {
+        await documentsApi.uploadFile(doc.id, file).catch(() => {})
+      }
       setShowForm(false)
       navigate(`/documents/${doc.id}`)
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleExport() {
+    setExporting(true)
+    try {
+      const { data } = await documentsApi.export({
+        search: search || undefined,
+        doc_type: typeTab || undefined,
+        status: statusFilter || undefined,
+      })
+      const url = URL.createObjectURL(new Blob([data]))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `van-ban-${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('Không thể xuất dữ liệu. Vui lòng thử lại.')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -114,13 +145,36 @@ export default function DocumentListPage() {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition"
-          >
-            <span className="hidden sm:inline">+ Thêm văn bản</span>
-            <span className="sm:hidden">+ Thêm</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {canManage && (
+              <button
+                onClick={() => setShowUploadAI(true)}
+                className="flex items-center gap-1.5 px-3 py-2 border border-violet-300 text-violet-700 rounded-lg text-sm font-medium hover:bg-violet-50 transition"
+                title="Upload file — AI tự động phân tích và lưu"
+              >
+                <Sparkles size={15} />
+                <span className="hidden sm:inline">AI Phân tích</span>
+              </button>
+            )}
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-50 transition"
+              title="Xuất Excel theo bộ lọc hiện tại"
+            >
+              <Download size={15} />
+              <span className="hidden sm:inline">{exporting ? 'Đang xuất...' : 'Xuất Excel'}</span>
+            </button>
+            {canManage && (
+              <button
+                onClick={() => setShowForm(true)}
+                className="flex items-center gap-2 px-3 md:px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition"
+              >
+                <span className="hidden sm:inline">+ Thêm văn bản</span>
+                <span className="sm:hidden">+ Thêm</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Type tabs */}
@@ -295,6 +349,14 @@ export default function DocumentListPage() {
           </div>
         )}
       </div>
+
+      {/* AI Upload modal */}
+      {showUploadAI && (
+        <DocumentUploadAI
+          onClose={() => setShowUploadAI(false)}
+          onSaved={() => { load(1); setShowUploadAI(false) }}
+        />
+      )}
 
       {/* Create modal */}
       {showForm && (

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from math import ceil
 from typing import Optional
 
@@ -7,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin_or_leader
 from app.models.nghi_quyet import BangTheoDoi, MucTieuNQ, NghiQuyet, NQLienKetCongViec
 from app.models.user import User
 from app.schemas.nghi_quyet import (
@@ -40,7 +41,9 @@ VALID_LOAI_CV = {"task", "document", "directive", "nq57_task"}
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 async def _get_nq_or_404(db: AsyncSession, nq_id: int) -> NghiQuyet:
-    nq = (await db.execute(select(NghiQuyet).where(NghiQuyet.id == nq_id))).scalar_one_or_none()
+    nq = (await db.execute(
+        select(NghiQuyet).where(NghiQuyet.id == nq_id, NghiQuyet.deleted_at.is_(None))
+    )).scalar_one_or_none()
     if not nq:
         raise HTTPException(404, "Không tìm thấy nghị quyết")
     return nq
@@ -119,7 +122,7 @@ async def list_nghi_quyet(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    q = select(NghiQuyet).options(selectinload(NghiQuyet.creator))
+    q = select(NghiQuyet).options(selectinload(NghiQuyet.creator)).where(NghiQuyet.deleted_at.is_(None))
     if loai:
         q = q.where(NghiQuyet.loai == loai)
     q = q.order_by(NghiQuyet.nam_ket_thuc.desc(), NghiQuyet.created_at.desc())
@@ -132,7 +135,7 @@ async def list_nghi_quyet(
 async def create_nghi_quyet(
     body: NghiQuyetCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_or_leader),
 ):
     if body.loai not in VALID_LOAI_NQ:
         raise HTTPException(422, f"loai phải là một trong: {VALID_LOAI_NQ}")
@@ -286,7 +289,7 @@ async def dashboard_top_delayed(
 async def create_muc_tieu(
     body: MucTieuCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_or_leader),
 ):
     await _get_nq_or_404(db, body.nghi_quyet_id)
     if body.muc_tieu_cha_id:
@@ -307,7 +310,7 @@ async def update_muc_tieu(
     mt_id: int,
     body: MucTieuUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin_or_leader),
 ):
     mt = await _get_mt_or_404(db, mt_id)
     data = body.model_dump(exclude_none=True)
@@ -430,7 +433,9 @@ async def get_nghi_quyet(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    stmt = select(NghiQuyet).options(selectinload(NghiQuyet.creator)).where(NghiQuyet.id == nq_id)
+    stmt = select(NghiQuyet).options(selectinload(NghiQuyet.creator)).where(
+        NghiQuyet.id == nq_id, NghiQuyet.deleted_at.is_(None)
+    )
     nq = (await db.execute(stmt)).scalar_one_or_none()
     if not nq:
         raise HTTPException(404, "Không tìm thấy nghị quyết")
@@ -453,7 +458,7 @@ async def update_nghi_quyet(
     nq_id: int,
     body: NghiQuyetUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin_or_leader),
 ):
     nq = await _get_nq_or_404(db, nq_id)
     data = body.model_dump(exclude_none=True)
@@ -462,7 +467,9 @@ async def update_nghi_quyet(
     for field, val in data.items():
         setattr(nq, field, val)
     await db.commit()
-    stmt = select(NghiQuyet).options(selectinload(NghiQuyet.creator)).where(NghiQuyet.id == nq_id)
+    stmt = select(NghiQuyet).options(selectinload(NghiQuyet.creator)).where(
+        NghiQuyet.id == nq_id, NghiQuyet.deleted_at.is_(None)
+    )
     return (await db.execute(stmt)).scalar_one()
 
 
@@ -475,7 +482,7 @@ async def delete_nghi_quyet(
     if current_user.role not in ("admin", "leader"):
         raise HTTPException(403, "Không có quyền xóa nghị quyết")
     nq = await _get_nq_or_404(db, nq_id)
-    await db.delete(nq)
+    nq.deleted_at = datetime.now(timezone.utc)
     await db.commit()
 
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import AppLayout from '../../components/layout/AppLayout'
 import { syncApi } from '../../api/gsheet'
 import type {
   ConflictResolution,
@@ -387,7 +388,7 @@ function ConfigModal({
 // ── Webhook Instructions Modal ────────────────────────────────────────────────
 
 function WebhookModal({ config, onClose }: { config: SyncConfigRead; onClose: () => void }) {
-  const url = `${window.location.origin.replace('3000', '8000')}/api/v1/sync/webhook/${config.webhook_token}`
+  const url = `${window.location.origin}/api/v1/sync/webhook/${config.webhook_token}`
   const gsCode = `// Google Apps Script — gọi khi dữ liệu thay đổi
 function syncToIOC() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("${config.sheet_tab}");
@@ -537,6 +538,7 @@ export default function SyncCenterPage() {
   ] as const
 
   return (
+    <AppLayout>
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -806,5 +808,6 @@ export default function SyncCenterPage() {
         <WebhookModal config={webhookConfig} onClose={() => setWebhookConfig(null)} />
       )}
     </div>
+    </AppLayout>
   )
 }

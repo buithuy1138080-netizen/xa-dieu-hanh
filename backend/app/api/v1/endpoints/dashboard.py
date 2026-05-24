@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
@@ -9,6 +10,7 @@ from sqlalchemy.types import Date
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.models.document import Document
 from app.models.task import Task
 from app.models.user import User
 
@@ -258,6 +260,40 @@ async def get_unit_performance(
     return result
 
 
+# ─── Document Stats ───────────────────────────────────────────────────────────
+
+class DocumentStatsOut(BaseModel):
+    total: int
+    incoming: int
+    outgoing: int
+    pending: int
+    processed: int
+
+
+@router.get("/document-stats", response_model=DocumentStatsOut)
+async def get_document_stats(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    row = (await db.execute(
+        select(
+            func.count(Document.id).label("total"),
+            func.sum(case((Document.doc_type == "incoming", 1), else_=0)).label("incoming"),
+            func.sum(case((Document.doc_type == "outgoing", 1), else_=0)).label("outgoing"),
+            func.sum(case((Document.status == "pending", 1), else_=0)).label("pending"),
+            func.sum(case((Document.status == "processed", 1), else_=0)).label("processed"),
+        ).where(Document.deleted_at.is_(None))
+    )).one()
+
+    return DocumentStatsOut(
+        total=int(row.total or 0),
+        incoming=int(row.incoming or 0),
+        outgoing=int(row.outgoing or 0),
+        pending=int(row.pending or 0),
+        processed=int(row.processed or 0),
+    )
+
+
 # ─── Directive Stats ──────────────────────────────────────────────────────────
 
 class DirectiveStatsOut(BaseModel):
@@ -361,31 +397,67 @@ async def get_kpi_stats(
     )
 
 
+# ─── Summary (all stats in 1 call) ───────────────────────────────────────────
+
+class DashboardSummary(BaseModel):
+    tasks: DashboardStats
+    documents: DocumentStatsOut
+    directives: DirectiveStatsOut
+    kpi: KPIStatsOut
+    nq57: NQ57StatsOut
+    overdue_tasks: list[OverdueTaskOut]
+    upcoming_tasks: list[UpcomingTaskOut]
+
+
+@router.get("/summary", response_model=DashboardSummary)
+async def get_dashboard_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Single endpoint replacing 8 separate calls from the frontend dashboard."""
+    tasks, docs, directives, kpi, nq57, overdue, upcoming = await asyncio.gather(
+        get_stats(db=db, _=current_user),
+        get_document_stats(db=db, _=current_user),
+        get_directive_stats(db=db, _=current_user),
+        get_kpi_stats(db=db, _=current_user),
+        get_nq57_stats(db=db, _=current_user),
+        get_overdue(limit=5, db=db, _=current_user),
+        get_upcoming(days=7, db=db, _=current_user),
+    )
+    return DashboardSummary(
+        tasks=tasks,
+        documents=docs,
+        directives=directives,
+        kpi=kpi,
+        nq57=nq57,
+        overdue_tasks=overdue,
+        upcoming_tasks=upcoming,
+    )
+
+
 @router.get("/nq57-stats", response_model=NQ57StatsOut)
 async def get_nq57_stats(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    from app.models.nq57 import NQ57Task
-    from datetime import date as dt_date
-    now = dt_date.today()
+    now = _now()
 
     row = (await db.execute(
         select(
-            func.count(NQ57Task.id).label("total"),
-            func.sum(case((NQ57Task.status == "pending", 1), else_=0)).label("pending"),
-            func.sum(case((NQ57Task.status == "in_progress", 1), else_=0)).label("in_progress"),
-            func.sum(case((NQ57Task.status == "completed", 1), else_=0)).label("completed"),
+            func.count(Task.id).label("total"),
+            func.sum(case((Task.status == "pending", 1), else_=0)).label("pending"),
+            func.sum(case((Task.status == "in_progress", 1), else_=0)).label("in_progress"),
+            func.sum(case((Task.status == "completed", 1), else_=0)).label("completed"),
             func.sum(case(
                 (and_(
-                    NQ57Task.status != "completed",
-                    NQ57Task.deadline.isnot(None),
-                    NQ57Task.deadline < now,
+                    Task.status != "completed",
+                    Task.due_date.isnot(None),
+                    Task.due_date < now,
                 ), 1),
                 else_=0,
             )).label("delayed"),
-            func.avg(NQ57Task.progress).label("avg_progress"),
-        )
+            func.avg(Task.progress_percent).label("avg_progress"),
+        ).where(Task.task_type == "nq57", Task.deleted_at.is_(None))
     )).one()
 
     return NQ57StatsOut(

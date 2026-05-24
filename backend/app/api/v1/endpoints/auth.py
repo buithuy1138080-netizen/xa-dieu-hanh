@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.security import create_access_token, create_refresh_token, decode_token, verify_password
+from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password, verify_password
 from app.models.staff import Staff
 from app.models.user import User
 from app.schemas.user import Token, UserRead
@@ -48,12 +48,24 @@ async def login(
     if staff and staff.password_hash and verify_password(form_data.password, staff.password_hash):
         if not staff.is_active:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Tài khoản đã bị khóa")
-        if staff.user_id:
-            return Token(
-                access_token=create_access_token(subject=staff.user_id),
-                refresh_token=create_refresh_token(subject=staff.user_id),
-            )
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Tài khoản chưa được liên kết. Liên hệ admin.")
+        # Auto-create linked User if missing (handles legacy staff records)
+        if not staff.user_id:
+            email = staff.email or f"staff_{staff.id}@system.local"
+            username = (email.split("@")[0] + str(staff.id))[:50]
+            existing = (await db.execute(select(User).where(User.username == username))).scalar_one_or_none()
+            if existing:
+                username = f"{username}_{staff.id}"
+            user = User(username=username, email=email,
+                        hashed_password=staff.password_hash,
+                        full_name=staff.full_name, role=staff.role, is_active=staff.is_active)
+            db.add(user)
+            await db.flush()
+            staff.user_id = user.id
+            await db.commit()
+        return Token(
+            access_token=create_access_token(subject=staff.user_id),
+            refresh_token=create_refresh_token(subject=staff.user_id),
+        )
 
     # ── Path B: legacy login by username ─────────────────────────────────────
     user_result = await db.execute(
@@ -112,7 +124,9 @@ class RefreshRequest(BaseModel):
 
 
 @router.post("/refresh", response_model=Token)
+@limiter.limit("5/minute")
 async def refresh_token(
+    request: Request,
     body: RefreshRequest,
     db: AsyncSession = Depends(get_db),
 ):

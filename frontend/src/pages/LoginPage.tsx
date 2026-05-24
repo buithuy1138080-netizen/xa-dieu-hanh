@@ -43,37 +43,68 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm bg-white rounded-xl shadow-md p-8">
-        <h1 className="text-2xl font-bold text-center text-blue-700 mb-2">
-          Hệ Thống Điều Hành
-        </h1>
-        <p className="text-center text-gray-500 text-sm mb-6">Cổng thông tin cấp xã</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-slate-100 relative overflow-hidden">
+      {/* Soft background blobs */}
+      <div className="absolute -top-32 -right-32 w-96 h-96 bg-blue-100/50 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-indigo-100/40 rounded-full blur-3xl pointer-events-none" />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            name="username"
-            type="text"
-            placeholder="Tên đăng nhập"
-            required
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <input
-            name="password"
-            type="password"
-            placeholder="Mật khẩu"
-            required
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          {error && <p className="text-red-500 text-sm">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-60"
-          >
-            {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
-          </button>
-        </form>
+      <div className="relative w-full max-w-sm px-4">
+        {/* Logo + branding */}
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25 mb-3">
+            <div className="w-6 h-6 rounded-md border-2 border-white/80" />
+          </div>
+          <h1 className="text-xl font-bold text-slate-800 tracking-tight">Hệ Thống Điều Hành</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Cổng thông tin IOC cấp xã</p>
+        </div>
+
+        {/* Form card */}
+        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200/80 p-8">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-5">Đăng nhập tài khoản</p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email hoặc tên đăng nhập</label>
+              <input
+                name="username"
+                type="text"
+                placeholder="Nhập email hoặc username..."
+                required
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 transition bg-slate-50/50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Mật khẩu</label>
+              <input
+                name="password"
+                type="password"
+                placeholder="Nhập mật khẩu..."
+                required
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-400 transition bg-slate-50/50"
+              />
+            </div>
+            {error && (
+              <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-3.5 py-2.5">
+                <span className="shrink-0 font-bold">!</span>
+                <span>{error}</span>
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2.5 rounded-xl transition-colors disabled:opacity-60 disabled:cursor-not-allowed shadow-sm shadow-blue-600/20 mt-1"
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Đang đăng nhập...
+                </span>
+              ) : 'Đăng nhập'}
+            </button>
+          </form>
+        </div>
+
+        <p className="text-center text-xs text-slate-400 mt-4">IOC Platform · Xã Điều Hành v2.0</p>
       </div>
     </div>
   )

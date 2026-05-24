@@ -208,7 +208,13 @@ export default function NghiQuyetDashboardPage() {
   // Load NQ + lookup data once
   useEffect(() => {
     nghiQuyetApi.get(nqId)
-      .then(r => setNq(r.data))
+      .then(r => {
+        setNq(r.data)
+        // Default to current year if within the resolution's term, else first year
+        const currentYear = new Date().getFullYear()
+        const defaultYear = Math.min(r.data.nam_ket_thuc, Math.max(r.data.nam_bat_dau, currentYear))
+        setNam(defaultYear)
+      })
       .catch(() => navigate('/nghi-quyet'))
     apiClient.get<DeptMin[]>('/departments').then(r => setDepts(r.data)).catch(() => {})
     apiClient.get<StaffMin[]>('/staff').then(r => setStaffList(r.data)).catch(() => {})
@@ -410,8 +416,8 @@ export default function NghiQuyetDashboardPage() {
                   onChange={e => setNam(e.target.value ? Number(e.target.value) : null)}
                   className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 text-slate-700"
                 >
-                  <option value="">Toàn nhiệm kỳ</option>
-                  {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                  <option value="">Tất cả năm</option>
+                  {yearOptions.map(y => <option key={y} value={y}>Năm {y}</option>)}
                 </select>
               </div>
             </div>

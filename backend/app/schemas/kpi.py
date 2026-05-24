@@ -1,6 +1,7 @@
 from datetime import date, datetime
+from typing import Self
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class UserMin(BaseModel):
@@ -43,6 +44,7 @@ class KPICreate(BaseModel):
     month: int | None = None
     status: str = "on_track"
     deadline: date | None = None
+    program_id: int | None = None
     responsible_unit: str | None = None
     responsible_department_id: int | None = None
     responsible_user_id: int | None = None
@@ -63,6 +65,7 @@ class KPIUpdate(BaseModel):
     month: int | None = None
     status: str | None = None
     deadline: date | None = None
+    program_id: int | None = None
     responsible_unit: str | None = None
     responsible_department_id: int | None = None
     responsible_user_id: int | None = None
@@ -114,6 +117,7 @@ class KPIRead(BaseModel):
     month: int | None
     status: str
     deadline: date | None
+    program_id: int | None = None
     responsible_unit: str | None
     responsible_department_id: int | None
     responsible_department: DeptMin | None
@@ -154,7 +158,19 @@ class NQ57TaskCreate(BaseModel):
     responsible_unit: str | None = None
     responsible_department_id: int | None = None
     responsible_user_id: int | None = None
+    responsible_staff_id: int | None = None
     kpi_id: int | None = None
+    coordinating_dept_ids: list[int] = []
+    program_id: int | None = None
+    incoming_document_id: int | None = None
+    outgoing_document_id: int | None = None
+    directive_id: int | None = None
+
+    @model_validator(mode='after')
+    def check_dates(self) -> Self:
+        if self.start_date and self.deadline and self.deadline < self.start_date:
+            raise ValueError('deadline phải lớn hơn hoặc bằng start_date')
+        return self
 
 
 class NQ57TaskUpdate(BaseModel):
@@ -172,6 +188,17 @@ class NQ57TaskUpdate(BaseModel):
     responsible_user_id: int | None = None
     responsible_staff_id: int | None = None
     kpi_id: int | None = None
+    coordinating_dept_ids: list[int] | None = None
+    program_id: int | None = None
+    incoming_document_id: int | None = None
+    outgoing_document_id: int | None = None
+    directive_id: int | None = None
+
+    @model_validator(mode='after')
+    def check_dates(self) -> Self:
+        if self.start_date and self.deadline and self.deadline < self.start_date:
+            raise ValueError('deadline phải lớn hơn hoặc bằng start_date')
+        return self
 
 
 class NQ57ProgressCreate(BaseModel):
@@ -197,6 +224,19 @@ class KPIMin(BaseModel):
     status: str
 
 
+class DocMin(BaseModel):
+    model_config = {"from_attributes": True}
+    id: int
+    doc_number: str | None
+    title: str
+
+
+class DirectiveMin(BaseModel):
+    model_config = {"from_attributes": True}
+    id: int
+    title: str
+
+
 class NQ57TaskRead(BaseModel):
     model_config = {"from_attributes": True}
     id: int
@@ -215,13 +255,26 @@ class NQ57TaskRead(BaseModel):
     responsible_user: UserMin | None
     responsible_staff: StaffMin | None = None
     kpi: KPIMin | None
+    coordinating_dept_ids: list[int] = []
+    program_id: int | None = None
+    incoming_document_id: int | None = None
+    outgoing_document_id: int | None = None
+    directive_id: int | None = None
     creator: UserMin
     created_at: datetime
     updated_at: datetime | None
 
+    @field_validator('coordinating_dept_ids', mode='before')
+    @classmethod
+    def coerce_null_to_empty(cls, v: object) -> list[int]:
+        return v if v is not None else []
+
 
 class NQ57TaskReadDetail(NQ57TaskRead):
     progress_entries: list[NQ57ProgressRead] = []
+    incoming_document: DocMin | None = None
+    outgoing_document: DocMin | None = None
+    directive: DirectiveMin | None = None
 
 
 class NQ57Stats(BaseModel):

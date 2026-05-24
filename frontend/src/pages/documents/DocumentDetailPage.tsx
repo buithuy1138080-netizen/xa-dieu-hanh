@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { departmentsApi } from '../../api/departments'
+import type { DeptRead } from '../../api/departments'
 import { documentsApi } from '../../api/documents'
 import { usersApi } from '../../api/users'
 import DocStatusBadge from '../../components/documents/DocStatusBadge'
@@ -59,6 +61,7 @@ export default function DocumentDetailPage() {
   const [doc, setDoc] = useState<DocumentReadDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [users, setUsers] = useState<User[]>([])
+  const [departments, setDepartments] = useState<DeptRead[]>([])
 
   const [editOpen, setEditOpen] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
@@ -71,7 +74,7 @@ export default function DocumentDetailPage() {
 
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [taskForm, setTaskForm] = useState<DocumentTaskCreate>({
-    title: '', description: '', priority: 'medium', deadline: '', assignee_id: null,
+    title: '', description: '', priority: 'medium', deadline: '', assignee_id: null, lead_department_id: null,
   })
   const [taskSaving, setTaskSaving] = useState(false)
 
@@ -92,6 +95,7 @@ export default function DocumentDetailPage() {
   useEffect(() => {
     load()
     usersApi.list().then((r) => setUsers(r.data)).catch(() => {})
+    departmentsApi.list().then((r) => setDepartments(r.data)).catch(() => {})
   }, [docId])
 
   async function handleStatusChange() {
@@ -108,10 +112,13 @@ export default function DocumentDetailPage() {
     }
   }
 
-  async function handleEdit(data: DocumentCreate) {
+  async function handleEdit(data: DocumentCreate, file?: File | null) {
     setEditSaving(true)
     try {
       await documentsApi.update(docId, data)
+      if (file) {
+        await documentsApi.uploadFile(docId, file).catch(() => {})
+      }
       setEditOpen(false)
       await load()
     } finally {
@@ -181,7 +188,7 @@ export default function DocumentDetailPage() {
         assignee_id: taskForm.assignee_id || null,
       })
       setTaskFormOpen(false)
-      setTaskForm({ title: '', description: '', priority: 'medium', deadline: '', assignee_id: null })
+      setTaskForm({ title: '', description: '', priority: 'medium', deadline: '', assignee_id: null, lead_department_id: null })
       await load()
     } finally {
       setTaskSaving(false)
@@ -534,16 +541,29 @@ export default function DocumentDetailPage() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Giao cho</label>
-                <select
-                  value={taskForm.assignee_id ?? ''}
-                  onChange={(e) => setTaskForm((p) => ({ ...p, assignee_id: e.target.value ? Number(e.target.value) : null }))}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">-- Chưa giao --</option>
-                  {users.map((u) => <option key={u.id} value={u.id}>{u.full_name ?? u.username}</option>)}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Giao cho (người)</label>
+                  <select
+                    value={taskForm.assignee_id ?? ''}
+                    onChange={(e) => setTaskForm((p) => ({ ...p, assignee_id: e.target.value ? Number(e.target.value) : null }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Chưa giao --</option>
+                    {users.map((u) => <option key={u.id} value={u.id}>{u.full_name ?? u.username}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Đơn vị chủ trì</label>
+                  <select
+                    value={taskForm.lead_department_id ?? ''}
+                    onChange={(e) => setTaskForm((p) => ({ ...p, lead_department_id: e.target.value ? Number(e.target.value) : null }))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Chưa chọn --</option>
+                    {departments.map((d) => <option key={d.id} value={d.id}>{d.short_name || d.name}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="flex gap-3 pt-2 justify-end">
                 <button type="button" onClick={() => setTaskFormOpen(false)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition">Hủy</button>

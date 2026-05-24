@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = "development"
 
+    ORG_NAME: str = "UBND xã"
+
     DATABASE_URL: str
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
@@ -30,6 +32,17 @@ class Settings(BaseSettings):
 
     # Google Sheet Sync — must be overridden in .env for production
     SYNC_WEBHOOK_SECRET: str = "sync-secret-change-me-in-production"
+
+    # Google Gemini API — optional; enables AI-powered document parsing
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "models/gemini-2.5-flash"
+
+    # Groq API — free alternative LLM (14,400 req/day, Llama 3.3 70B)
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+
+    # DeepSeek API — optional alternative LLM
+    DEEPSEEK_API_KEY: str = ""
 
     # Field-level encryption for sensitive columns (credentials_json, etc.)
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

@@ -6,6 +6,8 @@ import DirectivePriorityBadge from '../../components/directives/DirectivePriorit
 import DirectiveStatusBadge from '../../components/directives/DirectiveStatusBadge'
 import DirectiveForm from '../../components/directives/DirectiveForm'
 import AppLayout from '../../components/layout/AppLayout'
+import { useAuthStore } from '../../store/authStore'
+import { isAdminOrLeader } from '../../types'
 import type { DirectiveCreate, DirectivePriority, DirectiveRead, DirectiveStatus } from '../../types/directive'
 
 const STATUS_TABS: { value: DirectiveStatus | ''; label: string }[] = [
@@ -35,6 +37,8 @@ function isOverdue(deadline: string | null, status: DirectiveStatus) {
 
 export default function DirectiveListPage() {
   const navigate = useNavigate()
+  const currentUser = useAuthStore(s => s.user)
+  const canManage = isAdminOrLeader(currentUser)
   const [items, setItems] = useState<DirectiveRead[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -110,13 +114,15 @@ export default function DirectiveListPage() {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition"
-          >
-            <span className="hidden sm:inline">+ Tạo chỉ đạo</span>
-            <span className="sm:hidden">+ Tạo</span>
-          </button>
+          {canManage && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 px-3 md:px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition"
+            >
+              <span className="hidden sm:inline">+ Tạo chỉ đạo</span>
+              <span className="sm:hidden">+ Tạo</span>
+            </button>
+          )}
         </div>
 
         {/* Status tabs */}
