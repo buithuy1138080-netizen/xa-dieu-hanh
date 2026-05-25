@@ -1,4 +1,4 @@
-import { AlertTriangle, Download, Sparkles } from 'lucide-react'
+import { AlertTriangle, Download, Eye, Sparkles, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { documentsApi } from '../../api/documents'
@@ -58,6 +58,9 @@ export default function DocumentListPage() {
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [showUploadAI, setShowUploadAI] = useState(false)
+  const [viewDoc, setViewDoc] = useState<DocumentRead | null>(null)
+  const [viewUrl, setViewUrl] = useState<string | null>(null)
+  const [viewLoading, setViewLoading] = useState(false)
 
   const [search, setSearch] = useState('')
   const [typeTab, setTypeTab] = useState<DocType | ''>('')
@@ -127,6 +130,29 @@ export default function DocumentListPage() {
     } finally {
       setExporting(false)
     }
+  }
+
+  async function handleView(doc: DocumentRead, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!doc.file_name) return
+    setViewDoc(doc)
+    setViewUrl(null)
+    setViewLoading(true)
+    try {
+      const { data } = await documentsApi.downloadFile(doc.id)
+      const url = URL.createObjectURL(data)
+      setViewUrl(url)
+    } catch {
+      setViewUrl('error')
+    } finally {
+      setViewLoading(false)
+    }
+  }
+
+  function closeViewer() {
+    if (viewUrl && viewUrl !== 'error') URL.revokeObjectURL(viewUrl)
+    setViewDoc(null)
+    setViewUrl(null)
   }
 
   const pages = Math.max(1, Math.ceil(total / SIZE))
@@ -252,6 +278,14 @@ export default function DocumentListPage() {
                     </span>
                   )}
                   {doc.issuer && <span className="text-[11px] text-slate-400">{doc.issuer}</span>}
+                  {doc.file_name && (
+                    <button
+                      onClick={e => handleView(doc, e)}
+                      className="flex items-center gap-1 px-2 py-0.5 text-[11px] text-blue-600 border border-blue-200 rounded-lg"
+                    >
+                      <Eye size={11} /> Xem
+                    </button>
+                  )}
                 </div>
               </div>
             )
@@ -272,6 +306,7 @@ export default function DocumentListPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">Trạng thái</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide w-20">Ưu tiên</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Xử lý</th>
+                <th className="px-4 py-3 w-16"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -323,6 +358,17 @@ export default function DocumentListPage() {
                     <td className="px-4 py-3 text-slate-500 text-xs">
                       {doc.assignee?.full_name ?? doc.assignee?.username ?? '—'}
                     </td>
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      {doc.file_name && (
+                        <button
+                          onClick={e => handleView(doc, e)}
+                          className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition"
+                          title="Xem nội dung văn bản"
+                        >
+                          <Eye size={13} /> Xem
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 )
               })}
@@ -349,6 +395,69 @@ export default function DocumentListPage() {
           </div>
         )}
       </div>
+
+      {/* File Viewer modal */}
+      {viewDoc && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/70 backdrop-blur-sm" onClick={closeViewer}>
+          <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200 shrink-0" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 min-w-0">
+              <Eye size={16} className="text-blue-500 shrink-0" />
+              <span className="font-semibold text-slate-800 text-sm truncate">{viewDoc.title}</span>
+              {viewDoc.file_name && (
+                <span className="text-xs text-slate-400 truncate hidden sm:block">· {viewDoc.file_name}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {viewUrl && viewUrl !== 'error' && (
+                <a
+                  href={viewUrl}
+                  download={viewDoc.file_name ?? 'van-ban'}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition"
+                >
+                  <Download size={14} /> Tải về
+                </a>
+              )}
+              <button onClick={closeViewer} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition">
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-hidden flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+            {viewLoading && (
+              <div className="text-white text-sm">Đang tải file...</div>
+            )}
+            {!viewLoading && viewUrl === 'error' && (
+              <div className="text-center text-white">
+                <p className="text-4xl mb-3">⚠️</p>
+                <p className="text-sm">Không thể tải file. Vui lòng thử lại.</p>
+              </div>
+            )}
+            {!viewLoading && viewUrl && viewUrl !== 'error' && (() => {
+              const mime = viewDoc.file_mime ?? ''
+              if (mime === 'application/pdf') {
+                return <iframe src={viewUrl} className="w-full h-full rounded-xl bg-white" title={viewDoc.title} />
+              }
+              if (mime.startsWith('image/')) {
+                return <img src={viewUrl} alt={viewDoc.title} className="max-w-full max-h-full rounded-xl object-contain shadow-2xl" />
+              }
+              return (
+                <div className="bg-white rounded-2xl p-8 text-center shadow-2xl max-w-sm">
+                  <p className="text-5xl mb-4">📄</p>
+                  <p className="font-semibold text-slate-800 mb-1">{viewDoc.file_name}</p>
+                  <p className="text-sm text-slate-500 mb-6">Định dạng này không thể xem trực tiếp.</p>
+                  <a
+                    href={viewUrl}
+                    download={viewDoc.file_name ?? 'van-ban'}
+                    className="flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition"
+                  >
+                    <Download size={15} /> Tải về để xem
+                  </a>
+                </div>
+              )
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* AI Upload modal */}
       {showUploadAI && (

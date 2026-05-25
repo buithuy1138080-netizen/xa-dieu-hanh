@@ -96,7 +96,8 @@ class ReportListResponse(BaseModel):
     items: list[ReportList]
 
 
-@router.get("/", response_model=ReportListResponse)
+@router.get("", response_model=ReportListResponse)
+@router.get("/", response_model=ReportListResponse, include_in_schema=False)
 async def list_reports(
     report_type: str | None = None,
     skip: int = Query(0, ge=0),
