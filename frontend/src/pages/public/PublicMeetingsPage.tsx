@@ -77,6 +77,16 @@ export default function PublicMeetingsPage() {
     return () => { if (searchRef.current) clearTimeout(searchRef.current) }
   }, [search])
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (viewUrl !== null || viewLoading) { closeViewer(); return }
+      if (detail || loadingDetail) setDetail(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [viewUrl, viewLoading, detail, loadingDetail])
+
   async function openDetail(id: number) {
     setLoadingDetail(true)
     setDetail(null)
