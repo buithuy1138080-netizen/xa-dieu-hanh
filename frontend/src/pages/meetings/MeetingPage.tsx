@@ -1,4 +1,4 @@
-import { Download, Eye, FileText, Plus, Trash2, Upload, X } from 'lucide-react'
+import { Copy, Download, Eye, FileText, Link, Plus, Trash2, Upload, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { meetingsApi, type Meeting, type MeetingCreate, type MeetingListItem } from '../../api/meetings'
 import AppLayout from '../../components/layout/AppLayout'
@@ -27,6 +27,15 @@ export default function MeetingPage() {
   const currentUser = useAuthStore(s => s.user)
   const canManageMeeting = (createdById: number | null) =>
     isAdminOrLeader(currentUser) || (currentUser?.id != null && currentUser.id === createdById)
+
+  const [copied, setCopied] = useState(false)
+  function copyPublicLink() {
+    const url = `${window.location.origin}/public/meetings`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
   const [items, setItems] = useState<MeetingListItem[]>([])
   const [total, setTotal] = useState(0)
@@ -203,9 +212,16 @@ export default function MeetingPage() {
               <p className="text-sm text-slate-500 mt-0.5">{loading ? 'Đang tải...' : `${total} cuộc họp`}</p>
             </div>
           </div>
-          <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition">
-            <Plus size={15} /> Tạo cuộc họp
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={copyPublicLink}
+              title="Sao chép link trang công khai để gửi cho người khác"
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition ${copied ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'}`}>
+              {copied ? <><Copy size={14} /> Đã sao chép!</> : <><Link size={14} /> Link công khai</>}
+            </button>
+            <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition">
+              <Plus size={15} /> Tạo cuộc họp
+            </button>
+          </div>
         </div>
 
         {/* Search */}
