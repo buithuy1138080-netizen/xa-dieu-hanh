@@ -53,6 +53,7 @@ const UserManagementPage    = lazy(() => import('./pages/users/UserManagementPag
 const DepartmentPage        = lazy(() => import('./pages/departments/DepartmentPage'))
 const ProgramsPage          = lazy(() => import('./pages/programs/ProgramsPage'))
 const MeetingPage           = lazy(() => import('./pages/meetings/MeetingPage'))
+const PublicMeetingsPage    = lazy(() => import('./pages/public/PublicMeetingsPage'))
 
 function PageLoader() {
   return (
@@ -125,6 +126,7 @@ function AnimatedRoutes() {
   return (
     <Routes location={location} key={location.pathname}>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/public/meetings" element={<Suspense fallback={<PageLoader />}><PublicMeetingsPage /></Suspense>} />
         <Route path="/dashboard"          element={<P><DashboardPage /></P>} />
         <Route path="/tasks"              element={<P><TaskListPage /></P>} />
         <Route path="/tasks/:id"          element={<P><TaskDetailPage /></P>} />
