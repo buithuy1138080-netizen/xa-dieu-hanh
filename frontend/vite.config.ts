@@ -68,10 +68,6 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
-      '/public': {
-        target: process.env.VITE_API_URL ?? 'http://localhost:8000',
-        changeOrigin: true,
-      },
     },
   },
   preview: {
@@ -82,10 +78,6 @@ export default defineConfig({
         target: process.env.VITE_API_URL ?? 'http://localhost:8000',
         changeOrigin: true,
         ws: true,
-      },
-      '/public': {
-        target: process.env.VITE_API_URL ?? 'http://localhost:8000',
-        changeOrigin: true,
       },
     },
   },

@@ -63,7 +63,7 @@ async def _limit_body_size(request: Request, call_next):
 
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
-app.include_router(public_meetings.router, prefix="/public", tags=["public"])
+app.include_router(public_meetings.router, prefix="/api/public", tags=["public"])
 
 
 @app.get("/health", tags=["system"])

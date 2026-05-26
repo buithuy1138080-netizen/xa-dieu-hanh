@@ -2,7 +2,7 @@ import axios from 'axios'
 import { Download, Eye, FileText, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-const publicApi = axios.create({ baseURL: '/' })
+const publicApi = axios.create({ baseURL: '/api/public' })
 
 interface MeetingItem {
   id: number
@@ -295,7 +295,7 @@ export default function PublicMeetingsPage() {
                               className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="Xem">
                               <Eye size={15} />
                             </button>
-                            <a href={`/public/meetings/${detail.id}/files/${f.id}`} target="_blank" rel="noreferrer"
+                            <a href={`/api/public/meetings/${detail.id}/files/${f.id}`} target="_blank" rel="noreferrer"
                               className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition" title="Tải về"
                               onClick={e => e.stopPropagation()}>
                               <Download size={15} />
