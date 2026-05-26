@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   BarChart3, Bell, BookTemplate, Briefcase, Building,
-  CheckSquare, ChevronRight, ClipboardList, FileText,
+  CalendarDays, CheckSquare, ChevronRight, ClipboardList, FileText,
   LayoutDashboard, LogOut,
   PanelLeftClose, PanelLeftOpen,
   Shield, Target, Users, X,
@@ -32,8 +32,9 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: 'VĂN BẢN & CHỈ ĐẠO',
     items: [
-      { to: '/documents',  label: 'Văn bản',  icon: FileText },
-      { to: '/directives', label: 'Chỉ đạo',  icon: ClipboardList },
+      { to: '/documents',  label: 'Văn bản',       icon: FileText },
+      { to: '/directives', label: 'Chỉ đạo',        icon: ClipboardList },
+      { to: '/meetings',   label: 'Tài liệu họp',   icon: CalendarDays },
     ],
   },
   {

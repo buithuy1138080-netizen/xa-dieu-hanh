@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import ai_chat, auth, dashboard, departments, directives, documents, gsheet_sync, kpi, kpi_chien_luoc, kpi_unified, nghi_quyet, notifications, nq57, ocr, programs, report_templates, reports, staff, strategic, tasks, users, ws, zalo
+from app.api.v1.endpoints import ai_chat, auth, dashboard, departments, directives, documents, gsheet_sync, kpi, kpi_chien_luoc, kpi_unified, meetings, nghi_quyet, notifications, nq57, ocr, programs, report_templates, reports, staff, strategic, tasks, users, ws, zalo
 
 api_router = APIRouter()
 
@@ -26,4 +26,5 @@ api_router.include_router(zalo.router, prefix="/zalo", tags=["zalo"])
 api_router.include_router(strategic.router, prefix="/strategic", tags=["strategic"])
 api_router.include_router(programs.router, prefix="", tags=["programs"])
 api_router.include_router(ws.router, tags=["websocket"])
+api_router.include_router(meetings.router, prefix="/meetings", tags=["meetings"])
 api_router.include_router(ai_chat.router, prefix="/ai-chat", tags=["ai-chat"])
