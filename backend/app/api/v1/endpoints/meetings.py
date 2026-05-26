@@ -65,6 +65,7 @@ class MeetingOut(BaseModel):
     chair: str | None
     agenda: str | None
     created_at: datetime
+    created_by_id: int | None
     files: list[FileOut] = []
     participants: list[ParticipantOut] = []
     model_config = {"from_attributes": True}
@@ -75,12 +76,17 @@ class MeetingListOut(BaseModel):
     meeting_date: datetime
     location: str | None
     chair: str | None
+    created_by_id: int | None
     file_count: int = 0
     participant_count: int = 0
     model_config = {"from_attributes": True}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _can_manage(user: User, meeting: Meeting) -> bool:
+    return user.role in ("admin", "leader") or meeting.created_by_id == user.id
+
 
 async def _get_or_404(db: AsyncSession, meeting_id: int) -> Meeting:
     q = await db.execute(
@@ -133,6 +139,7 @@ async def list_meetings(
                 "meeting_date": m.meeting_date,
                 "location": m.location,
                 "chair": m.chair,
+                "created_by_id": m.created_by_id,
                 "file_count": len(m.files),
                 "participant_count": len(m.participants),
             }
@@ -145,7 +152,7 @@ async def list_meetings(
 async def create_meeting(
     body: MeetingCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin_or_leader),
+    current_user: User = Depends(get_current_user),
 ):
     m = Meeting(
         title=body.title,
@@ -178,9 +185,11 @@ async def update_meeting(
     meeting_id: int,
     body: MeetingUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin_or_leader),
+    current_user: User = Depends(get_current_user),
 ):
     m = await _get_or_404(db, meeting_id)
+    if not _can_manage(current_user, m):
+        raise HTTPException(403, "Bạn không có quyền sửa cuộc họp này")
     if body.title is not None:
         m.title = body.title
     if body.meeting_date is not None:
@@ -201,9 +210,11 @@ async def update_meeting(
 async def delete_meeting(
     meeting_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin_or_leader),
+    current_user: User = Depends(get_current_user),
 ):
     m = await _get_or_404(db, meeting_id)
+    if not _can_manage(current_user, m):
+        raise HTTPException(403, "Bạn không có quyền xóa cuộc họp này")
     await db.delete(m)
     await db.commit()
 
@@ -213,9 +224,11 @@ async def upload_file(
     meeting_id: int,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin_or_leader),
+    current_user: User = Depends(get_current_user),
 ):
-    await _get_or_404(db, meeting_id)
+    m = await _get_or_404(db, meeting_id)
+    if not _can_manage(current_user, m):
+        raise HTTPException(403, "Bạn không có quyền upload file cho cuộc họp này")
     ext = Path(file.filename or "file").suffix.lower()
     if ext not in ALLOWED_EXTS:
         raise HTTPException(400, f"Định dạng '{ext}' không được phép")
@@ -268,8 +281,11 @@ async def delete_file(
     meeting_id: int,
     file_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin_or_leader),
+    current_user: User = Depends(get_current_user),
 ):
+    m = await _get_or_404(db, meeting_id)
+    if not _can_manage(current_user, m):
+        raise HTTPException(403, "Bạn không có quyền xóa file của cuộc họp này")
     mf = (await db.execute(
         select(MeetingFile).where(MeetingFile.id == file_id, MeetingFile.meeting_id == meeting_id)
     )).scalar_one_or_none()

@@ -22,6 +22,7 @@ export interface Meeting {
   chair: string | null
   agenda: string | null
   created_at: string
+  created_by_id: number | null
   files: MeetingFile[]
   participants: MeetingParticipant[]
 }
@@ -32,6 +33,7 @@ export interface MeetingListItem {
   meeting_date: string
   location: string | null
   chair: string | null
+  created_by_id: number | null
   file_count: number
   participant_count: number
 }

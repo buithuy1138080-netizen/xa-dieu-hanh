@@ -25,7 +25,8 @@ interface StaffOption { id: number; full_name: string; email: string | null }
 
 export default function MeetingPage() {
   const currentUser = useAuthStore(s => s.user)
-  const canManage = isAdminOrLeader(currentUser)
+  const canManageMeeting = (createdById: number | null) =>
+    isAdminOrLeader(currentUser) || (currentUser?.id != null && currentUser.id === createdById)
 
   const [items, setItems] = useState<MeetingListItem[]>([])
   const [total, setTotal] = useState(0)
@@ -191,11 +192,9 @@ export default function MeetingPage() {
               <p className="text-sm text-slate-500 mt-0.5">{loading ? 'Đang tải...' : `${total} cuộc họp`}</p>
             </div>
           </div>
-          {canManage && (
-            <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition">
-              <Plus size={15} /> Tạo cuộc họp
-            </button>
-          )}
+          <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition">
+            <Plus size={15} /> Tạo cuộc họp
+          </button>
         </div>
 
         {/* Search */}
@@ -254,7 +253,7 @@ export default function MeetingPage() {
                       <button onClick={() => openDetail(m.id)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="Xem chi tiết">
                         <Eye size={14} />
                       </button>
-                      {canManage && (
+                      {canManageMeeting(m.created_by_id) && (
                         <>
                           <button onClick={() => openEdit(m)} className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition" title="Sửa">
                             ✏️
@@ -344,7 +343,7 @@ export default function MeetingPage() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold text-slate-500 uppercase">Tài liệu đính kèm ({detail.files.length})</p>
-                    {canManage && (
+                    {canManageMeeting(detail.created_by_id) && (
                       <button onClick={() => fileInputRef.current?.click()} disabled={uploadingFile}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition">
                         <Upload size={12} /> {uploadingFile ? 'Đang tải...' : 'Upload'}
@@ -377,7 +376,7 @@ export default function MeetingPage() {
                                 onClick={e => e.stopPropagation()}>
                                 <Download size={14} />
                               </a>
-                              {canManage && (
+                              {canManageMeeting(detail.created_by_id) && (
                                 <button onClick={() => handleDeleteFile(f.id)}
                                   className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Xoá">
                                   <Trash2 size={14} />
