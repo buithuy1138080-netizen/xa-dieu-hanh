@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -99,9 +100,9 @@ async def public_download_file(
         raise HTTPException(404, "File không tồn tại trên server")
     mime = mf.file_mime or "application/octet-stream"
     disposition = "inline" if mime == "application/pdf" else "attachment"
+    encoded = quote(mf.file_name, safe="")
     return FileResponse(
         path=str(path),
-        filename=mf.file_name,
         media_type=mime,
-        headers={"Content-Disposition": f'{disposition}; filename="{mf.file_name}"'},
+        headers={"Content-Disposition": f"{disposition}; filename*=UTF-8''{encoded}"},
     )
