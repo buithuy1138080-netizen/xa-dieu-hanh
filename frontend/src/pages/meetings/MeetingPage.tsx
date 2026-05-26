@@ -233,26 +233,23 @@ export default function MeetingPage() {
                 </td></tr>
               )}
               {!loading && items.map(m => (
-                <tr key={m.id} className="hover:bg-indigo-50/30 transition-colors">
-                  <td className="px-4 py-3">
-                    <button onClick={() => openDetail(m.id)} className="font-medium text-slate-800 hover:text-indigo-600 text-left line-clamp-1">
-                      {m.title}
-                    </button>
+                <tr key={m.id}
+                  onClick={() => openDetail(m.id)}
+                  className="hover:bg-indigo-50/50 cursor-pointer transition-colors border-b border-slate-50 last:border-0">
+                  <td className="px-4 py-3.5">
+                    <p className="font-semibold text-slate-800 group-hover:text-indigo-700 line-clamp-1">{m.title}</p>
                   </td>
-                  <td className="px-4 py-3 text-slate-600 text-xs">{fmtDateTime(m.meeting_date)}</td>
-                  <td className="px-4 py-3 text-slate-500 text-xs">{m.location || '—'}</td>
-                  <td className="px-4 py-3 text-slate-500 text-xs">{m.chair || '—'}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className="inline-flex items-center gap-1 text-xs text-indigo-600 font-medium">
-                      <FileText size={12} />{m.file_count}
+                  <td className="px-4 py-3.5 text-slate-600 text-xs whitespace-nowrap">{fmtDateTime(m.meeting_date)}</td>
+                  <td className="px-4 py-3.5 text-slate-500 text-xs">{m.location || '—'}</td>
+                  <td className="px-4 py-3.5 text-slate-500 text-xs">{m.chair || '—'}</td>
+                  <td className="px-4 py-3.5 text-center">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-xs font-medium">
+                      <FileText size={11} />{m.file_count}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center text-xs text-slate-500">{m.participant_count}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3.5 text-center text-xs text-slate-500">{m.participant_count}</td>
+                  <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => openDetail(m.id)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="Xem chi tiết">
-                        <Eye size={14} />
-                      </button>
                       {canManageMeeting(m.created_by_id) && (
                         <>
                           <button onClick={() => openEdit(m)} className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition" title="Sửa">
@@ -340,27 +337,42 @@ export default function MeetingPage() {
                 </div>
 
                 {/* Files */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold text-slate-500 uppercase">Tài liệu đính kèm ({detail.files.length})</p>
-                    {canManageMeeting(detail.created_by_id) && (
-                      <button onClick={() => fileInputRef.current?.click()} disabled={uploadingFile}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition">
-                        <Upload size={12} /> {uploadingFile ? 'Đang tải...' : 'Upload'}
-                      </button>
-                    )}
+                {/* Upload zone */}
+                {canManageMeeting(detail.created_by_id) && (
+                  <div>
                     <input ref={fileInputRef} type="file" className="hidden"
                       accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg"
                       onChange={handleUpload} />
+                    <button onClick={() => fileInputRef.current?.click()} disabled={uploadingFile}
+                      className="w-full flex flex-col items-center gap-2 p-5 border-2 border-dashed border-indigo-200 rounded-xl hover:border-indigo-400 hover:bg-indigo-50/50 transition disabled:opacity-50">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                        <Upload size={18} className="text-indigo-600" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-semibold text-indigo-700">{uploadingFile ? 'Đang upload...' : 'Nhấn để upload tài liệu'}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">PDF, Word, Excel, PowerPoint, ảnh</p>
+                      </div>
+                    </button>
                   </div>
+                )}
 
+                {/* File list */}
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase mb-3">
+                    Tài liệu đính kèm ({detail.files.length})
+                  </p>
                   {detail.files.length === 0
-                    ? <p className="text-sm text-slate-400">Chưa có tài liệu</p>
+                    ? (
+                      <div className="text-center py-8 text-slate-400">
+                        <p className="text-3xl mb-2">📂</p>
+                        <p className="text-sm">Chưa có tài liệu nào</p>
+                      </div>
+                    )
                     : <div className="space-y-2">
                         {detail.files.map(f => (
-                          <div key={f.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                            <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-base shrink-0">
-                              {f.file_mime === 'application/pdf' ? '📄' : f.file_mime?.startsWith('image/') ? '🖼️' : '📎'}
+                          <div key={f.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 hover:border-indigo-200 transition">
+                            <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-lg shrink-0">
+                              {f.file_mime === 'application/pdf' ? '📄' : f.file_mime?.startsWith('image/') ? '🖼️' : f.file_mime?.includes('word') ? '📝' : f.file_mime?.includes('sheet') ? '📊' : '📎'}
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-slate-800 truncate">{f.file_name}</p>
@@ -368,18 +380,18 @@ export default function MeetingPage() {
                             </div>
                             <div className="flex gap-1 shrink-0">
                               <button onClick={() => handleViewFile(detail.id, f.id, f.file_name)}
-                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="Xem">
-                                <Eye size={14} />
+                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="Xem">
+                                <Eye size={15} />
                               </button>
                               <a href={meetingsApi.getFileUrl(detail.id, f.id)} download={f.file_name}
-                                className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition" title="Tải về"
+                                className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition" title="Tải về"
                                 onClick={e => e.stopPropagation()}>
-                                <Download size={14} />
+                                <Download size={15} />
                               </a>
                               {canManageMeeting(detail.created_by_id) && (
                                 <button onClick={() => handleDeleteFile(f.id)}
-                                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Xoá">
-                                  <Trash2 size={14} />
+                                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Xoá">
+                                  <Trash2 size={15} />
                                 </button>
                               )}
                             </div>
