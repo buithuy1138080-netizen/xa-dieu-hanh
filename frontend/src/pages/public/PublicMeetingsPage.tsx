@@ -60,7 +60,7 @@ export default function PublicMeetingsPage() {
   async function load(p = 1, q = search) {
     setLoading(true)
     try {
-      const { data } = await publicApi.get('/public/meetings', { params: { page: p, size: SIZE, search: q || undefined } })
+      const { data } = await publicApi.get('/meetings', { params: { page: p, size: SIZE, search: q || undefined } })
       setItems(data.items)
       setTotal(data.total)
       setPage(p)
@@ -81,7 +81,7 @@ export default function PublicMeetingsPage() {
     setLoadingDetail(true)
     setDetail(null)
     try {
-      const { data } = await publicApi.get(`/public/meetings/${id}`)
+      const { data } = await publicApi.get(`/meetings/${id}`)
       setDetail(data)
     } finally {
       setLoadingDetail(false)
@@ -93,7 +93,7 @@ export default function PublicMeetingsPage() {
     setViewFileName(fileName)
     setViewUrl(null)
     try {
-      const { data } = await publicApi.get(`/public/meetings/${meetingId}/files/${fileId}`, { responseType: 'blob' })
+      const { data } = await publicApi.get(`/meetings/${meetingId}/files/${fileId}`, { responseType: 'blob' })
       setViewUrl(URL.createObjectURL(data))
     } catch {
       setViewUrl('error')
