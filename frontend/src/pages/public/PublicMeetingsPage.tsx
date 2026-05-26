@@ -1,6 +1,8 @@
+import axios from 'axios'
 import { Download, Eye, FileText, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import apiClient from '../../api/client'
+
+const publicApi = axios.create({ baseURL: '/' })
 
 interface MeetingItem {
   id: number
@@ -58,7 +60,7 @@ export default function PublicMeetingsPage() {
   async function load(p = 1, q = search) {
     setLoading(true)
     try {
-      const { data } = await apiClient.get('/public/meetings', { params: { page: p, size: SIZE, search: q || undefined } })
+      const { data } = await publicApi.get('/public/meetings', { params: { page: p, size: SIZE, search: q || undefined } })
       setItems(data.items)
       setTotal(data.total)
       setPage(p)
@@ -79,7 +81,7 @@ export default function PublicMeetingsPage() {
     setLoadingDetail(true)
     setDetail(null)
     try {
-      const { data } = await apiClient.get(`/public/meetings/${id}`)
+      const { data } = await publicApi.get(`/public/meetings/${id}`)
       setDetail(data)
     } finally {
       setLoadingDetail(false)
@@ -91,7 +93,7 @@ export default function PublicMeetingsPage() {
     setViewFileName(fileName)
     setViewUrl(null)
     try {
-      const { data } = await apiClient.get(`/public/meetings/${meetingId}/files/${fileId}`, { responseType: 'blob' })
+      const { data } = await publicApi.get(`/public/meetings/${meetingId}/files/${fileId}`, { responseType: 'blob' })
       setViewUrl(URL.createObjectURL(data))
     } catch {
       setViewUrl('error')
@@ -293,7 +295,7 @@ export default function PublicMeetingsPage() {
                               className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="Xem">
                               <Eye size={15} />
                             </button>
-                            <a href={`/public/meetings/${detail.id}/files/${f.id}`} download={f.file_name}
+                            <a href={`/public/meetings/${detail.id}/files/${f.id}`} target="_blank" rel="noreferrer"
                               className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition" title="Tải về"
                               onClick={e => e.stopPropagation()}>
                               <Download size={15} />
