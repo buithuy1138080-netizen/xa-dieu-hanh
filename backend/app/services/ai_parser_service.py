@@ -60,11 +60,12 @@ _GEMINI_SYSTEM_PROMPT = """Bạn là AI chuyên phân tích văn bản hành ch�
 {
   "metadata": {
     "document_type": "loại văn bản: Công văn/Quyết định/Nghị quyết/Chỉ thị/Kế hoạch/Thông báo/Báo cáo/Tờ trình/Biên bản/Chương trình/Hướng dẫn/Đề án",
-    "document_number": "số ký hiệu dạng 222/TB-UBND (không khoảng trắng) hoặc null",
-    "issued_date": "YYYY-MM-DD hoặc null",
-    "issuing_agency": "tên cơ quan ban hành hoặc null",
-    "signer": "Chức vụ + Họ tên người ký hoặc null",
-    "summary": "tóm tắt 3-5 câu ngắn gọn nội dung chính bằng tiếng Việt"
+    "document_number": "số ký hiệu TRÊN PHẦN ĐẦU văn bản, dòng bắt đầu bằng 'Số:' hoặc 'SỐ:' — dạng 222/TB-UBND không khoảng trắng. KHÔNG lấy số từ phần Căn cứ/nội dung/điều khoản. Nếu không tìm thấy → null",
+    "issued_date": "ngày ban hành trên phần đầu văn bản, dạng YYYY-MM-DD hoặc null",
+    "issuing_agency": "tên cơ quan ban hành (dòng trên cùng bên trái, VD: UBND XÃ BẮC HÀ) hoặc null",
+    "signer": "Chức vụ + Họ tên người ký ở cuối văn bản hoặc null",
+    "trich_yeu": "trích yếu NGUYÊN VĂN từ dòng bắt đầu bằng 'V/v:' hoặc 'Về việc:' hoặc tiêu đề in hoa của văn bản — KHÔNG paraphrase, KHÔNG tóm tắt lại",
+    "summary": "tóm tắt 2-3 câu ngắn nội dung chính bằng tiếng Việt"
   },
   "tasks": [
     {
@@ -96,7 +97,9 @@ _GEMINI_SYSTEM_PROMPT = """Bạn là AI chuyên phân tích văn bản hành ch�
 Quy tắc BẮT BUỘC:
 - Chỉ trích xuất thông tin CÓ TRONG văn bản, không bịa đặt.
 - Nếu không có nhiệm vụ/chỉ tiêu/ngân sách → trả mảng rỗng [].
+- document_number: CHỈ lấy từ dòng "Số: ..." ở phần header (đầu văn bản). TUYỆT ĐỐI không lấy số từ "Căn cứ Luật số...", "Nghị định số...", "Quyết định số..." trong nội dung.
 - Số ký hiệu: không có khoảng trắng (VD: "15/QĐ-HĐND" không phải "15/QĐ - HĐND").
+- trich_yeu: lấy NGUYÊN VĂN dòng V/v hoặc tiêu đề, không được viết lại hay tóm tắt.
 - Ngày: format YYYY-MM-DD. Nếu chỉ có tháng/năm → lấy ngày đầu tháng (VD: tháng 6/2026 → "2026-06-01").
 - Ưu tiên nhiệm vụ: urgent=hỏa tốc/thượng khẩn, high=khẩn, medium=mặc định, low=thông thường.
 - Chỉ tiêu/KPI: trích xuất tất cả chỉ tiêu có con số (tỷ lệ %, số lượng, giá trị tuyệt đối).
@@ -177,6 +180,52 @@ def _call_gemini_with_retry(
     return None
 
 
+# ── Groq fallback (llama) ───────────────────────────────────────────────────
+
+def _call_groq_with_retry(text: str) -> dict[str, Any] | None:
+    """Fallback: call Groq (llama) text API when Gemini is unavailable."""
+    try:
+        from app.core.config import settings
+        if not getattr(settings, "GROQ_API_KEY", None):
+            return None
+        import urllib.request, json as _json
+        model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile")
+    except Exception:
+        return None
+
+    prompt = f"{_GEMINI_SYSTEM_PROMPT}\n\nNội dung văn bản:\n\n{text[:12000]}"
+    body = _json.dumps({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1,
+        "max_tokens": 4096,
+    }).encode()
+
+    for attempt in range(_MAX_RETRIES):
+        try:
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = _json.loads(resp.read())
+            raw = data["choices"][0]["message"]["content"]
+            result = _parse_gemini_json(raw)
+            if result:
+                return result
+        except Exception as exc:
+            logger.warning("Groq attempt %d/%d failed: %s", attempt + 1, _MAX_RETRIES, exc)
+            if attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_DELAYS[attempt])
+
+    return None
+
+
 # ── Output mapping ──────────────────────────────────────────────────────────
 
 def _build_output(ai_data: dict[str, Any]) -> dict[str, Any]:
@@ -193,7 +242,7 @@ def _build_output(ai_data: dict[str, Any]) -> dict[str, Any]:
         "loai_van_ban":     meta.get("document_type"),
         "ngay_ban_hanh":    meta.get("issued_date"),
         "nguoi_ky":         meta.get("signer"),
-        "trich_yeu":        meta.get("summary"),
+        "trich_yeu":        meta.get("trich_yeu") or meta.get("summary"),
         "summary_points":   [],
         "tu_khoa":          [],
     }
@@ -302,8 +351,9 @@ def parse_file_with_vision(file_path: "Path") -> dict[str, Any]:
             result = _build_output(ai_data)
             result["canh_bao"] = _validate_result(result)
             return result
+        logger.info("Gemini Vision failed — falling back to text extraction + Groq/regex")
 
-    # ── Text fallback ─────────────────────────────────────────────────────
+    # ── Text fallback (OCR text → Gemini text → Groq → regex) ────────────
     from app.services import ocr_service
     text, _ = ocr_service.ocr_file(_Path(file_path))
     return parse_document(_clean(text))
@@ -312,18 +362,23 @@ def parse_file_with_vision(file_path: "Path") -> dict[str, Any]:
 def parse_document(text: str) -> dict[str, Any]:
     """Parse OCR text and return structured extraction.
 
-    Tries Gemini text API first; falls back to rule-based regex extraction.
+    Tries Gemini text API → Groq (llama) → regex fallback.
     """
     from app.services.text_cleaner import clean as _clean
     text = _clean(text)
 
     ai_data = _call_gemini_with_retry(text, is_vision=False)
+    if not ai_data:
+        logger.info("Gemini text failed — trying Groq fallback")
+        ai_data = _call_groq_with_retry(text)
+
     if ai_data:
         result = _build_output(ai_data)
         result["canh_bao"] = _validate_result(result)
         return result
 
-    # Regex fallback — no Gemini key or all retries failed
+    # Regex fallback — all AI providers failed
+    logger.info("All AI providers failed — using regex extraction")
     van_ban = _extract_doc_info(text)
     van_ban.setdefault("summary_points", [])
     van_ban.setdefault("tu_khoa", [])
@@ -384,20 +439,19 @@ def _extract_doc_info(text: str) -> dict[str, Any]:
     if org_candidates:
         info["co_quan_ban_hanh"] = org_candidates[-1]
 
+    # Tìm số ký hiệu CHỈ trong dòng "Số:" ở phần header, không lấy số căn cứ
     if so_idx is not None:
         so_line = non_empty[so_idx]
         m = re.search(r"[Ss][ốo][\s:,]+(\d[\d\s]*[-/][^\n\s,;]+)", so_line)
         if m:
             info["so_ky_hieu"] = re.sub(r"\s+", "", m.group(1).strip().rstrip("."))
     if "so_ky_hieu" not in info:
-        for pat in [
-            r"[Ss][ốo][\s:,]+(\d+\s*[-/][A-ZĐÀÁẢÃẠ0-9/\-a-z]+)",
-            r"\b(\d{1,5}[-/][A-Z]{2,8}[-/][A-Z0-9ĐU]{2,12})\b",
-        ]:
-            m = re.search(pat, text[:800])
-            if m:
-                info["so_ky_hieu"] = re.sub(r"\s+", "", m.group(1).strip().rstrip("."))
-                break
+        # Chỉ tìm trong 20 dòng đầu để tránh nhầm với số căn cứ
+        header_text = "\n".join(non_empty[:20])
+        # Ưu tiên dòng có dạng "Số: ..." rõ ràng
+        m = re.search(r"^[Ss][ốo][\s:,]+(\d+\s*[-/][A-ZĐÀÁẢÃẠ0-9/\-a-záàảãạ]+)", header_text, re.MULTILINE)
+        if m:
+            info["so_ky_hieu"] = re.sub(r"\s+", "", m.group(1).strip().rstrip("."))
 
     tu = text.upper()
     for kw, label in _DOC_TYPES.items():
