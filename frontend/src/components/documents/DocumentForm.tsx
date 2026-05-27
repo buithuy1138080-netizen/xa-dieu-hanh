@@ -130,7 +130,14 @@ export default function DocumentForm({ initial, onSubmit, onCancel, loading }: P
   function handleViewFile() {
     if (!aiFile) return
     const url = URL.createObjectURL(aiFile)
-    window.open(url, '_blank')
+    const a = document.createElement('a')
+    a.href = url
+    a.target = '_blank'
+    a.rel = 'noopener noreferrer'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
   }
 
   function clearFile() {
