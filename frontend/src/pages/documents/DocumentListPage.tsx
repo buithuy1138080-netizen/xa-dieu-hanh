@@ -48,7 +48,7 @@ function isOverdue(deadline: string | null, status: string) {
 export default function DocumentListPage() {
   const navigate = useNavigate()
   const currentUser = useAuthStore(s => s.user)
-  const canManage = isAdminOrLeader(currentUser)
+  const canManage = !!currentUser
   const [docs, setDocs] = useState<DocumentRead[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
