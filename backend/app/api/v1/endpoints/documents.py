@@ -520,11 +520,15 @@ async def export_documents(
     )
 
 
+def _can_manage_doc(user: User, doc: Document) -> bool:
+    return user.role in ('admin', 'leader') or doc.created_by == user.id
+
+
 @router.post("", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
 async def create_document(
     body: DocumentCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin_or_leader),
+    current_user: User = Depends(get_current_user),
 ):
     doc = Document(**body.model_dump(), created_by=current_user.id)
     db.add(doc)
@@ -550,11 +554,11 @@ async def update_document(
     doc_id: int,
     body: DocumentUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin_or_leader),
+    current_user: User = Depends(get_current_user),
 ):
-    if False:  # role already checked by dependency
-        raise HTTPException(403, "Cần quyền admin, leader hoặc manager để cập nhật văn bản")
     doc = await _get_doc_or_404(db, doc_id)
+    if not _can_manage_doc(current_user, doc):
+        raise HTTPException(403, "Chỉ người tạo hoặc admin/leader mới được sửa văn bản này")
     changes = body.model_dump(exclude_unset=True)
     for field, value in changes.items():
         setattr(doc, field, value)
@@ -567,9 +571,11 @@ async def update_document(
 async def delete_document(
     doc_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin_or_leader),
+    current_user: User = Depends(get_current_user),
 ):
     doc = await _get_doc_or_404(db, doc_id)
+    if not _can_manage_doc(current_user, doc):
+        raise HTTPException(403, "Chỉ người tạo hoặc admin/leader mới được xóa văn bản này")
     doc.deleted_at = datetime.now(timezone.utc)
     _add_history(db, doc.id, current_user.id, "deleted")
     await db.commit()
@@ -620,9 +626,11 @@ async def upload_file(
     doc_id: int,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin_or_leader),
+    current_user: User = Depends(get_current_user),
 ):
     doc = await _get_doc_or_404(db, doc_id)
+    if not _can_manage_doc(current_user, doc):
+        raise HTTPException(403, "Chỉ người tạo hoặc admin/leader mới được upload file cho văn bản này")
 
     safe_name = Path(file.filename or "file").name
     ext = Path(safe_name).suffix.lower()
