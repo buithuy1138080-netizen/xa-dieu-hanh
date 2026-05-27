@@ -92,6 +92,17 @@ export default function DocumentListPage() {
   useEffect(() => { load(1) }, [typeTab, statusFilter])
 
   useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setViewUrl(prev => { if (prev && prev !== 'error') URL.revokeObjectURL(prev); return null })
+        setViewDoc(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => {
     if (searchRef.current) clearTimeout(searchRef.current)
     searchRef.current = setTimeout(() => load(1, search), 400)
     return () => { if (searchRef.current) clearTimeout(searchRef.current) }

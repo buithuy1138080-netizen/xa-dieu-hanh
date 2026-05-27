@@ -98,6 +98,14 @@ export default function DocumentDetailPage() {
     departmentsApi.list().then((r) => setDepartments(r.data)).catch(() => {})
   }, [docId])
 
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setPreviewBlob(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   async function handleStatusChange() {
     if (!doc) return
     const flow = STATUS_FLOW[doc.status]
