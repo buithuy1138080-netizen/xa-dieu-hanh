@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Building2, Paperclip, Sparkles, User, X } from 'lucide-react'
+import { Building2, Eye, Paperclip, Sparkles, User, X } from 'lucide-react'
 import apiClient from '../../api/client'
 import { documentsApi } from '../../api/documents'
 import type { DocumentCreate, DocumentRead } from '../../types/document'
@@ -127,6 +127,12 @@ export default function DocumentForm({ initial, onSubmit, onCancel, loading }: P
     runAiParse(file)
   }
 
+  function handleViewFile() {
+    if (!aiFile) return
+    const url = URL.createObjectURL(aiFile)
+    window.open(url, '_blank')
+  }
+
   function clearFile() {
     setAiFile(null)
     setAiFilledFields(new Set())
@@ -222,6 +228,9 @@ export default function DocumentForm({ initial, onSubmit, onCancel, loading }: P
                 <p className="text-xs text-amber-700 mt-0.5">{aiWarn}</p>
               )}
             </div>
+            <button type="button" onClick={handleViewFile} title="Xem văn bản" className="text-slate-400 hover:text-blue-500 transition shrink-0">
+              <Eye size={15} />
+            </button>
             <button type="button" onClick={clearFile} className="text-slate-400 hover:text-red-400 transition shrink-0">
               <X size={15} />
             </button>
