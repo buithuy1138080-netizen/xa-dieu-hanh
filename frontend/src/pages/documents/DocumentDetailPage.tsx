@@ -236,14 +236,16 @@ export default function DocumentDetailPage() {
               {PRIORITY_LABEL[doc.priority] ?? doc.priority}
             </span>
           </div>
-          <div className="flex gap-2 shrink-0">
-            <button onClick={() => setEditOpen(true)} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition text-slate-600">
-              ✏ Sửa
-            </button>
-            <button onClick={handleDelete} className="px-3 py-1.5 text-sm border border-red-200 rounded-lg hover:bg-red-50 transition text-red-600">
-              🗑 Xóa
-            </button>
-          </div>
+          {(me?.role === 'admin' || me?.role === 'leader' || doc.created_by === me?.id) && (
+            <div className="flex gap-2 shrink-0">
+              <button onClick={() => setEditOpen(true)} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition text-slate-600">
+                ✏ Sửa
+              </button>
+              <button onClick={handleDelete} className="px-3 py-1.5 text-sm border border-red-200 rounded-lg hover:bg-red-50 transition text-red-600">
+                🗑 Xóa
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── Title ── */}
