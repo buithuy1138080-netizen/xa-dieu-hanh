@@ -60,11 +60,11 @@ _GEMINI_SYSTEM_PROMPT = """Bạn là AI chuyên phân tích văn bản hành ch�
 {
   "metadata": {
     "document_type": "loại văn bản: Công văn/Quyết định/Nghị quyết/Chỉ thị/Kế hoạch/Thông báo/Báo cáo/Tờ trình/Biên bản/Chương trình/Hướng dẫn/Đề án",
-    "document_number": "số ký hiệu TRÊN PHẦN ĐẦU văn bản, dòng bắt đầu bằng 'Số:' hoặc 'SỐ:' — dạng 222/TB-UBND không khoảng trắng. KHÔNG lấy số từ phần Căn cứ/nội dung/điều khoản. Nếu không tìm thấy → null",
+    "document_number": "số ký hiệu văn bản: (1) Ưu tiên dòng 'Số:' hoặc 'SỐ:' ở phần đầu, dạng 222/TB-UBND không khoảng trắng. (2) Nếu không có dòng 'Số:', tìm chuỗi dạng 'số/loại-cơ quan' trong 10 dòng đầu (VD: 0759/CV-VBD, 15/QĐ-HĐND). KHÔNG lấy từ phần Căn cứ/nội dung điều khoản. Nếu thực sự không tìm thấy → null",
     "issued_date": "ngày ban hành trên phần đầu văn bản, dạng YYYY-MM-DD hoặc null",
     "issuing_agency": "tên cơ quan ban hành (dòng trên cùng bên trái, VD: UBND XÃ BẮC HÀ) hoặc null",
     "signer": "Chức vụ + Họ tên người ký ở cuối văn bản hoặc null",
-    "trich_yeu": "trích yếu NGUYÊN VĂN từ dòng bắt đầu bằng 'V/v:' hoặc 'Về việc:' hoặc tiêu đề in hoa của văn bản — KHÔNG paraphrase, KHÔNG tóm tắt lại",
+    "trich_yeu": "trích yếu văn bản: (1) Ưu tiên lấy NGUYÊN VĂN dòng 'V/v:' hoặc 'Về việc:'. (2) Nếu không có, lấy tiêu đề IN HOA chính của văn bản. (3) Nếu vẫn không có, tóm tắt 1 câu ngắn nội dung chính. LUÔN phải có giá trị, KHÔNG được null",
     "summary": "tóm tắt 2-3 câu ngắn nội dung chính bằng tiếng Việt"
   },
   "tasks": [
@@ -97,9 +97,8 @@ _GEMINI_SYSTEM_PROMPT = """Bạn là AI chuyên phân tích văn bản hành ch�
 Quy tắc BẮT BUỘC:
 - Chỉ trích xuất thông tin CÓ TRONG văn bản, không bịa đặt.
 - Nếu không có nhiệm vụ/chỉ tiêu/ngân sách → trả mảng rỗng [].
-- document_number: CHỈ lấy từ dòng "Số: ..." ở phần header (đầu văn bản). TUYỆT ĐỐI không lấy số từ "Căn cứ Luật số...", "Nghị định số...", "Quyết định số..." trong nội dung.
-- Số ký hiệu: không có khoảng trắng (VD: "15/QĐ-HĐND" không phải "15/QĐ - HĐND").
-- trich_yeu: lấy NGUYÊN VĂN dòng V/v hoặc tiêu đề, không được viết lại hay tóm tắt.
+- document_number: Tìm ở phần header (10 dòng đầu). Không lấy từ "Căn cứ Luật số...", "Nghị định số...", "Quyết định số..." trong nội dung bài. Không có khoảng trắng (VD: "15/QĐ-HĐND").
+- trich_yeu: LUÔN phải có giá trị. Ưu tiên V/v: → tiêu đề IN HOA → tóm tắt 1 câu. KHÔNG được null.
 - Ngày: format YYYY-MM-DD. Nếu chỉ có tháng/năm → lấy ngày đầu tháng (VD: tháng 6/2026 → "2026-06-01").
 - Ưu tiên nhiệm vụ: urgent=hỏa tốc/thượng khẩn, high=khẩn, medium=mặc định, low=thông thường.
 - Chỉ tiêu/KPI: trích xuất tất cả chỉ tiêu có con số (tỷ lệ %, số lượng, giá trị tuyệt đối).
@@ -439,19 +438,24 @@ def _extract_doc_info(text: str) -> dict[str, Any]:
     if org_candidates:
         info["co_quan_ban_hanh"] = org_candidates[-1]
 
-    # Tìm số ký hiệu CHỈ trong dòng "Số:" ở phần header, không lấy số căn cứ
+    # Tìm số ký hiệu trong dòng "Số:" ở header
     if so_idx is not None:
         so_line = non_empty[so_idx]
         m = re.search(r"[Ss][ốo][\s:,]+(\d[\d\s]*[-/][^\n\s,;]+)", so_line)
         if m:
             info["so_ky_hieu"] = re.sub(r"\s+", "", m.group(1).strip().rstrip("."))
     if "so_ky_hieu" not in info:
-        # Chỉ tìm trong 20 dòng đầu để tránh nhầm với số căn cứ
         header_text = "\n".join(non_empty[:20])
-        # Ưu tiên dòng có dạng "Số: ..." rõ ràng
+        # Tìm dòng "Số: ..." rõ ràng
         m = re.search(r"^[Ss][ốo][\s:,]+(\d+\s*[-/][A-ZĐÀÁẢÃẠ0-9/\-a-záàảãạ]+)", header_text, re.MULTILINE)
         if m:
             info["so_ky_hieu"] = re.sub(r"\s+", "", m.group(1).strip().rstrip("."))
+    if "so_ky_hieu" not in info:
+        # Fallback: tìm pattern số/loại-cơquan trong 10 dòng đầu (VD: 0759/CV-VBD)
+        header_text = "\n".join(non_empty[:10])
+        m = re.search(r"\b(\d{1,5}[-/][A-ZĐÀÁẢÃẠ]{2,}[-/][A-ZĐÀÁẢÃẠ]{2,})\b", header_text)
+        if m:
+            info["so_ky_hieu"] = re.sub(r"\s+", "", m.group(1).strip())
 
     tu = text.upper()
     for kw, label in _DOC_TYPES.items():
@@ -476,6 +480,15 @@ def _extract_doc_info(text: str) -> dict[str, Any]:
         m = re.search(r"[Vv]ề\s+việc[:\s]+(.{10,300}?)(?:\n|$)", text, re.IGNORECASE)
         if m:
             info["trich_yeu"] = m.group(1).strip()
+    if "trich_yeu" not in info:
+        # Fallback: tìm dòng tiêu đề IN HOA dài > 15 ký tự sau phần header
+        for ln in non_empty[3:15]:
+            if (len(ln) > 15 and ln == ln.upper()
+                    and not _EXCLUDE_HEADER.search(ln)
+                    and not _DATE_LINE.search(ln)
+                    and not _SO_LINE.match(ln)):
+                info["trich_yeu"] = ln.strip()
+                break
 
     tl = text.lower()
     for kw, prio in _PRIORITY_KW.items():
