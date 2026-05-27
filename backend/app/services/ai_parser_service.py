@@ -208,6 +208,8 @@ def _call_groq_with_retry(text: str) -> dict[str, Any] | None:
                 headers={
                     "Authorization": f"Bearer {settings.GROQ_API_KEY}",
                     "Content-Type": "application/json",
+                    "User-Agent": "python-httpx/0.28.1",
+                    "Accept": "application/json",
                 },
                 method="POST",
             )
