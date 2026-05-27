@@ -52,7 +52,6 @@ const StrategicPage         = lazy(() => import('./pages/strategic/StrategicPage
 const UserManagementPage    = lazy(() => import('./pages/users/UserManagementPage'))
 const DepartmentPage        = lazy(() => import('./pages/departments/DepartmentPage'))
 const ProgramsPage          = lazy(() => import('./pages/programs/ProgramsPage'))
-const MeetingPage           = lazy(() => import('./pages/meetings/MeetingPage'))
 const PublicMeetingsPage    = lazy(() => import('./pages/public/PublicMeetingsPage'))
 
 function PageLoader() {
@@ -115,7 +114,6 @@ const _preloadAll = () => {
     () => import('./pages/strategic/StrategicPage'),
     () => import('./pages/departments/DepartmentPage'),
     () => import('./pages/programs/ProgramsPage'),
-    () => import('./pages/meetings/MeetingPage'),
   ]
   // Stagger preloads so they don't compete with the current page load
   chunks.forEach((load, i) => setTimeout(load, 1000 + i * 150))
@@ -153,7 +151,6 @@ function AnimatedRoutes() {
         <Route path="/departments"        element={<P><DepartmentPage /></P>} />
         <Route path="/staff"              element={<P><StaffPage /></P>} />
         <Route path="/users"              element={<P><UserManagementPage /></P>} />
-        <Route path="/meetings"           element={<P><MeetingPage /></P>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
   )
