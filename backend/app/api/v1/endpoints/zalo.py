@@ -330,10 +330,59 @@ async def get_stats(
 # ── Webhook (receive events from Zalo OA) ────────────────────────────────────
 
 @router.post("/webhook")
-async def zalo_webhook(payload: dict):
-    """Receive events from Zalo OA (message delivered, user follow, etc.)
-    Validate signature in production via X-ZEvent-Signature header."""
+async def zalo_webhook(payload: dict, db: AsyncSession = Depends(get_db)):
+    """Receive events from Zalo OA.
+    When user sends their employee code (e.g. NS001), auto-link their Zalo UID.
+    """
     event_type = payload.get("event_name", "")
     logger.debug("Zalo webhook event: %s", event_type)
-    # Future: update ZaloLog.status="delivered" on message_delivered event
+
+    if event_type == "user_send_text":
+        sender = payload.get("sender", {})
+        zalo_user_id = sender.get("id", "")
+        text = (payload.get("message", {}).get("text", "") or "").strip().upper()
+
+        if not zalo_user_id:
+            return {"ok": True}
+
+        # Already linked?
+        existing = (await db.execute(
+            select(ZaloUserLink).where(ZaloUserLink.zalo_user_id == zalo_user_id)
+        )).scalar_one_or_none()
+        if existing:
+            return {"ok": True}
+
+        # Try match by employee code (e.g. "NS001")
+        import re as _re
+        cfg = (await db.execute(select(ZaloConfig).limit(1))).scalar_one_or_none()
+        matched = False
+        if _re.match(r"^NS\d{3,}$", text):
+            from app.models.staff import Staff
+            staff = (await db.execute(
+                select(Staff).where(Staff.employee_code == text)
+            )).scalar_one_or_none()
+            if staff and staff.user_id:
+                link = (await db.execute(
+                    select(ZaloUserLink).where(ZaloUserLink.user_id == staff.user_id)
+                )).scalar_one_or_none()
+                if link:
+                    link.zalo_user_id = zalo_user_id
+                else:
+                    db.add(ZaloUserLink(user_id=staff.user_id, zalo_user_id=zalo_user_id))
+                await db.commit()
+                matched = True
+                logger.info("Auto-linked user_id=%s zalo_uid=%s via code %s", staff.user_id, zalo_user_id, text)
+
+        # Reply to user
+        if cfg and cfg.access_token:
+            reply = "✅ Liên kết thành công! Bạn sẽ nhận thông báo từ hệ thống." if matched else \
+                    "Xin chào! Vui lòng nhắn MÃ NHÂN VIÊN của bạn (VD: NS001) để liên kết nhận thông báo."
+            await zalo_api_service.send_oa_message(cfg.access_token, zalo_user_id, reply)
+
+    return {"ok": True}
+
+
+@router.get("/webhook")
+async def zalo_webhook_verify():
+    """Zalo webhook verification (GET request)."""
     return {"ok": True}
