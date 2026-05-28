@@ -45,9 +45,8 @@ async def send_oa_message(
         return _no_httpx()
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            # Try cs first, fallback to transaction message
             resp = await client.post(
-                f"{_OA_API}/message/transaction",
+                f"{_OA_API}/message/cs",
                 headers={"access_token": access_token},
                 json={
                     "recipient": {"user_id": zalo_user_id},
