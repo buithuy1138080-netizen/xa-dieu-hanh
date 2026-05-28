@@ -57,7 +57,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { to: '/bao-cao',     label: 'Báo cáo tự động', icon: BarChart3 },
       { to: '/mau-bao-cao', label: 'Mẫu báo cáo',     icon: BookTemplate },
       // /dong-bo accessible via URL for admin
-      { to: '/zalo',        label: 'Zalo Thông báo',   icon: Bell,     allowedRoles: ['admin', 'leader'] },
+      { to: '/zalo',        label: 'Zalo Thông báo',   icon: Bell,     allowedRoles: ['admin'] },
     ],
   },
   {

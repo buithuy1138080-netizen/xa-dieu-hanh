@@ -286,11 +286,17 @@ async def create_staff(
     if body.role not in VALID_ROLES:
         raise HTTPException(400, f"Role không hợp lệ. Chọn: {list(VALID_ROLES)}")
 
-    # Auto employee_code
+    # Auto employee_code — use max existing number to avoid duplicates after deletions
     employee_code = body.employee_code
     if not employee_code:
-        count = (await db.execute(select(func.count(Staff.id)))).scalar_one()
-        employee_code = f"NS{count + 1:03d}"
+        from sqlalchemy import cast, Integer
+        result = await db.execute(
+            select(func.max(
+                cast(func.substr(Staff.employee_code, 3), Integer)
+            )).where(Staff.employee_code.op("~")(r"^NS\d+$"))
+        )
+        max_num = result.scalar_one_or_none() or 0
+        employee_code = f"NS{max_num + 1:03d}"
 
     pwd_hash = hash_password(body.password) if body.password else None
 
