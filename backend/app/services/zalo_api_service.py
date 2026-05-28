@@ -107,9 +107,11 @@ async def refresh_token(
                     "app_id": app_id,
                     "grant_type": "refresh_token",
                     "refresh_token": refresh_token_str,
-                    "app_secret": app_secret,
                 },
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "secret_key": app_secret,
+                },
             )
             return resp.json()
     except Exception as exc:
