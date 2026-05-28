@@ -24,7 +24,7 @@ except ImportError:
 
 # ── Zalo API endpoints ────────────────────────────────────────────────────────
 
-_OA_API = "https://openapi.zalo.me/v2.0/oa"
+_OA_API = "https://openapi.zalo.me/v3.0/oa"
 _ZNS_API = "https://business.openapi.zalo.me/message/template"
 _TOKEN_URL = "https://oauth.zaloapp.com/v4/oa/access_token"
 _TIMEOUT = 12.0
