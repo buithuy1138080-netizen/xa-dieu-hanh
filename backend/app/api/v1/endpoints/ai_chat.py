@@ -65,8 +65,8 @@ async def send_message(
     _check_rate_limit(current_user.id)
 
     from app.core.config import settings
-    if not settings.GEMINI_API_KEY:
-        raise HTTPException(503, "AI Assistant chưa được cấu hình (thiếu GEMINI_API_KEY)")
+    if not settings.GEMINI_API_KEY and not settings.GROQ_API_KEY:
+        raise HTTPException(503, "AI Assistant chưa được cấu hình (thiếu GEMINI_API_KEY hoặc GROQ_API_KEY)")
 
     # ── Get or create session ─────────────────────────────────────────────
     if body.session_id:

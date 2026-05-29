@@ -24,6 +24,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _reset_stuck_reports() -> None:
+    """On startup: mark any 'generating' reports as 'failed' (they were interrupted by a restart)."""
+    try:
+        from sqlalchemy import update as sa_update
+        async with AsyncSessionLocal() as db:
+            await db.execute(
+                sa_update(Report)
+                .where(Report.status == "generating")
+                .values(status="failed", error_msg="Bị gián đoạn do khởi động lại server")
+            )
+            await db.commit()
+    except Exception:
+        logger.warning("Could not reset stuck reports on startup")
+
+
 # ── Create report ──────────────────────────────────────────────────────────────
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=ReportList)
@@ -132,11 +147,19 @@ async def get_report(
 @router.post("/{report_id}/export/docx")
 async def export_docx(
     report_id: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     rpt = await db.get(Report, report_id)
-    if not rpt or rpt.status != "done":
+    if not rpt:
+        raise HTTPException(404, "Không tìm thấy báo cáo")
+    if rpt.status == "failed":
+        rpt.status = "generating"
+        await db.commit()
+        background_tasks.add_task(_generate_report, rpt.id, current_user.id)
+        raise HTTPException(202, "Báo cáo bị lỗi, đang tạo lại. Vui lòng thử lại sau ít phút.")
+    if rpt.status != "done":
         raise HTTPException(400, "Báo cáo chưa sẵn sàng")
 
     path = await asyncio.to_thread(
@@ -157,11 +180,19 @@ async def export_docx(
 @router.post("/{report_id}/export/xlsx")
 async def export_xlsx(
     report_id: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     rpt = await db.get(Report, report_id)
-    if not rpt or rpt.status != "done":
+    if not rpt:
+        raise HTTPException(404, "Không tìm thấy báo cáo")
+    if rpt.status == "failed":
+        rpt.status = "generating"
+        await db.commit()
+        background_tasks.add_task(_generate_report, rpt.id, current_user.id)
+        raise HTTPException(202, "Báo cáo bị lỗi, đang tạo lại. Vui lòng thử lại sau ít phút.")
+    if rpt.status != "done":
         raise HTTPException(400, "Báo cáo chưa sẵn sàng")
 
     path = await asyncio.to_thread(

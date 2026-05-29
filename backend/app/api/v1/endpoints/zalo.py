@@ -331,53 +331,102 @@ async def get_stats(
 
 @router.post("/webhook")
 async def zalo_webhook(payload: dict, db: AsyncSession = Depends(get_db)):
-    """Receive events from Zalo OA.
-    When user sends their employee code (e.g. NS001), auto-link their Zalo UID.
-    """
+    """Webhook: auto-link staff and reply with task/document status."""
+    import re as _re
+    from datetime import date
+
     event_type = payload.get("event_name", "")
-    logger.debug("Zalo webhook event: %s", event_type)
+    if event_type != "user_send_text":
+        return {"ok": True}
 
-    if event_type == "user_send_text":
-        sender = payload.get("sender", {})
-        zalo_user_id = sender.get("id", "")
-        text = (payload.get("message", {}).get("text", "") or "").strip().upper()
+    sender = payload.get("sender", {})
+    zalo_user_id = sender.get("id", "")
+    text = (payload.get("message", {}).get("text", "") or "").strip()
+    text_up = text.upper()
 
-        if not zalo_user_id:
-            return {"ok": True}
+    if not zalo_user_id:
+        return {"ok": True}
 
-        # Already linked?
-        existing = (await db.execute(
-            select(ZaloUserLink).where(ZaloUserLink.zalo_user_id == zalo_user_id)
+    cfg = (await db.execute(select(ZaloConfig).limit(1))).scalar_one_or_none()
+    if not cfg or not cfg.access_token:
+        return {"ok": True}
+
+    async def reply(msg: str):
+        await zalo_api_service.send_oa_message(cfg.access_token, zalo_user_id, msg)
+
+    # Check if already linked
+    link = (await db.execute(
+        select(ZaloUserLink).where(ZaloUserLink.zalo_user_id == zalo_user_id)
+    )).scalar_one_or_none()
+
+    # Try link by employee code
+    if not link and _re.match(r"^NS\d{3,}$", text_up):
+        from app.models.staff import Staff
+        staff = (await db.execute(
+            select(Staff).where(Staff.employee_code == text_up)
         )).scalar_one_or_none()
-        if existing:
+        if staff and staff.user_id:
+            link = (await db.execute(
+                select(ZaloUserLink).where(ZaloUserLink.user_id == staff.user_id)
+            )).scalar_one_or_none()
+            if link:
+                link.zalo_user_id = zalo_user_id
+            else:
+                link = ZaloUserLink(user_id=staff.user_id, zalo_user_id=zalo_user_id)
+                db.add(link)
+            await db.commit()
+            await db.refresh(link)
+            await reply(f"✅ Xin chào {staff.full_name}!\nĐã liên kết thành công.\nNhắn NHIEMVU hoặc VANBAN để xem thông tin.")
+            return {"ok": True}
+        else:
+            await reply("❌ Không tìm thấy mã nhân viên. Vui lòng kiểm tra lại.")
             return {"ok": True}
 
-        # Try match by employee code (e.g. "NS001")
-        import re as _re
-        cfg = (await db.execute(select(ZaloConfig).limit(1))).scalar_one_or_none()
-        matched = False
-        if _re.match(r"^NS\d{3,}$", text):
-            from app.models.staff import Staff
-            staff = (await db.execute(
-                select(Staff).where(Staff.employee_code == text)
-            )).scalar_one_or_none()
-            if staff and staff.user_id:
-                link = (await db.execute(
-                    select(ZaloUserLink).where(ZaloUserLink.user_id == staff.user_id)
-                )).scalar_one_or_none()
-                if link:
-                    link.zalo_user_id = zalo_user_id
-                else:
-                    db.add(ZaloUserLink(user_id=staff.user_id, zalo_user_id=zalo_user_id))
-                await db.commit()
-                matched = True
-                logger.info("Auto-linked user_id=%s zalo_uid=%s via code %s", staff.user_id, zalo_user_id, text)
+    if not link:
+        await reply("👋 Xin chào!\nVui lòng nhắn MÃ NHÂN VIÊN (VD: NS001) để liên kết tài khoản.")
+        return {"ok": True}
 
-        # Reply to user
-        if cfg and cfg.access_token:
-            reply = "✅ Liên kết thành công! Bạn sẽ nhận thông báo từ hệ thống." if matched else \
-                    "Xin chào! Vui lòng nhắn MÃ NHÂN VIÊN của bạn (VD: NS001) để liên kết nhận thông báo."
-            await zalo_api_service.send_oa_message(cfg.access_token, zalo_user_id, reply)
+    # Commands for linked users
+    from app.models.task import Task
+    from app.models.document import Document
+
+    if text_up in ("NHIEMVU", "NV"):
+        tasks = (await db.execute(
+            select(Task).where(
+                Task.assigned_to == link.user_id,
+                Task.status.in_(["pending", "in_progress"]),
+            ).order_by(Task.due_date).limit(5)
+        )).scalars().all()
+        if not tasks:
+            await reply("✅ Bạn không có nhiệm vụ nào đang thực hiện.")
+        else:
+            today = date.today()
+            lines = ["📋 NHIỆM VỤ ĐANG THỰC HIỆN:\n"]
+            for t in tasks:
+                due = t.due_date.date() if t.due_date else None
+                overdue = f" ⚠️ QUÁ HẠN {(today - due).days} ngày" if due and due < today else ""
+                lines.append(f"• {t.title}{overdue}")
+            await reply("\n".join(lines))
+
+    elif text_up in ("VANBAN", "VB"):
+        docs = (await db.execute(
+            select(Document).order_by(Document.created_at.desc()).limit(5)
+        )).scalars().all()
+        if not docs:
+            await reply("📄 Chưa có văn bản nào.")
+        else:
+            lines = ["📄 VĂN BẢN MỚI NHẤT:\n"]
+            for d in docs:
+                lines.append(f"• [{d.doc_number or 'N/A'}] {d.trich_yeu or d.title or ''}")
+            await reply("\n".join(lines))
+
+    else:
+        await reply(
+            "📌 CÁC LỆNH:\n"
+            "• NHIEMVU — Xem nhiệm vụ đang thực hiện\n"
+            "• VANBAN — Xem văn bản mới nhất\n"
+            "• NS001 — Liên kết tài khoản (thay NS001 bằng mã của bạn)"
+        )
 
     return {"ok": True}
 

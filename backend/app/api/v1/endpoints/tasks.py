@@ -21,6 +21,30 @@ from app.models.user import User
 
 router = APIRouter()
 
+
+async def _get_user_dept_id(db: AsyncSession, user_id: int) -> int | None:
+    """Get the department_id of the user via their Staff record."""
+    staff = (await db.execute(select(Staff).where(Staff.user_id == user_id))).scalar_one_or_none()
+    return staff.department_id if staff else None
+
+
+async def _check_task_write_permission(
+    db: AsyncSession, current_user: User, lead_dept_id: int | None, action: str
+) -> None:
+    """Enforce department-based write permissions for manager and staff roles."""
+    if current_user.role in ("admin", "leader"):
+        return
+    user_dept = await _get_user_dept_id(db, current_user.id)
+    if current_user.role == "manager":
+        if lead_dept_id and lead_dept_id != user_dept:
+            raise HTTPException(403, "Quản lý chỉ được thao tác nhiệm vụ của đơn vị mình phụ trách")
+    elif current_user.role == "staff":
+        if action in ("update", "delete"):
+            raise HTTPException(403, "Nhân viên không có quyền sửa hoặc xóa nhiệm vụ")
+        if action == "create" and lead_dept_id and lead_dept_id != user_dept:
+            raise HTTPException(403, "Nhân viên chỉ được tạo nhiệm vụ cho đơn vị mình")
+
+
 from app.core.config import settings as _settings
 UPLOAD_DIR = Path(_settings.UPLOAD_DIR) / "tasks"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -591,6 +615,8 @@ async def create_task(
     if body.priority not in VALID_PRIORITIES:
         raise HTTPException(400, f"priority must be one of {VALID_PRIORITIES}")
 
+    await _check_task_write_permission(db, current_user, body.lead_department_id, "create")
+
     # Validate FK references exist and are not soft-deleted
     if body.incoming_document_id:
         from app.models.document import Document
@@ -787,6 +813,7 @@ async def update_task(
     current_user: User = Depends(get_current_user),
 ):
     t = await _get_task(db, task_id)
+    await _check_task_write_permission(db, current_user, t.lead_department_id, "update")
 
     if body.priority is not None and body.priority not in VALID_PRIORITIES:
         raise HTTPException(400, f"priority must be one of {VALID_PRIORITIES}")
@@ -895,6 +922,7 @@ async def delete_task(
     current_user: User = Depends(get_current_user),
 ):
     t = await _get_task(db, task_id)
+    await _check_task_write_permission(db, current_user, t.lead_department_id, "delete")
     t.deleted_at = datetime.now(timezone.utc)
     t.updated_by = current_user.id
     await _audit(db, t.id, current_user.id, "deleted")

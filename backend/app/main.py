@@ -15,6 +15,8 @@ from app.services.scheduler import scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.api.v1.endpoints.reports import _reset_stuck_reports
+    await _reset_stuck_reports()
     scheduler.start()
     yield
     scheduler.shutdown(wait=False)

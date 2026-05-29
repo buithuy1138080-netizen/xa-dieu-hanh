@@ -520,8 +520,20 @@ async def export_documents(
     )
 
 
-def _can_manage_doc(user: User, doc: Document) -> bool:
-    return user.role in ('admin', 'leader') or doc.created_by == user.id
+def _can_manage_doc(user: User, doc: Document, user_dept_id: int | None = None) -> bool:
+    if user.role in ('admin', 'leader'):
+        return True
+    if doc.created_by == user.id:
+        return True
+    if user.role == 'manager' and user_dept_id and doc.responsible_department_id == user_dept_id:
+        return True
+    return False
+
+
+async def _get_user_dept(db: AsyncSession, user_id: int) -> int | None:
+    from app.models.staff import Staff
+    staff = (await db.execute(select(Staff).where(Staff.user_id == user_id))).scalar_one_or_none()
+    return staff.department_id if staff else None
 
 
 @router.post("", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
@@ -557,8 +569,8 @@ async def update_document(
     current_user: User = Depends(get_current_user),
 ):
     doc = await _get_doc_or_404(db, doc_id)
-    if not _can_manage_doc(current_user, doc):
-        raise HTTPException(403, "Chỉ người tạo hoặc admin/leader mới được sửa văn bản này")
+    if not _can_manage_doc(current_user, doc, await _get_user_dept(db, current_user.id)):
+        raise HTTPException(403, "Không có quyền sửa văn bản này")
     changes = body.model_dump(exclude_unset=True)
     for field, value in changes.items():
         setattr(doc, field, value)
@@ -574,8 +586,8 @@ async def delete_document(
     current_user: User = Depends(get_current_user),
 ):
     doc = await _get_doc_or_404(db, doc_id)
-    if not _can_manage_doc(current_user, doc):
-        raise HTTPException(403, "Chỉ người tạo hoặc admin/leader mới được xóa văn bản này")
+    if not _can_manage_doc(current_user, doc, await _get_user_dept(db, current_user.id)):
+        raise HTTPException(403, "Không có quyền xóa văn bản này")
     doc.deleted_at = datetime.now(timezone.utc)
     _add_history(db, doc.id, current_user.id, "deleted")
     await db.commit()
@@ -629,8 +641,8 @@ async def upload_file(
     current_user: User = Depends(get_current_user),
 ):
     doc = await _get_doc_or_404(db, doc_id)
-    if not _can_manage_doc(current_user, doc):
-        raise HTTPException(403, "Chỉ người tạo hoặc admin/leader mới được upload file cho văn bản này")
+    if not _can_manage_doc(current_user, doc, await _get_user_dept(db, current_user.id)):
+        raise HTTPException(403, "Không có quyền upload file cho văn bản này")
 
     safe_name = Path(file.filename or "file").name
     ext = Path(safe_name).suffix.lower()
