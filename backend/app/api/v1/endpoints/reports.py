@@ -44,7 +44,6 @@ async def _reset_stuck_reports() -> None:
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=ReportList)
 async def create_report(
     body: ReportCreate,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -64,7 +63,30 @@ async def create_report(
     await db.commit()
     await db.refresh(rpt)
 
-    background_tasks.add_task(_generate_report, rpt.id, current_user.id)
+    # Generate synchronously — avoids background task being killed on reload
+    try:
+        data = await report_engine.collect_data(db, rpt.period_from, rpt.period_to, rpt.report_type)
+        data = _make_json_safe(data)
+        summary = ai_summary_service.generate_summary(data, rpt.report_type)
+        rpt.summary_data = data
+        rpt.ai_summary = summary
+        rpt.status = "done"
+        rpt.generated_at = datetime.now(timezone.utc)
+        notif = Notification(
+            user_id=current_user.id,
+            type="report",
+            title="Báo cáo đã sẵn sàng",
+            body=f"Báo cáo \"{rpt.title}\" đã được tạo thành công.",
+            link_url=f"/bao-cao/{rpt.id}",
+        )
+        db.add(notif)
+    except Exception as exc:
+        logger.exception("Report generation failed id=%s", rpt.id)
+        rpt.status = "failed"
+        rpt.error_msg = str(exc)[:500]
+
+    await db.commit()
+    await db.refresh(rpt)
     return rpt
 
 
