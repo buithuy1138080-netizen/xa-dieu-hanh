@@ -70,6 +70,22 @@ async def create_report(
 
 # ── Background report generation ──────────────────────────────────────────────
 
+def _make_json_safe(obj):
+    """Recursively convert non-JSON-serializable objects to strings."""
+    if isinstance(obj, dict):
+        return {str(k): _make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_make_json_safe(i) for i in obj]
+    if isinstance(obj, (datetime,)):
+        return obj.isoformat()
+    try:
+        import json as _json
+        _json.dumps(obj)
+        return obj
+    except (TypeError, ValueError):
+        return str(obj)
+
+
 async def _generate_report(report_id: int, user_id: int) -> None:
     async with AsyncSessionLocal() as db:
         rpt: Report | None = await db.get(Report, report_id)
@@ -79,6 +95,7 @@ async def _generate_report(report_id: int, user_id: int) -> None:
             data = await report_engine.collect_data(
                 db, rpt.period_from, rpt.period_to, rpt.report_type
             )
+            data = _make_json_safe(data)
             summary = ai_summary_service.generate_summary(data, rpt.report_type)
 
             rpt.summary_data = data
