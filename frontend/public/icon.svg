@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#1e40af"/>
+  <rect x="80" y="80" width="352" height="352" rx="48" fill="#1d4ed8"/>
+  <!-- Shield shape -->
+  <path d="M256 120 L360 160 L360 270 C360 320 320 360 256 392 C192 360 152 320 152 270 L152 160 Z"
+        fill="none" stroke="#60a5fa" stroke-width="12"/>
+  <!-- IOC text hint - grid lines -->
+  <line x1="200" y1="220" x2="312" y2="220" stroke="#93c5fd" stroke-width="8" stroke-linecap="round"/>
+  <line x1="200" y1="256" x2="280" y2="256" stroke="#93c5fd" stroke-width="8" stroke-linecap="round"/>
+  <line x1="200" y1="292" x2="296" y2="292" stroke="#93c5fd" stroke-width="8" stroke-linecap="round"/>
+  <!-- Checkmark -->
+  <polyline points="210,256 240,286 302,214" fill="none" stroke="#34d399" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
