@@ -117,6 +117,13 @@ export interface ZaloSendRequest {
   entity_id?: number
 }
 
+export interface ZaloSendResult {
+  sent: number
+  failed: number
+  no_link: number
+  errors?: Array<{ user_id: number | null; error: string }>
+}
+
 export interface ZaloStats {
   total_sent: number
   sent_today: number

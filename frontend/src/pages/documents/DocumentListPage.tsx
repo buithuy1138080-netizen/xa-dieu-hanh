@@ -8,7 +8,6 @@ import DocumentForm from '../../components/documents/DocumentForm'
 import DocumentUploadAI from '../../components/documents/DocumentUploadAI'
 import AppLayout from '../../components/layout/AppLayout'
 import { useAuthStore } from '../../store/authStore'
-import { isAdminOrLeader } from '../../types'
 import type { DocStatus, DocType, DocumentCreate, DocumentRead } from '../../types/document'
 
 const TYPE_TABS: { value: DocType | ''; label: string }[] = [

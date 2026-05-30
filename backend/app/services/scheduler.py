@@ -326,8 +326,9 @@ scheduler.add_job(
 
 async def _zalo_task_warnings() -> None:
     """Send Zalo alerts for tasks overdue or due within 3 days."""
-    from datetime import date, timedelta
+    from datetime import timedelta
     from app.models.task import Task
+    from app.models.zalo import ZaloConfig, ZaloUserLink
     from app.services.zalo_notify_engine import notify_event
 
     today = datetime.now(timezone.utc)
@@ -335,6 +336,21 @@ async def _zalo_task_warnings() -> None:
 
     try:
         async with AsyncSessionLocal() as db:
+            # Skip entirely if Zalo not configured or no users have zalo_user_id
+            cfg = (await db.execute(
+                select(ZaloConfig).where(ZaloConfig.is_active == True).limit(1)
+            )).scalar_one_or_none()
+            if not cfg or not cfg.access_token:
+                return
+            has_uid = (await db.execute(
+                select(ZaloUserLink).where(
+                    ZaloUserLink.zalo_user_id.isnot(None),
+                    ZaloUserLink.is_active == True,
+                ).limit(1)
+            )).scalar_one_or_none()
+            if not has_uid:
+                log.debug("Zalo task warnings: no users with zalo_user_id, skipping")
+                return
             # Overdue tasks
             result = await db.execute(
                 select(Task).where(
@@ -393,10 +409,24 @@ async def _zalo_task_warnings() -> None:
 async def _zalo_kpi_alerts() -> None:
     """Send Zalo KPI alerts for KPIs below 70%."""
     from app.models.kpi import KPI
+    from app.models.zalo import ZaloConfig, ZaloUserLink
     from app.services.zalo_notify_engine import notify_event
 
     try:
         async with AsyncSessionLocal() as db:
+            cfg = (await db.execute(
+                select(ZaloConfig).where(ZaloConfig.is_active == True).limit(1)
+            )).scalar_one_or_none()
+            if not cfg or not cfg.access_token:
+                return
+            has_uid = (await db.execute(
+                select(ZaloUserLink).where(
+                    ZaloUserLink.zalo_user_id.isnot(None),
+                    ZaloUserLink.is_active == True,
+                ).limit(1)
+            )).scalar_one_or_none()
+            if not has_uid:
+                return
             result = await db.execute(
                 select(KPI).where(
                     KPI.progress < 70,

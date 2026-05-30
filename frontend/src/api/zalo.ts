@@ -4,6 +4,7 @@ import type {
   ZaloConfigUpsert,
   ZaloLogRead,
   ZaloSendRequest,
+  ZaloSendResult,
   ZaloStats,
   ZaloTemplateCreate,
   ZaloTemplateRead,
@@ -56,7 +57,15 @@ export const zaloApi = {
 
   // ── Send & Logs ───────────────────────────────────────────────────────────
   send: (body: ZaloSendRequest) =>
-    apiClient.post<{ sent: number; failed: number; no_link: number }>(`${BASE}/send`, body),
+    apiClient.post<ZaloSendResult>(`${BASE}/send`, body),
+
+  /** Debug: gửi OA message trực tiếp theo zalo_user_id (bỏ qua template/userlink) */
+  sendText: (body: { zalo_user_id: string; text: string }) =>
+    apiClient.post<{ ok: boolean; zalo_response: Record<string, unknown> }>(`${BASE}/send-text`, body),
+
+  /** Gửi broadcast text đến nhiều user */
+  broadcast: (body: { subject: string; text: string; recipient_user_ids: number[] }) =>
+    apiClient.post<ZaloSendResult>(`${BASE}/broadcast`, body),
 
   getLogs: (params?: { limit?: number; notif_type?: string; status?: string }) =>
     apiClient.get<ZaloLogRead[]>(`${BASE}/logs`, { params }),

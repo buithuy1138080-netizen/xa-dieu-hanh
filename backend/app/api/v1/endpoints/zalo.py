@@ -265,9 +265,75 @@ async def manual_send(
         triggered_by="manual",
         dedup_hours=0,   # manual send always goes through
     )
+    sent_logs  = [l for l in logs if l.status == "sent"]
+    failed_logs = [l for l in logs if l.status == "failed"]
+    return {
+        "sent": len(sent_logs),
+        "failed": len(failed_logs),
+        "no_link": len(body.recipient_user_ids) - len(logs),
+        "errors": [
+            {"user_id": l.recipient_user_id, "error": l.error_msg or "Lỗi không xác định"}
+            for l in failed_logs
+        ],
+    }
+
+
+@router.post("/send-text")
+async def send_text_direct(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Debug: Gửi OA message trực tiếp theo zalo_user_id (bỏ qua template).
+    Body: {"zalo_user_id": "...", "text": "..."}
+    """
+    if current_user.role not in ("admin", "leader"):
+        raise HTTPException(403, "Cần quyền admin hoặc leader")
+    zalo_user_id = body.get("zalo_user_id", "").strip()
+    text = body.get("text", "").strip()
+    if not zalo_user_id or not text:
+        raise HTTPException(400, "Cần cung cấp zalo_user_id và text")
+    cfg = (await db.execute(select(ZaloConfig).where(ZaloConfig.is_active == True).limit(1))).scalar_one_or_none()
+    if not cfg or not cfg.access_token:
+        raise HTTPException(400, "Zalo chưa cấu hình hoặc chưa có access_token")
+    result = await zalo_api_service.send_oa_message(cfg.access_token, zalo_user_id, text)
+    if result.get("error") != 0:
+        raise HTTPException(400, f"Zalo trả về lỗi: {result.get('message', str(result))}")
+    return {"ok": True, "zalo_response": result}
+
+
+@router.post("/broadcast")
+async def broadcast_message(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Gửi thông báo văn bản thủ công đến nhiều user (OA message).
+    Body: {"subject": "...", "text": "...", "recipient_user_ids": [1, 2, 3]}
+    """
+    if current_user.role not in ("admin", "leader"):
+        raise HTTPException(403, "Cần quyền admin hoặc leader")
+    subject = body.get("subject", "Thông báo").strip()
+    text = body.get("text", "").strip()
+    recipient_user_ids: list[int] = body.get("recipient_user_ids", [])
+    if not text:
+        raise HTTPException(400, "Cần cung cấp nội dung text")
+    if not recipient_user_ids:
+        raise HTTPException(400, "Cần cung cấp danh sách recipient_user_ids")
+    logs = await zalo_notify_engine.notify_bulk(
+        db=db,
+        subject=subject,
+        text=text,
+        recipient_user_ids=recipient_user_ids,
+        triggered_by="manual",
+    )
     sent = sum(1 for l in logs if l.status == "sent")
     failed = sum(1 for l in logs if l.status == "failed")
-    return {"sent": sent, "failed": failed, "no_link": len(body.recipient_user_ids) - len(logs)}
+    return {
+        "sent": sent,
+        "failed": failed,
+        "no_link": len(recipient_user_ids) - len(logs),
+    }
 
 
 # ── Logs ──────────────────────────────────────────────────────────────────────

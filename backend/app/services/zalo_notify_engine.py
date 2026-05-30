@@ -122,10 +122,10 @@ async def notify_event(
 
     logs: list[ZaloLog] = []
     for user_id in recipient_user_ids:
-        # Dedup check
+        # Dedup: skip if sent successfully within dedup_hours
         if entity_id and dedup_hours > 0:
             cutoff = datetime.now(timezone.utc) - timedelta(hours=dedup_hours)
-            existing = (await db.execute(
+            sent_ok = (await db.execute(
                 select(ZaloLog).where(
                     ZaloLog.recipient_user_id == user_id,
                     ZaloLog.notif_type == notif_type,
@@ -134,7 +134,22 @@ async def notify_event(
                     ZaloLog.sent_at >= cutoff,
                 )
             )).scalar_one_or_none()
-            if existing:
+            if sent_ok:
+                continue
+
+            # Dedup: also skip if recently failed (avoid hourly retry spam).
+            # Failed sends are retried at most once per dedup window, not every hour.
+            failed_cutoff = datetime.now(timezone.utc) - timedelta(hours=max(dedup_hours, 2))
+            failed_recently = (await db.execute(
+                select(ZaloLog).where(
+                    ZaloLog.recipient_user_id == user_id,
+                    ZaloLog.notif_type == notif_type,
+                    ZaloLog.entity_id == entity_id,
+                    ZaloLog.status == "failed",
+                    ZaloLog.created_at >= failed_cutoff,
+                )
+            )).scalar_one_or_none()
+            if failed_recently:
                 continue
 
         link = (await db.execute(
@@ -148,6 +163,18 @@ async def notify_event(
         zalo_uid = link.zalo_user_id if link else None
 
         if not phone and not zalo_uid:
+            logger.debug("Zalo skip user=%s: no phone or zalo_user_id", user_id)
+            continue
+
+        # For oa_message channel, zalo_user_id is required (can't send to phone directly).
+        # Skip early to avoid creating a "failed" log for a known-unconfigured state.
+        if template.channel == "oa_message" and not zalo_uid:
+            logger.debug(
+                "Zalo skip user=%s notif=%s: channel=oa_message but no zalo_user_id. "
+                "User must send a message to the OA first (webhook will capture their ID), "
+                "or admin can set zalo_user_id manually in User Links.",
+                user_id, notif_type,
+            )
             continue
 
         rendered = _render(template.content, context)
@@ -321,4 +348,10 @@ async def _ensure_token_valid(db: AsyncSession, config: ZaloConfig) -> None:
         expires_in = int(result.get("expires_in", 3600))
         config.token_expiry = now + timedelta(seconds=expires_in)
         await db.commit()
-        logger.info("Zalo OA token auto-refreshed")
+        logger.info("Zalo OA token auto-refreshed thành công")
+    else:
+        logger.warning(
+            "Zalo OA token refresh thất bại — sẽ dùng token cũ (có thể đã hết hạn). "
+            "Lỗi: %s",
+            result.get("message", str(result)),
+        )

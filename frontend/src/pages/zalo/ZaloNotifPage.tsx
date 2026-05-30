@@ -7,6 +7,7 @@ import type {
   ZaloConfigUpsert,
   ZaloLogRead,
   ZaloSendRequest,
+  ZaloSendResult,
   ZaloStats,
   ZaloTemplateCreate,
   ZaloTemplateRead,
@@ -480,6 +481,22 @@ function UserLinksTab() {
         </div>
       )}
 
+      {/* Warning: users with phone but no zalo_user_id can't receive OA messages */}
+      {links.filter(l => !l.zalo_user_id && l.is_active).length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+          <p className="font-semibold mb-1">
+            ⚠️ {links.filter(l => !l.zalo_user_id && l.is_active).length} người dùng chưa có Zalo User ID — không nhận được OA Message
+          </p>
+          <p className="text-xs text-amber-700">
+            <strong>Cách khắc phục:</strong> Yêu cầu nhân viên nhắn mã nhân sự (VD: <code className="bg-amber-100 px-1 rounded">NS001</code>) vào trang Zalo OA.
+            Hệ thống sẽ tự động ghi nhận Zalo User ID qua webhook.
+          </p>
+          <p className="text-xs text-amber-600 mt-1">
+            Hoặc admin có thể lấy UID từ trang <strong>oa.zalo.me → Người quan tâm</strong> rồi nhập thủ công bằng nút "Sửa".
+          </p>
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         {links.length === 0 ? (
           <div className="py-10 text-center text-slate-400">
@@ -492,17 +509,22 @@ function UserLinksTab() {
               <tr>
                 <th className="px-4 py-3 text-left">User ID</th>
                 <th className="px-4 py-3 text-left">Số Zalo</th>
-                <th className="px-4 py-3 text-left">Zalo UID</th>
+                <th className="px-4 py-3 text-left">Zalo UID (OA)</th>
                 <th className="px-4 py-3 text-left">Trạng thái</th>
                 <th className="px-4 py-3 text-left">Hành động</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {links.map(l => (
-                <tr key={l.id} className="hover:bg-slate-50">
+                <tr key={l.id} className={`hover:bg-slate-50 ${!l.zalo_user_id && l.is_active ? 'bg-amber-50/40' : ''}`}>
                   <td className="px-4 py-3 font-mono text-slate-700">#{l.user_id}</td>
                   <td className="px-4 py-3">{l.zalo_phone ?? <span className="text-slate-300">—</span>}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{l.zalo_user_id ? l.zalo_user_id.slice(0, 16) + '…' : <span className="text-slate-300">—</span>}</td>
+                  <td className="px-4 py-3">
+                    {l.zalo_user_id
+                      ? <span className="font-mono text-xs text-slate-600">{l.zalo_user_id.slice(0, 18)}…</span>
+                      : <span className="text-xs text-amber-600 font-semibold bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">⚠️ Chưa có UID</span>
+                    }
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${l.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
                       {l.is_active ? 'Hoạt động' : 'Tắt'}
@@ -543,28 +565,72 @@ function SendTab({ templates }: { templates: ZaloTemplateRead[] }) {
   const [uidInput, setUidInput] = useState('')
   const [contextInput, setContextInput] = useState('')
   const [sending, setSending] = useState(false)
-  const [result, setResult] = useState<{ sent: number; failed: number; no_link: number } | null>(null)
+  const [result, setResult] = useState<ZaloSendResult | null>(null)
+  const [recentFailedLogs, setRecentFailedLogs] = useState<ZaloLogRead[]>([])
 
   const selectedTmpl = templates.find(t => t.notif_type === form.notif_type)
 
   async function send() {
-    setSending(true); setResult(null)
+    setSending(true); setResult(null); setRecentFailedLogs([])
     try {
       const uids = uidInput.split(/[\s,]+/).map(Number).filter(Boolean)
       let ctx: Record<string, string> = {}
       try { ctx = JSON.parse(contextInput) } catch { ctx = {} }
       const r = await zaloApi.send({ ...form, recipient_user_ids: uids, context: ctx })
       setResult(r.data)
+      // Auto-fetch recent failed logs to show actual Zalo error codes
+      if (r.data.failed > 0) {
+        setTimeout(async () => {
+          try {
+            const logsR = await zaloApi.getLogs({ status: 'failed', limit: 5 })
+            setRecentFailedLogs(logsR.data.slice(0, 5))
+          } catch { /* ignore */ }
+        }, 500)
+      }
     } finally { setSending(false) }
   }
 
   return (
     <div className="max-w-xl space-y-4">
       {result && (
-        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm">
-          ✅ Đã gửi: <strong className="text-green-700">{result.sent}</strong> &nbsp;|&nbsp;
-          ❌ Thất bại: <strong className="text-red-600">{result.failed}</strong> &nbsp;|&nbsp;
-          ⚠️ Không có Zalo: <strong className="text-amber-600">{result.no_link}</strong>
+        <div className={`border rounded-xl px-4 py-3 text-sm space-y-2 ${result.failed > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+          <div>
+            ✅ Đã gửi: <strong className="text-green-700">{result.sent}</strong> &nbsp;|&nbsp;
+            ❌ Thất bại: <strong className="text-red-600">{result.failed}</strong> &nbsp;|&nbsp;
+            ⚠️ Không có Zalo: <strong className="text-amber-600">{result.no_link}</strong>
+          </div>
+          {/* Error detail from backend (new API) */}
+          {result.errors && result.errors.length > 0 && (
+            <div className="mt-2 space-y-1">
+              <p className="text-xs font-semibold text-red-700">Chi tiết lỗi từ Zalo:</p>
+              {result.errors.map((e, i) => (
+                <div key={i} className="bg-white border border-red-100 rounded-lg px-3 py-2 text-xs font-mono text-red-700">
+                  User #{e.user_id}: {e.error}
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Auto-fetched recent failed logs for older backend */}
+          {result.failed > 0 && recentFailedLogs.length > 0 && !result.errors?.length && (
+            <div className="mt-2 space-y-1">
+              <p className="text-xs font-semibold text-red-700">Lỗi gần nhất từ Zalo (Lịch sử):</p>
+              {recentFailedLogs.map(l => (
+                <div key={l.id} className="bg-white border border-red-100 rounded-lg px-3 py-2 text-xs text-red-700">
+                  <span className="font-semibold">User #{l.recipient_user_id}:</span>{' '}
+                  <span className="font-mono">{l.error_msg || 'Không có chi tiết'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {result.failed > 0 && (
+            <div className="text-xs text-slate-500 pt-1 border-t border-red-100">
+              💡 Lỗi phổ biến: &nbsp;
+              <code className="bg-red-50 px-1 rounded">-14</code> chưa nhắn tin OA trong 7 ngày &nbsp;|&nbsp;
+              <code className="bg-red-50 px-1 rounded">-216</code> chưa quan tâm OA &nbsp;|&nbsp;
+              <code className="bg-red-50 px-1 rounded">-201</code> token hết hạn &nbsp;|&nbsp;
+              <code className="bg-red-50 px-1 rounded">-1</code> thiếu Zalo User ID
+            </div>
+          )}
         </div>
       )}
       <div>
@@ -594,7 +660,7 @@ function SendTab({ templates }: { templates: ZaloTemplateRead[] }) {
       </div>
       <div>
         <label className="block text-xs font-semibold text-slate-600 mb-1">
-          Dữ liệu template (JSON) <span className="font-normal text-slate-400">— vd: {'{'}&#34;task_title&#34;: &#34;Báo cáo tháng 5&#34;{'}'}</span>
+          Dữ liệu template (JSON) <span className="font-normal text-slate-400">— vd: {'{'}&#34;message&#34;: &#34;Nội dung&#34;{'}'}</span>
         </label>
         <textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
           rows={3} value={contextInput} onChange={e => setContextInput(e.target.value)}
@@ -608,37 +674,209 @@ function SendTab({ templates }: { templates: ZaloTemplateRead[] }) {
   )
 }
 
+// ── Test Direct Tab ───────────────────────────────────────────────────────────
+
+function TestTab() {
+  const [zaloUid, setZaloUid] = useState('')
+  const [text, setText] = useState('Xin chào! Đây là tin nhắn test từ hệ thống IOC.')
+  const [sending, setSending] = useState(false)
+  const [resp, setResp] = useState<Record<string, unknown> | null>(null)
+  const [err, setErr] = useState('')
+
+  // Broadcast section
+  const [bcSubject, setBcSubject] = useState('Thông báo hệ thống')
+  const [bcText, setBcText] = useState('')
+  const [bcUids, setBcUids] = useState('')
+  const [bcSending, setBcSending] = useState(false)
+  const [bcResult, setBcResult] = useState<ZaloSendResult | null>(null)
+
+  async function doTest() {
+    if (!zaloUid.trim() || !text.trim()) return
+    setSending(true); setResp(null); setErr('')
+    try {
+      const r = await zaloApi.sendText({ zalo_user_id: zaloUid.trim(), text })
+      setResp(r.data.zalo_response)
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail ?? JSON.stringify(e?.response?.data ?? 'Lỗi không xác định'))
+    } finally { setSending(false) }
+  }
+
+  async function doBroadcast() {
+    const uids = bcUids.split(/[\s,]+/).map(Number).filter(Boolean)
+    if (!bcText.trim() || uids.length === 0) return
+    setBcSending(true); setBcResult(null)
+    try {
+      const r = await zaloApi.broadcast({ subject: bcSubject, text: bcText, recipient_user_ids: uids })
+      setBcResult(r.data)
+    } finally { setBcSending(false) }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Direct test */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+        <div>
+          <h3 className="font-bold text-slate-800 text-sm">🔬 Test gửi trực tiếp (debug)</h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Bỏ qua template/userlink — gửi thẳng đến Zalo User ID để kiểm tra token &amp; kết nối.
+          </p>
+        </div>
+        {resp && (
+          <div className={`rounded-lg px-3 py-2.5 text-xs font-mono ${
+            (resp.error as number) === 0 ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'
+          }`}>
+            <p className="font-semibold mb-1">
+              {(resp.error as number) === 0 ? '✅ Gửi thành công!' : `❌ Lỗi Zalo (error: ${resp.error})`}
+            </p>
+            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(resp, null, 2)}</pre>
+            {(resp.error as number) !== 0 && (
+              <div className="mt-2 text-xs text-red-600 space-y-0.5">
+                {(resp.error as number) === -201 && <p>→ <strong>-201</strong>: Access token không hợp lệ hoặc đã hết hạn. Vào tab "Kết nối Zalo" → Làm mới token.</p>}
+                {(resp.error as number) === -216 && <p>→ <strong>-216</strong>: Người dùng chưa quan tâm (follow) OA này. Yêu cầu họ follow OA trước.</p>}
+                {(resp.error as number) === -14  && <p>→ <strong>-14</strong>: Người dùng chưa nhắn tin cho OA trong 7 ngày gần đây (CS message). Họ cần nhắn một tin bất kỳ cho OA.</p>}
+                {(resp.error as number) === -13  && <p>→ <strong>-13</strong>: Zalo User ID không đúng. Kiểm tra lại ID trong mục "Danh sách nhận".</p>}
+              </div>
+            )}
+          </div>
+        )}
+        {err && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 text-xs text-red-700">
+            <p className="font-semibold">❌ Lỗi HTTP từ server:</p>
+            <p className="font-mono mt-1">{err}</p>
+          </div>
+        )}
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 mb-1">
+            Zalo User ID (OA follower ID)
+            <span className="font-normal text-slate-400 ml-1">— Lấy từ tab "Danh sách nhận" hoặc webhook</span>
+          </label>
+          <input
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
+            value={zaloUid} onChange={e => setZaloUid(e.target.value)}
+            placeholder="Vd: 3806521040273920021" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 mb-1">Nội dung tin nhắn</label>
+          <textarea
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            rows={3} value={text} onChange={e => setText(e.target.value)} />
+        </div>
+        <button onClick={doTest} disabled={sending || !zaloUid.trim()}
+          className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-60">
+          {sending ? '⏳ Đang gửi...' : '🧪 Test gửi'}
+        </button>
+      </div>
+
+      {/* Broadcast */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+        <div>
+          <h3 className="font-bold text-slate-800 text-sm">📢 Gửi broadcast (văn bản tùy ý)</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Gửi tin nhắn tùy ý (không dùng template) đến nhiều User ID.</p>
+        </div>
+        {bcResult && (
+          <div className={`rounded-xl px-4 py-3 text-sm space-y-1 ${bcResult.failed > 0 ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
+            ✅ Đã gửi: <strong className="text-green-700">{bcResult.sent}</strong> &nbsp;|&nbsp;
+            ❌ Thất bại: <strong className="text-red-600">{bcResult.failed}</strong> &nbsp;|&nbsp;
+            ⚠️ Không có Zalo: <strong className="text-amber-600">{bcResult.no_link}</strong>
+            {bcResult.errors && bcResult.errors.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {bcResult.errors.map((e, i) => (
+                  <div key={i} className="text-xs font-mono text-red-700 bg-white rounded px-2 py-1 border border-red-100">
+                    User #{e.user_id}: {e.error}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 mb-1">Tiêu đề</label>
+          <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            value={bcSubject} onChange={e => setBcSubject(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 mb-1">Nội dung</label>
+          <textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            rows={4} value={bcText} onChange={e => setBcText(e.target.value)}
+            placeholder="Nhập nội dung thông báo..." />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 mb-1">User ID (phân cách bằng dấu phẩy)</label>
+          <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
+            value={bcUids} onChange={e => setBcUids(e.target.value)} placeholder="1, 2, 3" />
+        </div>
+        <button onClick={doBroadcast} disabled={bcSending || !bcText.trim() || !bcUids.trim()}
+          className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg disabled:opacity-60">
+          {bcSending ? '⏳ Đang gửi...' : '📢 Gửi broadcast'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Logs Tab ──────────────────────────────────────────────────────────────────
 
 function LogsTab() {
   const [logs, setLogs] = useState<ZaloLogRead[]>([])
   const [filterType, setFilterType] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
+  const [filterStatus, setFilterStatus] = useState('failed') // default: show failed first
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    zaloApi.getLogs({ limit: 200, notif_type: filterType || undefined, status: filterStatus || undefined })
-      .then(r => setLogs(r.data))
-  }, [filterType, filterStatus])
+  async function load() {
+    setLoading(true)
+    try {
+      const r = await zaloApi.getLogs({ limit: 200, notif_type: filterType || undefined, status: filterStatus || undefined })
+      setLogs(r.data)
+    } finally { setLoading(false) }
+  }
+
+  useEffect(() => { load() }, [filterType, filterStatus])
+
+  // Parse error_msg to extract Zalo error code
+  function parseZaloError(msg: string | null): { code: string | null; hint: string } {
+    if (!msg) return { code: null, hint: '' }
+    const codeMatch = msg.match(/"error"\s*:\s*(-?\d+)/)
+    const code = codeMatch ? codeMatch[1] : null
+    const hints: Record<string, string> = {
+      '-14':  'Người dùng chưa nhắn tin cho OA trong 7 ngày gần đây → Yêu cầu họ nhắn bất kỳ tin gì cho OA',
+      '-216': 'Người dùng chưa quan tâm (follow) OA → Yêu cầu họ nhấn "Quan tâm" OA Zalo',
+      '-201': 'Access token không hợp lệ hoặc hết hạn → Vào tab Kết nối Zalo → Làm mới token',
+      '-13':  'Zalo User ID sai định dạng → Kiểm tra lại UID trong Danh sách nhận',
+      '-1':   'Lỗi nội bộ: không đủ thông tin (thiếu zalo_user_id hoặc kênh gửi sai)',
+    }
+    return { code, hint: code ? (hints[code] ?? '') : '' }
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3 flex-wrap">
+      <div className="flex gap-3 flex-wrap items-center">
+        <select className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+          <option value="">Tất cả trạng thái</option>
+          <option value="failed">❌ Thất bại</option>
+          <option value="sent">✅ Đã gửi</option>
+          <option value="pending">⏳ Chờ gửi</option>
+        </select>
         <select className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
           value={filterType} onChange={e => setFilterType(e.target.value)}>
           <option value="">Tất cả loại</option>
           {Object.entries(NOTIF_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
-        <select className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-          value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-          <option value="">Tất cả trạng thái</option>
-          <option value="sent">Đã gửi</option>
-          <option value="failed">Thất bại</option>
-          <option value="pending">Chờ gửi</option>
-        </select>
+        <button onClick={load} disabled={loading}
+          className="px-3 py-2 text-sm bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 font-medium disabled:opacity-50">
+          {loading ? '...' : '↺ Làm mới'}
+        </button>
+        {logs.length > 0 && (
+          <span className="text-xs text-slate-400">{logs.length} bản ghi</span>
+        )}
       </div>
+
       <div className="overflow-x-auto">
         {logs.length === 0 ? (
-          <div className="py-10 text-center text-slate-400">Chưa có lịch sử gửi</div>
+          <div className="py-10 text-center text-slate-400">
+            {filterStatus === 'failed' ? '✅ Không có lỗi nào.' : 'Chưa có lịch sử gửi'}
+          </div>
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
@@ -647,27 +885,58 @@ function LogsTab() {
                 <th className="px-4 py-3 text-left">Loại</th>
                 <th className="px-4 py-3 text-left">Nội dung</th>
                 <th className="px-4 py-3 text-left">Trạng thái</th>
-                <th className="px-4 py-3 text-left">Kích hoạt</th>
+                <th className="px-4 py-3 text-left">Lỗi Zalo</th>
                 <th className="px-4 py-3 text-left">Thời gian</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
-              {logs.map(l => (
-                <tr key={l.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3">
-                    {l.recipient_phone ? (
-                      <span className="font-mono text-sm">{l.recipient_phone}</span>
-                    ) : (
-                      <span className="text-slate-400">User #{l.recipient_user_id}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-xs">{NOTIF_TYPE_LABELS[l.notif_type] ?? l.notif_type}</td>
-                  <td className="px-4 py-3 max-w-[200px] truncate text-slate-600 text-xs">{l.content_rendered}</td>
-                  <td className="px-4 py-3">{statusBadge(l.status)}</td>
-                  <td className="px-4 py-3 text-xs text-slate-400">{l.triggered_by}</td>
-                  <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{fmtDt(l.sent_at ?? l.created_at)}</td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-slate-100">
+              {logs.map(l => {
+                const { code, hint } = parseZaloError(l.error_msg)
+                const isExpanded = expandedId === l.id
+                return (
+                  <tr key={l.id} className={`hover:bg-slate-50 ${l.status === 'failed' ? 'bg-red-50/30' : ''}`}>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-700">User #{l.recipient_user_id}</div>
+                      {l.recipient_phone && <div className="text-xs text-slate-400 font-mono">{l.recipient_phone}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-xs">{NOTIF_TYPE_LABELS[l.notif_type] ?? l.notif_type}</td>
+                    <td className="px-4 py-3 max-w-[160px] truncate text-slate-600 text-xs">{l.content_rendered}</td>
+                    <td className="px-4 py-3">{statusBadge(l.status)}</td>
+                    <td className="px-4 py-3 max-w-xs">
+                      {l.error_msg ? (
+                        <div>
+                          {code && (
+                            <span className="inline-block px-1.5 py-0.5 text-xs font-bold bg-red-100 text-red-700 rounded font-mono mr-1">
+                              err {code}
+                            </span>
+                          )}
+                          <button
+                            onClick={() => setExpandedId(isExpanded ? null : l.id)}
+                            className="text-xs text-red-600 hover:text-red-800 underline"
+                          >
+                            {isExpanded ? 'ẩn' : 'xem lỗi'}
+                          </button>
+                          {isExpanded && (
+                            <div className="mt-1 space-y-1">
+                              <div className="font-mono text-xs text-red-700 bg-red-50 px-2 py-1.5 rounded border border-red-100 break-all">
+                                {l.error_msg}
+                              </div>
+                              {hint && (
+                                <div className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-100">
+                                  💡 {hint}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-300 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{fmtDt(l.sent_at ?? l.created_at)}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
@@ -679,7 +948,7 @@ function LogsTab() {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function ZaloNotifPage() {
-  const [tab, setTab] = useState<'config' | 'templates' | 'users' | 'send' | 'logs'>('config')
+  const [tab, setTab] = useState<'config' | 'templates' | 'users' | 'send' | 'test' | 'logs'>('config')
   const [stats, setStats] = useState<ZaloStats | null>(null)
   const [templates, setTemplates] = useState<ZaloTemplateRead[]>([])
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -698,6 +967,7 @@ export default function ZaloNotifPage() {
     { key: 'templates', label: '📝 Mẫu tin nhắn' },
     { key: 'users',     label: '👥 Danh sách nhận' },
     { key: 'send',      label: '📤 Gửi thủ công' },
+    { key: 'test',      label: '🧪 Test & Broadcast' },
     { key: 'logs',      label: '📋 Lịch sử' },
   ] as const
 
@@ -754,6 +1024,7 @@ export default function ZaloNotifPage() {
           {tab === 'templates' && <TemplatesTab />}
           {tab === 'users'     && <UserLinksTab />}
           {tab === 'send'      && <SendTab templates={templates} />}
+          {tab === 'test'      && <TestTab />}
           {tab === 'logs'      && <LogsTab />}
         </div>
       </div>
