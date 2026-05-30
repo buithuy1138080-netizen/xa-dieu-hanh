@@ -122,6 +122,16 @@ export default function ReportCenterPage() {
     }
   }
 
+  async function handleResetStuck() {
+    try {
+      const r = await reportApi.resetStuck()
+      alert(r.data.message)
+      await loadReports()
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Lỗi khi đặt lại báo cáo')
+    }
+  }
+
   async function handleDelete(id: number) {
     if (!confirm('Xóa báo cáo này?')) return
     await reportApi.remove(id)
@@ -294,9 +304,20 @@ export default function ReportCenterPage() {
         {/* ── History tab ──────────────────────────────────────────────────── */}
         {tab === 'history' && (
           <div>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <h2 className="font-semibold text-slate-700">Lịch sử báo cáo</h2>
-              <button onClick={loadReports} className="text-xs text-slate-400 hover:text-slate-700">↻ Làm mới</button>
+              <div className="flex items-center gap-2">
+                {reports.some(r => r.status === 'generating') && (
+                  <button
+                    onClick={handleResetStuck}
+                    className="text-xs px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg font-medium"
+                    title="Đặt lại tất cả báo cáo đang kẹt ở trạng thái Đang tạo"
+                  >
+                    🔧 Reset báo cáo kẹt
+                  </button>
+                )}
+                <button onClick={loadReports} className="text-xs text-slate-400 hover:text-slate-700">↻ Làm mới</button>
+              </div>
             </div>
 
             {fetchError && (

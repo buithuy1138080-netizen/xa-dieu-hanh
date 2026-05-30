@@ -47,9 +47,12 @@ async def create_report(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from sqlalchemy import update as sa_update
+
     label = report_engine.make_period_label(body.period_from, body.period_to, body.report_type)
     title = report_engine.make_report_title(body.report_type, label)
 
+    # Step 1: persist the record so the user sees "Đang tạo..." immediately
     rpt = Report(
         report_type=body.report_type,
         title=title,
@@ -61,33 +64,56 @@ async def create_report(
     )
     db.add(rpt)
     await db.commit()
-    await db.refresh(rpt)
+    report_id = rpt.id   # capture before any session issues
+    logger.info("Report %s created — generating...", report_id)
 
-    # Generate synchronously — avoids background task being killed on reload
+    # Step 2: generate synchronously using a fresh session to avoid
+    # session-state corruption after the first commit.
     try:
-        data = await report_engine.collect_data(db, rpt.period_from, rpt.period_to, rpt.report_type)
-        data = _make_json_safe(data)
-        summary = ai_summary_service.generate_summary(data, rpt.report_type)
-        rpt.summary_data = data
-        rpt.ai_summary = summary
-        rpt.status = "done"
-        rpt.generated_at = datetime.utcnow()
-        notif = Notification(
-            user_id=current_user.id,
-            type="report",
-            title="Báo cáo đã sẵn sàng",
-            body=f"Báo cáo \"{rpt.title}\" đã được tạo thành công.",
-            link_url=f"/bao-cao/{rpt.id}",
-        )
-        db.add(notif)
-    except Exception as exc:
-        logger.exception("Report generation failed id=%s", rpt.id)
-        rpt.status = "failed"
-        rpt.error_msg = str(exc)[:500]
+        async with AsyncSessionLocal() as gen_db:
+            data = await report_engine.collect_data(
+                gen_db, body.period_from, body.period_to, body.report_type
+            )
+            data = _make_json_safe(data)
+            summary = ai_summary_service.generate_summary(data, body.report_type)
 
-    await db.commit()
-    await db.refresh(rpt)
-    return rpt
+            await gen_db.execute(
+                sa_update(Report).where(Report.id == report_id).values(
+                    status="done",
+                    summary_data=data,
+                    ai_summary=summary,
+                    generated_at=datetime.utcnow(),
+                )
+            )
+            gen_db.add(Notification(
+                user_id=current_user.id,
+                type="report",
+                title="Báo cáo đã sẵn sàng",
+                body=f"Báo cáo \"{title}\" đã được tạo thành công.",
+                link_url=f"/bao-cao/{report_id}",
+            ))
+            await gen_db.commit()
+            logger.info("Report %s done.", report_id)
+
+    except Exception as exc:
+        logger.exception("Report generation failed id=%s: %s", report_id, exc)
+        error_text = str(exc)[:500]
+        # Use a separate session so a broken gen_db doesn't block the update
+        async with AsyncSessionLocal() as err_db:
+            await err_db.execute(
+                sa_update(Report).where(Report.id == report_id).values(
+                    status="failed",
+                    error_msg=error_text,
+                )
+            )
+            await err_db.commit()
+
+    # Step 3: return fresh data
+    async with AsyncSessionLocal() as out_db:
+        fresh = await out_db.get(Report, report_id)
+        if fresh is None:
+            raise HTTPException(500, "Không thể đọc báo cáo sau khi tạo")
+        return fresh
 
 
 # ── Background report generation ──────────────────────────────────────────────
@@ -247,6 +273,26 @@ async def export_xlsx(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         filename=Path(path).name,
     )
+
+
+# ── Reset stuck reports ───────────────────────────────────────────────────────
+
+@router.post("/reset-stuck", status_code=200)
+async def reset_stuck_reports(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Manually reset all 'generating' reports that are stuck."""
+    from sqlalchemy import update as sa_update
+    result = await db.execute(
+        sa_update(Report)
+        .where(Report.status == "generating")
+        .values(status="failed", error_msg="Đặt lại thủ công bởi admin")
+    )
+    await db.commit()
+    count = result.rowcount
+    logger.info("Manual reset: %d stuck report(s) set to failed", count)
+    return {"reset": count, "message": f"Đã đặt lại {count} báo cáo bị kẹt"}
 
 
 # ── Delete ────────────────────────────────────────────────────────────────────

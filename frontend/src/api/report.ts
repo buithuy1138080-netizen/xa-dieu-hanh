@@ -29,6 +29,9 @@ export const reportApi = {
 
   exportXlsx: (id: number) =>
     apiClient.post(`${BASE}/${id}/export/xlsx`, {}, { responseType: 'blob' }),
+
+  resetStuck: () =>
+    apiClient.post<{ reset: number; message: string }>(`${BASE}/reset-stuck`),
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
