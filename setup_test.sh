@@ -44,25 +44,24 @@ echo "  .env.production đã tạo"
 
 # ── 3. Tạo docker-compose.test.yml ───────────────────────
 echo "[3/6] Tạo docker-compose.test.yml..."
-cat > "$DIR/docker-compose.test.yml" <<'EOF'
+cat > "$DIR/docker-compose.test.yml" <<COMPOSE_EOF
 version: "3.9"
 
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
-    env_file: .env.production
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: xa_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASS}
     volumes:
       - xa_test_db:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d xa_test"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   backend:
     build:
@@ -71,7 +70,7 @@ services:
     restart: unless-stopped
     env_file: .env.production
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASS}@db:5432/xa_test
     depends_on:
       db:
         condition: service_healthy
@@ -102,7 +101,7 @@ services:
 volumes:
   xa_test_db:
   xa_test_uploads:
-EOF
+COMPOSE_EOF
 echo "  docker-compose.test.yml đã tạo"
 
 # ── 4. Mở firewall cổng 8080 ─────────────────────────────
