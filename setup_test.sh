@@ -8,6 +8,7 @@ set -e  # Dừng ngay nếu có lỗi
 
 REPO="https://github.com/buithuy1138080-netizen/xa-dieu-hanh.git"
 DIR="/opt/xa_test"
+DC="docker compose --env-file $DIR/.env.production -f $DIR/docker-compose.test.yml -p xa_test"
 PROJECT="xa_test"
 PORT="8080"
 DB_NAME="xa_test"
@@ -50,6 +51,7 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    env_file: .env.production
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -103,25 +105,32 @@ volumes:
 EOF
 echo "  docker-compose.test.yml đã tạo"
 
-# ── 4. Build và khởi động ────────────────────────────────
-echo "[4/6] Build Docker images (có thể mất 5-10 phút)..."
+# ── 4. Mở firewall cổng 8080 ─────────────────────────────
+echo "[4/7] Mở firewall cổng 8080..."
+ufw allow 8080 2>/dev/null || true
+echo "  Cổng 8080 đã mở"
+
+# ── 5. Build và khởi động ────────────────────────────────
+echo "[5/7] Build Docker images (có thể mất 5-10 phút)..."
 cd "$DIR"
-docker compose -f docker-compose.test.yml -p "$PROJECT" up -d --build
+docker compose --env-file "$DIR/.env.production" -f docker-compose.test.yml -p "$PROJECT" up -d --build
 echo "  Containers đã khởi động"
 
-# ── 5. Chờ backend sẵn sàng ──────────────────────────────
-echo "[5/6] Chờ backend khởi động..."
+# ── 6. Chờ backend sẵn sàng ──────────────────────────────
+echo "[6/7] Chờ backend khởi động..."
 BACKEND_CONTAINER="${PROJECT}-backend-1"
 for i in $(seq 1 30); do
-  if docker exec "$BACKEND_CONTAINER" python3 -c "import app.main" 2>/dev/null; then
+  STATUS=$(docker inspect --format='{{.State.Status}}' "$BACKEND_CONTAINER" 2>/dev/null || echo "missing")
+  if [ "$STATUS" = "running" ]; then
+    sleep 5  # extra wait for app startup
     break
   fi
   echo "  Chờ... ($i/30)"
   sleep 3
 done
 
-# ── 6. Migration + tạo admin ─────────────────────────────
-echo "[6/6] Chạy migration database..."
+# ── 7. Migration + tạo admin ─────────────────────────────
+echo "[7/7] Chạy migration database..."
 docker exec "$BACKEND_CONTAINER" alembic upgrade head
 
 echo "  Tạo tài khoản admin..."
