@@ -501,3 +501,50 @@ async def zalo_webhook(payload: dict, db: AsyncSession = Depends(get_db)):
 async def zalo_webhook_verify():
     """Zalo webhook verification (GET request)."""
     return {"ok": True}
+
+
+# ── OA Follower list ──────────────────────────────────────────────────────────
+
+@router.get("/followers")
+async def list_oa_followers(
+    offset: int = 0,
+    count: int = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fetch OA follower list from Zalo API and cross-reference with existing user links."""
+    cfg = (await db.execute(
+        select(ZaloConfig).where(ZaloConfig.is_active == True).limit(1)
+    )).scalar_one_or_none()
+    if not cfg or not cfg.access_token:
+        raise HTTPException(400, "Chưa cấu hình Zalo hoặc chưa có access token")
+
+    result = await zalo_api_service.get_followers(cfg.access_token, offset=offset, count=count)
+    if result.get("error") != 0:
+        raise HTTPException(400, f"Zalo lỗi: {result.get('message', str(result))}")
+
+    data = result.get("data") or {}
+    followers = data.get("followers") or []
+    total = data.get("total", 0)
+
+    # Build map of existing links by zalo_user_id
+    existing = (await db.execute(select(ZaloUserLink))).scalars().all()
+    linked_map: dict[str, int] = {
+        lnk.zalo_user_id: lnk.user_id
+        for lnk in existing
+        if lnk.zalo_user_id
+    }
+
+    return {
+        "total": total,
+        "offset": offset,
+        "followers": [
+            {
+                "zalo_user_id": f.get("user_id", ""),
+                "display_name":  f.get("display_name", ""),
+                "avatar":        f.get("avatar", ""),
+                "linked_user_id": linked_map.get(f.get("user_id", "")),
+            }
+            for f in followers
+        ],
+    }

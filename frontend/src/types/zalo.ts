@@ -124,6 +124,19 @@ export interface ZaloSendResult {
   errors?: Array<{ user_id: number | null; error: string }>
 }
 
+export interface ZaloFollower {
+  zalo_user_id: string
+  display_name: string
+  avatar: string
+  linked_user_id: number | null
+}
+
+export interface ZaloFollowerList {
+  total: number
+  offset: number
+  followers: ZaloFollower[]
+}
+
 export interface ZaloStats {
   total_sent: number
   sent_today: number

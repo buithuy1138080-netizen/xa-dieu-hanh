@@ -5,6 +5,7 @@ import type {
   ZaloChannel,
   ZaloConfigRead,
   ZaloConfigUpsert,
+  ZaloFollower,
   ZaloLogRead,
   ZaloSendRequest,
   ZaloSendResult,
@@ -166,6 +167,27 @@ function ConfigTab() {
             {refreshing ? '...' : '🔄 Làm mới token'}
           </button>
         </div>
+      </div>
+
+      {/* Webhook URL — for Zalo OA configuration */}
+      <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-2">
+        <p className="font-semibold text-indigo-800 text-sm">🔗 Webhook URL (cấu hình trong Zalo OA Manager)</p>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 bg-white border border-indigo-200 rounded-lg px-3 py-2 text-xs font-mono text-indigo-700 break-all">
+            {window.location.origin}/api/v1/zalo/webhook
+          </code>
+          <button
+            onClick={() => navigator.clipboard.writeText(`${window.location.origin}/api/v1/zalo/webhook`)}
+            className="px-3 py-2 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium shrink-0"
+          >
+            Copy
+          </button>
+        </div>
+        <ol className="list-decimal list-inside text-xs text-indigo-700 space-y-1 mt-1">
+          <li>Vào <strong>oa.zalo.me</strong> → chọn OA → <strong>Quản lý</strong> → <strong>API & Webhook</strong></li>
+          <li>Dán URL trên vào ô <strong>Webhook URL</strong>, bật event <strong>user_send_text</strong></li>
+          <li>Nhân viên nhắn mã nhân viên (VD: <code className="bg-indigo-100 px-1 rounded">NS001</code>) vào OA → hệ thống tự liên kết UID</li>
+        </ol>
       </div>
 
       {/* Setup guide */}
@@ -411,6 +433,145 @@ function TemplateModal({ initial, onSave, onClose }: {
 
 // ── User Links Tab ────────────────────────────────────────────────────────────
 
+// ── Followers panel (import UID from OA) ─────────────────────────────────────
+
+function FollowersPanel({ links, onLinked }: { links: ZaloUserLinkRead[]; onLinked: () => void }) {
+  const [followers, setFollowers] = useState<ZaloFollower[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+  const [linkingUid, setLinkingUid] = useState<string | null>(null)
+  const [selectedUser, setSelectedUser] = useState<Record<string, string>>({})
+  const [savingUid, setSavingUid] = useState<string | null>(null)
+  const [savedMsg, setSavedMsg] = useState<Record<string, string>>({})
+
+  async function load() {
+    setLoading(true); setErr('')
+    try {
+      const r = await zaloApi.getFollowers(0, 50)
+      setFollowers(r.data.followers)
+      setTotal(r.data.total)
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail ?? 'Lỗi khi tải danh sách người quan tâm')
+    } finally { setLoading(false) }
+  }
+
+  // IOC users who don't have a zalo_user_id yet — candidates for linking
+  const unlinkedUsers = links.filter(l => !l.zalo_user_id && l.is_active)
+
+  async function doLink(follower: ZaloFollower) {
+    const userId = parseInt(selectedUser[follower.zalo_user_id] || '')
+    if (!userId) return
+    setSavingUid(follower.zalo_user_id)
+    try {
+      await zaloApi.upsertUserLink({ user_id: userId, zalo_user_id: follower.zalo_user_id })
+      setSavedMsg(m => ({ ...m, [follower.zalo_user_id]: `✅ Đã liên kết với User #${userId}` }))
+      setLinkingUid(null)
+      onLinked()
+      // Refresh follower list to update linked_user_id
+      const r = await zaloApi.getFollowers(0, 50)
+      setFollowers(r.data.followers)
+    } catch {
+      setSavedMsg(m => ({ ...m, [follower.zalo_user_id]: '❌ Lỗi khi lưu' }))
+    } finally { setSavingUid(null) }
+  }
+
+  const linkedSet = new Set(links.filter(l => l.zalo_user_id).map(l => l.zalo_user_id))
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
+        <div>
+          <p className="font-semibold text-slate-700 text-sm">📡 Người quan tâm OA Zalo</p>
+          {total > 0 && <p className="text-xs text-slate-400">{total} người quan tâm tổng cộng</p>}
+        </div>
+        <button onClick={load} disabled={loading}
+          className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg disabled:opacity-60">
+          {loading ? '⏳ Đang tải...' : followers.length ? '↺ Làm mới' : '📥 Tải từ Zalo OA'}
+        </button>
+      </div>
+
+      {err && (
+        <div className="px-4 py-3 text-sm text-red-600 bg-red-50 border-b border-red-100">{err}</div>
+      )}
+
+      {followers.length === 0 && !loading && !err && (
+        <div className="py-8 text-center text-slate-400 text-sm">
+          Nhấn "Tải từ Zalo OA" để lấy danh sách người quan tâm
+        </div>
+      )}
+
+      {followers.length > 0 && (
+        <div className="divide-y divide-slate-50 max-h-96 overflow-y-auto">
+          {followers.map(f => {
+            const isLinked = linkedSet.has(f.zalo_user_id) || f.linked_user_id != null
+            const isLinking = linkingUid === f.zalo_user_id
+            return (
+              <div key={f.zalo_user_id} className={`flex items-center gap-3 px-4 py-3 hover:bg-slate-50 ${isLinked ? 'bg-green-50/40' : ''}`}>
+                {/* Avatar */}
+                {f.avatar
+                  ? <img src={f.avatar} className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-100" alt="" />
+                  : <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center shrink-0 text-blue-600 font-bold text-sm">
+                      {f.display_name?.[0] ?? '?'}
+                    </div>
+                }
+
+                {/* Name + UID */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{f.display_name || 'Không có tên'}</p>
+                  <p className="text-xs font-mono text-slate-400 truncate">{f.zalo_user_id}</p>
+                  {savedMsg[f.zalo_user_id] && (
+                    <p className="text-xs mt-0.5 text-green-600">{savedMsg[f.zalo_user_id]}</p>
+                  )}
+                </div>
+
+                {/* Status / Link action */}
+                <div className="shrink-0 flex items-center gap-2">
+                  {isLinked ? (
+                    <span className="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full font-medium">
+                      ✅ Đã liên kết
+                    </span>
+                  ) : isLinking ? (
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        value={selectedUser[f.zalo_user_id] ?? ''}
+                        onChange={e => setSelectedUser(s => ({ ...s, [f.zalo_user_id]: e.target.value }))}
+                      >
+                        <option value="">-- Chọn user IOC --</option>
+                        {unlinkedUsers.map(u => (
+                          <option key={u.user_id} value={u.user_id}>
+                            User #{u.user_id} ({u.zalo_phone ?? 'không có SĐT'})
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => doLink(f)}
+                        disabled={!selectedUser[f.zalo_user_id] || savingUid === f.zalo_user_id}
+                        className="px-2 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50"
+                      >
+                        {savingUid === f.zalo_user_id ? '...' : 'Lưu'}
+                      </button>
+                      <button onClick={() => setLinkingUid(null)} className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setLinkingUid(f.zalo_user_id)}
+                      className="px-3 py-1 text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded-lg font-medium"
+                    >
+                      Liên kết
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function UserLinksTab() {
   const [links, setLinks] = useState<ZaloUserLinkRead[]>([])
   const [importing, setImporting] = useState(false)
@@ -496,6 +657,9 @@ function UserLinksTab() {
           </p>
         </div>
       )}
+
+      {/* Followers panel — pull from Zalo OA */}
+      <FollowersPanel links={links} onLinked={load} />
 
       <div className="overflow-x-auto">
         {links.length === 0 ? (

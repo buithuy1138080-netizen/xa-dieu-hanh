@@ -2,6 +2,7 @@ import apiClient from './client'
 import type {
   ZaloConfigRead,
   ZaloConfigUpsert,
+  ZaloFollowerList,
   ZaloLogRead,
   ZaloSendRequest,
   ZaloSendResult,
@@ -72,4 +73,8 @@ export const zaloApi = {
 
   getStats: () =>
     apiClient.get<ZaloStats>(`${BASE}/stats`),
+
+  /** Lấy danh sách người quan tâm OA từ Zalo API */
+  getFollowers: (offset = 0, count = 50) =>
+    apiClient.get<ZaloFollowerList>(`${BASE}/followers`, { params: { offset, count } }),
 }

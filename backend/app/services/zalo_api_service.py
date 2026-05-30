@@ -138,6 +138,24 @@ async def refresh_token(
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+async def get_followers(access_token: str, offset: int = 0, count: int = 50) -> dict[str, Any]:
+    """GET /v2.0/oa/getfollowers — list OA followers with display_name, avatar, user_id."""
+    if not _HTTPX_OK:
+        return _no_httpx()
+    import json as _json
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.get(
+                "https://openapi.zalo.me/v2.0/oa/getfollowers",
+                headers={"access_token": access_token},
+                params={"data": _json.dumps({"offset": offset, "count": count})},
+            )
+            return resp.json()
+    except Exception as exc:
+        logger.warning("Zalo get_followers failed: %s", exc)
+        return {"error": -1, "message": str(exc)}
+
+
 def _normalise_phone(phone: str) -> str:
     """0912345678 → 84912345678  (Zalo ZNS format)."""
     p = phone.strip().lstrip("+").replace(" ", "").replace("-", "")
