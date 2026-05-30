@@ -63,7 +63,18 @@ export default function AppLayout({ children }: Props) {
             </button>
 
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-sm shadow-blue-500/30">
+              {/* Logo tùy chỉnh (logo.png) hoặc fallback icon mặc định */}
+              <img
+                src="/logo.png"
+                alt="Logo"
+                className="w-8 h-8 object-contain rounded-full"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none'
+                  const fallback = e.currentTarget.nextElementSibling as HTMLElement | null
+                  if (fallback) fallback.style.display = 'flex'
+                }}
+              />
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 items-center justify-center shadow-sm shadow-blue-500/30 hidden">
                 <div className="w-3 h-3 rounded-sm border-2 border-white/80" />
               </div>
               <div className="hidden sm:block">
