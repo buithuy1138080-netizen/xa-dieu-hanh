@@ -24,10 +24,12 @@ except ImportError:
 
 # ── Zalo API endpoints ────────────────────────────────────────────────────────
 
-_OA_API = "https://openapi.zalo.me/v3.0/oa"
-_ZNS_API = "https://business.openapi.zalo.me/message/template"
-_TOKEN_URL = "https://oauth.zaloapp.com/v4/oa/access_token"
-_TIMEOUT = 12.0
+# v2.0 is more broadly supported across all OA types (personal, business, verified)
+_OA_MSG_URL  = "https://openapi.zalo.me/v2.0/oa/message"
+_OA_API_V3   = "https://openapi.zalo.me/v3.0/oa"   # kept for reference
+_ZNS_API     = "https://business.openapi.zalo.me/message/template"
+_TOKEN_URL   = "https://oauth.zaloapp.com/v4/oa/access_token"
+_TIMEOUT     = 12.0
 
 
 def _no_httpx() -> dict:
@@ -41,19 +43,31 @@ async def send_oa_message(
     zalo_user_id: str,
     text: str,
 ) -> dict[str, Any]:
+    """Send OA message via v2.0 endpoint (supported by all OA types).
+
+    Falls back to v3.0/oa/message/cs if v2.0 returns an unexpected error.
+    """
     if not _HTTPX_OK:
         return _no_httpx()
+    payload = {
+        "recipient": {"user_id": zalo_user_id},
+        "message": {"text": text},
+    }
+    headers = {
+        "access_token": access_token,
+        "Content-Type": "application/json",
+    }
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.post(
-                f"{_OA_API}/message/cs",
-                headers={"access_token": access_token},
-                json={
-                    "recipient": {"user_id": zalo_user_id},
-                    "message": {"text": text},
-                },
-            )
-            return resp.json()
+            resp = await client.post(_OA_MSG_URL, headers=headers, json=payload)
+            result = resp.json()
+            # v2.0 returns error 0 on success; any other value is a Zalo error
+            if result.get("error") != 0:
+                logger.warning(
+                    "Zalo OA v2.0 send failed user=%s error=%s msg=%s",
+                    zalo_user_id, result.get("error"), result.get("message"),
+                )
+            return result
     except Exception as exc:
         logger.warning("Zalo OA send failed: %s", exc)
         return {"error": -1, "message": str(exc)}
@@ -76,7 +90,10 @@ async def send_zns(
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.post(
                 _ZNS_API,
-                headers={"access_token": access_token},
+                headers={
+                    "access_token": access_token,
+                    "Content-Type": "application/json",
+                },
                 json={
                     "phone": phone_norm,
                     "template_id": zns_template_id,
