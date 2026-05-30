@@ -143,18 +143,30 @@ export default function Sidebar({ onClose }: Props) {
 
       {/* ── Logo / Header ─────────────────────────────────── */}
       <div className="flex items-center gap-3 px-3 py-4 min-h-[72px] border-b border-slate-100">
-        {/* Brand icon */}
-        <div
-          className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 relative overflow-hidden"
-          style={{
-            background: 'linear-gradient(135deg, #2563EB 0%, #4F46E5 100%)',
-            boxShadow: '0 8px 24px rgba(37,99,235,0.28)',
-          }}
-        >
-          {/* Glass overlay */}
-          <div className="absolute inset-0 rounded-2xl"
-            style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 60%)' }} />
-          <Shield size={17} className="text-white relative z-10 drop-shadow" />
+        {/* Brand icon — custom logo or fallback shield */}
+        <div className="w-10 h-10 shrink-0 flex items-center justify-center">
+          <img
+            src="/logo.png"
+            alt="Logo"
+            className="w-10 h-10 object-contain rounded-full"
+            onError={(e) => {
+              const t = e.currentTarget
+              t.style.display = 'none'
+              const fallback = t.nextElementSibling as HTMLElement | null
+              if (fallback) fallback.style.display = 'flex'
+            }}
+          />
+          <div
+            className="w-10 h-10 rounded-2xl items-center justify-center shrink-0 relative overflow-hidden hidden"
+            style={{
+              background: 'linear-gradient(135deg, #2563EB 0%, #4F46E5 100%)',
+              boxShadow: '0 8px 24px rgba(37,99,235,0.28)',
+            }}
+          >
+            <div className="absolute inset-0 rounded-2xl"
+              style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 60%)' }} />
+            <Shield size={17} className="text-white relative z-10 drop-shadow" />
+          </div>
         </div>
 
         <AnimatePresence>
