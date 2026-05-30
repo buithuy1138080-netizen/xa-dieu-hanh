@@ -1,0 +1,44 @@
+{
+  "name": "Hệ Thống Điều Hành Cấp Xã",
+  "short_name": "IOC Xã",
+  "description": "Hệ thống điều hành IOC cấp xã — quản lý nhiệm vụ, văn bản, KPI",
+  "theme_color": "#0d1526",
+  "background_color": "#f0f2f5",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "lang": "vi",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "any",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nhiệm vụ",
+      "url": "/tasks",
+      "icons": [{ "src": "/logo.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Dashboard",
+      "url": "/dashboard",
+      "icons": [{ "src": "/logo.png", "sizes": "96x96" }]
+    }
+  ],
+  "categories": ["productivity", "government"]
+}
