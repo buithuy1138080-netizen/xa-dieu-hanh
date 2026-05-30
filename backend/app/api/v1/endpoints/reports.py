@@ -71,7 +71,7 @@ async def create_report(
         rpt.summary_data = data
         rpt.ai_summary = summary
         rpt.status = "done"
-        rpt.generated_at = datetime.now(timezone.utc)
+        rpt.generated_at = datetime.utcnow()
         notif = Notification(
             user_id=current_user.id,
             type="report",
