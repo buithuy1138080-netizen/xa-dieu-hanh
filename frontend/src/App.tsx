@@ -53,6 +53,8 @@ const UserManagementPage    = lazy(() => import('./pages/users/UserManagementPag
 const DepartmentPage        = lazy(() => import('./pages/departments/DepartmentPage'))
 const ProgramsPage          = lazy(() => import('./pages/programs/ProgramsPage'))
 const PublicMeetingsPage    = lazy(() => import('./pages/public/PublicMeetingsPage'))
+const CapturePage           = lazy(() => import('./pages/capture/CapturePage'))
+const BookmarkletGuidePage  = lazy(() => import('./pages/capture/BookmarkletGuidePage'))
 
 function PageLoader() {
   return (
@@ -124,6 +126,8 @@ function AnimatedRoutes() {
   return (
     <Routes location={location} key={location.pathname}>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/capture" element={<Suspense fallback={<PageLoader />}><CapturePage /></Suspense>} />
+        <Route path="/capture/guide" element={<P><BookmarkletGuidePage /></P>} />
         <Route path="/public/meetings" element={<Suspense fallback={<PageLoader />}><PublicMeetingsPage /></Suspense>} />
         <Route path="/dashboard"          element={<P><DashboardPage /></P>} />
         <Route path="/tasks"              element={<P><TaskListPage /></P>} />

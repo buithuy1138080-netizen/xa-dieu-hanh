@@ -796,3 +796,109 @@ async def create_task_from_doc(
         .where(DocumentTask.id == link.id)
     )
     return (await db.execute(stmt)).scalar_one()
+
+
+# ─── Capture từ dhtn.dcs.vn (Bookmarklet) ───────────────────────────────────
+
+class CaptureRequest(BaseModel):
+    """Minimal data sent by the bookmarklet from dhtn.dcs.vn."""
+    title: str
+    doc_number: str | None = None
+    doc_type: str = "incoming"      # incoming | outgoing
+    issuer: str | None = None       # Đơn vị ban hành / nơi gửi
+    trich_yeu: str | None = None    # Trích yếu nội dung
+    issue_date: str | None = None   # dd/mm/yyyy from dhtn
+    source_url: str | None = None   # URL trang dhtn.dcs.vn
+    do_mat: str | None = None       # Độ mật (Thường / Mật / ...)
+    # Auto-create task?
+    create_task: bool = False
+    task_title: str | None = None
+    task_due_date: str | None = None
+    lead_department_id: int | None = None
+
+
+class CaptureResponse(BaseModel):
+    doc_id: int
+    doc_number: str | None
+    task_id: int | None = None
+    message: str
+
+
+@router.post("/capture", response_model=CaptureResponse, status_code=201)
+async def capture_from_dhtn(
+    body: CaptureRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Receive a document captured from dhtn.dcs.vn via bookmarklet.
+    Optionally auto-create a linked task.
+    """
+    from datetime import date as dt_date
+    import re
+
+    # Parse issue_date (dd/mm/yyyy)
+    issue_date = None
+    if body.issue_date:
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+            try:
+                issue_date = datetime.strptime(body.issue_date, fmt).date()
+                break
+            except ValueError:
+                pass
+
+    doc = Document(
+        doc_number=body.doc_number,
+        title=body.title,
+        doc_type=body.doc_type,
+        issuer=body.issuer,
+        summary=body.trich_yeu,          # trích yếu → summary
+        category=body.do_mat or None,    # độ mật → category
+        issue_date=issue_date,
+        received_date=dt_date.today() if body.doc_type == "incoming" else None,
+        status="pending",
+        priority="normal",
+        created_by=current_user.id,
+    )
+    db.add(doc)
+    await db.flush()
+
+    _add_history(db, doc.id, current_user.id, "created",
+                 note=f"Nhập từ dhtn.dcs.vn — {body.source_url or ''}")
+
+    task_id = None
+    if body.create_task and body.task_title:
+        from app.models.task import Task as TaskModel, TaskDepartment as TDept
+        from app.api.v1.endpoints.tasks import _next_task_code
+        task_code = await _next_task_code(db)
+        due_dt = None
+        if body.task_due_date:
+            try:
+                due_dt = datetime.strptime(body.task_due_date, "%d/%m/%Y")
+            except ValueError:
+                pass
+        t = TaskModel(
+            task_code=task_code,
+            title=body.task_title or body.title,
+            incoming_document_id=doc.id if body.doc_type == "incoming" else None,
+            outgoing_document_id=doc.id if body.doc_type == "outgoing" else None,
+            lead_department_id=body.lead_department_id,
+            due_date=due_dt,
+            status="pending",
+            priority="medium",
+            created_by=current_user.id,
+        )
+        db.add(t)
+        await db.flush()
+        db.add(DocumentTask(doc_id=doc.id, task_id=t.id))
+        if body.lead_department_id:
+            db.add(TDept(task_id=t.id, department_id=body.lead_department_id, role="lead"))
+        task_id = t.id
+
+    await db.commit()
+
+    return CaptureResponse(
+        doc_id=doc.id,
+        doc_number=doc.doc_number,
+        task_id=task_id,
+        message=f"Đã nhập văn bản{' và tạo nhiệm vụ' if task_id else ''} thành công",
+    )
