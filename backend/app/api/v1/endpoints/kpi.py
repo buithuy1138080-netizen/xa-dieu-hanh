@@ -109,9 +109,30 @@ async def list_kpis(
     overdue_only: bool = Query(False),
     program_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     conditions = [KPI.deleted_at.is_(None)]
+
+    # ── Role-based visibility: manager/staff only see KPIs of their dept ──────
+    if current_user.role not in ("admin", "leader"):
+        from app.models.staff import Staff as _Staff
+        staff_row = (await db.execute(
+            select(_Staff).where(_Staff.user_id == current_user.id)
+        )).scalar_one_or_none()
+        user_dept_id = staff_row.department_id if staff_row else None
+        if user_dept_id:
+            conditions.append(or_(
+                KPI.responsible_department_id == user_dept_id,
+                KPI.responsible_user_id == current_user.id,
+                KPI.responsible_staff_id == (staff_row.id if staff_row else -1),
+                KPI.created_by == current_user.id,
+            ))
+        else:
+            conditions.append(or_(
+                KPI.responsible_user_id == current_user.id,
+                KPI.created_by == current_user.id,
+            ))
+    # ─────────────────────────────────────────────────────────────────────────
     if search:
         conditions.append(or_(
             KPI.title.ilike(f"%{search}%"),
@@ -411,6 +432,7 @@ async def import_kpi_excel(
             code=r["code"],
             title=r["title"],
             category=r["category"],
+            description=r.get("description"),
             unit=r["unit"],
             target_value=target_val,
             current_value=current_val,

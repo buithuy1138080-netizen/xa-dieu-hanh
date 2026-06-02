@@ -449,7 +449,7 @@ async def get_program_tasks(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     now = datetime.now(timezone.utc)
     q = (
@@ -461,6 +461,22 @@ async def get_program_tasks(
         )
         .where(Task.program_id == program_id, Task.deleted_at.is_(None))
     )
+
+    # ── Role-based visibility: same as list_tasks ─────────────────────────────
+    if current_user.role not in ("admin", "leader"):
+        from app.api.v1.endpoints.tasks import _get_user_dept_id
+        from app.models.task import TaskDepartment as _TDept
+        user_dept_id = await _get_user_dept_id(db, current_user.id)
+        dept_ids = select(_TDept.task_id).where(
+            _TDept.department_id == user_dept_id
+        ) if user_dept_id else select(_TDept.task_id).where(False)
+        q = q.where(or_(
+            Task.lead_department_id == user_dept_id,
+            Task.id.in_(dept_ids),
+            Task.assignee_id == current_user.id,
+            Task.created_by == current_user.id,
+        ))
+    # ─────────────────────────────────────────────────────────────────────────
     if status_filter:
         q = q.where(Task.status == status_filter)
     if priority:

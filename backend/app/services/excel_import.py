@@ -34,17 +34,18 @@ NQ57_COLUMNS = [
 ]
 
 KPI_COLUMNS = [
-    {"key": "code",          "header": "Mã chỉ tiêu",                  "width": 14, "required": False},
-    {"key": "title",         "header": "Tên chỉ tiêu (*)",             "width": 40, "required": True},
-    {"key": "category",      "header": "Danh mục (Kinh tế/Xã hội/...)", "width": 28, "required": False},
-    {"key": "unit",          "header": "Đơn vị tính (%/người/...)",    "width": 22, "required": False},
-    {"key": "target_value",  "header": "Mục tiêu (*)",                 "width": 13, "required": True},
-    {"key": "current_value", "header": "Giá trị hiện tại",            "width": 18, "required": False},
-    {"key": "year",          "header": "Năm (*)",                      "width": 10, "required": True},
-    {"key": "period",        "header": "Kỳ (monthly/quarterly/yearly)", "width": 30, "required": False},
-    {"key": "responsible_unit",   "header": "Đơn vị phụ trách",          "width": 25, "required": False},
-    {"key": "deadline",           "header": "Deadline (dd/mm/yyyy)",      "width": 18, "required": False},
-    {"key": "responsible_person", "header": "Người phụ trách (họ tên)",   "width": 25, "required": False},
+    {"key": "code",               "header": "Mã KPI",                           "width": 14, "required": False},
+    {"key": "title",              "header": "Tên KPI (*)",                       "width": 40, "required": True},
+    {"key": "category",           "header": "Nhóm/Danh mục (Kinh tế/Xã hội/...)", "width": 28, "required": False},
+    {"key": "description",        "header": "Mô tả",                             "width": 35, "required": False},
+    {"key": "target_value",       "header": "Mục tiêu (*)",                      "width": 13, "required": True},
+    {"key": "current_value",      "header": "Thực hiện (giá trị hiện tại)",       "width": 22, "required": False},
+    {"key": "unit",               "header": "Đơn vị tính (%/người/tỷ...)",        "width": 20, "required": False},
+    {"key": "period",             "header": "Chu kỳ (yearly/quarterly/monthly)",  "width": 30, "required": False},
+    {"key": "year",               "header": "Năm (*)",                            "width": 10, "required": True},
+    {"key": "deadline",           "header": "Hạn hoàn thành (dd/mm/yyyy)",        "width": 22, "required": False},
+    {"key": "responsible_unit",   "header": "Đơn vị phụ trách (tên đơn vị)",      "width": 28, "required": False},
+    {"key": "responsible_person", "header": "Cán bộ phụ trách (họ tên)",          "width": 28, "required": False},
 ]
 
 
@@ -100,9 +101,11 @@ def nq57_template() -> bytes:
 
 
 def kpi_template() -> bytes:
+    # Columns: code, title, category, description, target_value, current_value,
+    #          unit, period, year, deadline, responsible_unit, responsible_person
     sample = [
-        ["KPI-001", "Tỷ lệ hộ nghèo giảm", "Xã hội", "%", "5.0", "7.2", "2026", "yearly", "Phòng LĐ-TB&XH", "31/12/2026", "Nguyễn Văn A"],
-        ["KPI-002", "Thu ngân sách xã", "Kinh tế", "Tỷ đồng", "12.5", "8.3", "2026", "yearly", "Phòng Tài chính", "31/12/2026", "Trần Thị B"],
+        ["KPI-001", "Tỷ lệ hộ nghèo giảm", "Xã hội", "Giảm tỷ lệ hộ nghèo theo chuẩn mới", "5.0", "7.2", "%", "yearly", "2026", "31/12/2026", "Phòng LĐ-TB&XH", "Nguyễn Văn A"],
+        ["KPI-002", "Thu ngân sách xã", "Kinh tế", "Tổng thu ngân sách xã cả năm", "12.5", "8.3", "Tỷ đồng", "yearly", "2026", "31/12/2026", "Phòng Tài chính", "Trần Thị B"],
     ]
     return _build_template(KPI_COLUMNS, sample)
 
@@ -213,25 +216,31 @@ def parse_kpi(data: bytes) -> tuple[list[dict], list[str]]:
         if not title:
             errors.append(f"Hàng {i}: 'Tên chỉ tiêu' là bắt buộc")
             continue
-        target = _parse_float(row[4] if len(row) > 4 else 0)
+        target = _parse_float(row[4] if len(row) > 4 else 0)  # col 4 = target_value
         if target == 0:
-            errors.append(f"Hàng {i}: 'Mục tiêu' phải lớn hơn 0")
+            errors.append(f"Hàng {i}: 'Mục tiêu (cột E)' phải lớn hơn 0")
             continue
-        year = _parse_int(row[6] if len(row) > 6 else current_year, default=current_year)
+        # Columns: 7=period, 8=year (new order)
         period = _str(row[7] if len(row) > 7 else "").lower()
         if period not in valid_periods:
             period = "yearly"
+        year = _parse_int(row[8] if len(row) > 8 else current_year, default=current_year)
+        # Column order (matching KPI_COLUMNS and the form UI):
+        # 0=code, 1=title, 2=category, 3=description, 4=target_value,
+        # 5=current_value, 6=unit, 7=period, 8=year, 9=deadline,
+        # 10=responsible_unit, 11=responsible_person
         records.append({
             "code":               _str(row[0] if len(row) > 0 else "") or None,
             "title":              title,
             "category":           _str(row[2] if len(row) > 2 else "") or None,
-            "unit":               _str(row[3] if len(row) > 3 else "") or None,
+            "description":        _str(row[3] if len(row) > 3 else "") or None,
             "target_value":       target,
             "current_value":      _parse_float(row[5] if len(row) > 5 else 0),
-            "year":               year,
+            "unit":               _str(row[6] if len(row) > 6 else "") or None,
             "period":             period,
-            "responsible_unit":   _str(row[8] if len(row) > 8 else "") or None,
+            "year":               year,
             "deadline_str":       _parse_date(row[9] if len(row) > 9 else None),
-            "responsible_person": _str(row[10] if len(row) > 10 else "") or None,
+            "responsible_unit":   _str(row[10] if len(row) > 10 else "") or None,
+            "responsible_person": _str(row[11] if len(row) > 11 else "") or None,
         })
     return records, errors
