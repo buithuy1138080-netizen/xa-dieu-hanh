@@ -1,4 +1,5 @@
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { BookOpen, Building2, Check, ChevronDown, ClipboardList, FileText, Search, User as UserIcon, X } from 'lucide-react'
 import apiClient from '../../api/client'
 import { departmentsApi, type DeptRead } from '../../api/departments'
@@ -116,6 +117,9 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const sourceRef = useRef<HTMLDivElement>(null)
+
+  // ESC to close
+  useEscapeKey(useCallback(() => { if (!loading) onClose() }, [loading, onClose]))
 
   // Load departments + users + staff + programs on mount
   useEffect(() => {

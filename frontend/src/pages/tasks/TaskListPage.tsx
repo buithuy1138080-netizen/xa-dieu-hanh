@@ -464,8 +464,8 @@ export default function TaskListPage() {
             </div>
 
             {/* Desktop table */}
-            <div className="hidden md:block bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-              <table className="w-full text-sm">
+            <div className="hidden md:block bg-white rounded-2xl border border-slate-200 overflow-x-auto shadow-sm">
+              <table className="w-full min-w-[900px] text-sm">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-slate-50 border-b border-slate-200">
                     {['Mã NV','Tiêu đề','Nguồn','Trạng thái','Ưu tiên','Tiến độ','Hạn xử lý','Đơn vị CT','Thực hiện',''].map((h, i) => (
