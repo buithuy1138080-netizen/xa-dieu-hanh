@@ -534,6 +534,26 @@ async def list_tasks(
 ):
     q = select(Task).where(Task.deleted_at.is_(None))
 
+    # ── Role-based visibility filter ──────────────────────────────────────────
+    # admin + leader: see everything
+    # manager + staff: see only tasks where their dept is lead/coordinating,
+    #                  OR they are personally assigned
+    if current_user.role not in ("admin", "leader"):
+        user_dept_id = await _get_user_dept_id(db, current_user.id)
+        dept_task_ids = select(TaskDepartment.task_id).where(
+            TaskDepartment.department_id == user_dept_id,
+        ) if user_dept_id else select(TaskDepartment.task_id).where(False)
+
+        q = q.where(
+            or_(
+                Task.lead_department_id == user_dept_id,
+                Task.id.in_(dept_task_ids),
+                Task.assignee_id == current_user.id,
+                Task.created_by == current_user.id,
+            )
+        )
+    # ─────────────────────────────────────────────────────────────────────────
+
     if status == "overdue":
         # Virtual status: tasks past due_date that are not completed/cancelled
         _now = datetime.now(timezone.utc)
@@ -678,7 +698,23 @@ async def get_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    base = Task.deleted_at.is_(None)
+    base_cond = [Task.deleted_at.is_(None)]
+
+    # Same role-based filter as list_tasks
+    if current_user.role not in ("admin", "leader"):
+        user_dept_id = await _get_user_dept_id(db, current_user.id)
+        dept_task_ids = select(TaskDepartment.task_id).where(
+            TaskDepartment.department_id == user_dept_id,
+        ) if user_dept_id else select(TaskDepartment.task_id).where(False)
+        base_cond.append(
+            or_(
+                Task.lead_department_id == user_dept_id,
+                Task.id.in_(dept_task_ids),
+                Task.assignee_id == current_user.id,
+                Task.created_by == current_user.id,
+            )
+        )
+
     row = (await db.execute(
         select(
             func.count().label("total"),
@@ -689,13 +725,13 @@ async def get_stats(
             func.sum(case((Task.priority == "high",      1), else_=0)).label("high_priority"),
             func.sum(case((Task.priority == "urgent",    1), else_=0)).label("urgent_priority"),
             func.avg(Task.progress_percent).label("avg_progress"),
-        ).where(base)
+        ).where(*base_cond)
     )).one()
 
     now = datetime.now(timezone.utc)
     overdue = (await db.execute(
         select(func.count()).where(
-            base,
+            *base_cond,
             Task.status.notin_(["completed", "cancelled"]),
             Task.due_date < now,
         )
