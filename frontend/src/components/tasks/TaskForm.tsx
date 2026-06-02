@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react'
-import { Building2, Check, ChevronDown, ClipboardList, FileText, Search, User as UserIcon, X } from 'lucide-react'
+import { BookOpen, Building2, Check, ChevronDown, ClipboardList, FileText, Search, User as UserIcon, X } from 'lucide-react'
 import apiClient from '../../api/client'
 import { departmentsApi, type DeptRead } from '../../api/departments'
 import { directivesApi } from '../../api/directives'
@@ -10,6 +10,8 @@ import type { User } from '../../types'
 import type { DirectiveRead } from '../../types/directive'
 import type { DocumentRead } from '../../types/document'
 import type { Task, TaskCreate, TaskDetail, TaskPriority, TaskUpdate } from '../../types/task'
+
+interface ProgramMin { id: number; name: string; short_name?: string | null; program_type: string }
 
 interface StaffItem {
   id: number
@@ -90,6 +92,10 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
   const [loadingSrc, setLoadingSrc] = useState(false)
   const [showSourcePicker, setShowSourcePicker] = useState(false)
 
+  // Programs (Chương trình / Nghị quyết)
+  const [programs, setPrograms] = useState<ProgramMin[]>([])
+  const [programId, setProgramId] = useState<number | null>(task?.program_id ?? initialProgramId ?? null)
+
   // Departments
   const [departments, setDepartments] = useState<DeptRead[]>([])
   const [leadDeptId, setLeadDeptId] = useState<number | null>(task?.lead_department_id ?? null)
@@ -111,12 +117,14 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
   const [error, setError] = useState('')
   const sourceRef = useRef<HTMLDivElement>(null)
 
-  // Load departments + users + staff on mount
+  // Load departments + users + staff + programs on mount
   useEffect(() => {
     departmentsApi.list().then((r) => setDepartments(r.data)).catch(() => {})
     usersApi.list().then((r) => setUsers(r.data)).catch(() => {})
     apiClient.get<{ items: StaffItem[] }>('/staff?active_only=true&size=200')
       .then((r) => setStaffList(r.data.items)).catch(() => {})
+    apiClient.get<ProgramMin[]>('/programs?status=active')
+      .then((r) => setPrograms(r.data)).catch(() => {})
   }, [])
 
   // Load existing task's coordinating depts when editing
@@ -271,6 +279,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
           outgoing_document_id: outgoing_document_id as number | null | undefined,
           directive_id: directive_id as number | null | undefined,
           parent_task_id: parentTaskId,
+          program_id: programId,
         }
         await tasksApi.update(task.id, payload)
       } else {
@@ -280,7 +289,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
           priority,
           start_date: startDate || undefined,
           due_date: dueDate ? new Date(dueDate + 'T23:59:59').toISOString() : undefined,
-          program_id: initialProgramId ?? undefined,
+          program_id: programId ?? undefined,
           parent_task_id: parentTaskId,
           assignee_id: assigneeId ? parseInt(assigneeId) : undefined,
           assignee_staff_id: assigneeStaffId ?? undefined,
@@ -427,6 +436,25 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
                 />
               </div>
             </div>
+          </div>
+
+          {/* ── Chương trình / Nghị quyết ── */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+              <BookOpen size={11} /> Chương trình / Nghị quyết
+            </label>
+            <select
+              value={programId ?? ''}
+              onChange={(e) => setProgramId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">-- Không thuộc chương trình nào --</option>
+              {programs.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.short_name ? `[${p.short_name}] ` : ''}{p.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* ── SECTION 2: Nguồn sinh nhiệm vụ ── */}

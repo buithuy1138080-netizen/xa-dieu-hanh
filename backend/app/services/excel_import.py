@@ -42,8 +42,9 @@ KPI_COLUMNS = [
     {"key": "current_value", "header": "Giá trị hiện tại",            "width": 18, "required": False},
     {"key": "year",          "header": "Năm (*)",                      "width": 10, "required": True},
     {"key": "period",        "header": "Kỳ (monthly/quarterly/yearly)", "width": 30, "required": False},
-    {"key": "responsible_unit", "header": "Đơn vị phụ trách",         "width": 25, "required": False},
-    {"key": "deadline",      "header": "Deadline (dd/mm/yyyy)",        "width": 18, "required": False},
+    {"key": "responsible_unit",   "header": "Đơn vị phụ trách",          "width": 25, "required": False},
+    {"key": "deadline",           "header": "Deadline (dd/mm/yyyy)",      "width": 18, "required": False},
+    {"key": "responsible_person", "header": "Người phụ trách (họ tên)",   "width": 25, "required": False},
 ]
 
 
@@ -100,8 +101,8 @@ def nq57_template() -> bytes:
 
 def kpi_template() -> bytes:
     sample = [
-        ["KPI-001", "Tỷ lệ hộ nghèo giảm", "Xã hội", "%", "5.0", "7.2", "2026", "yearly", "Phòng LĐ-TB&XH", "31/12/2026"],
-        ["KPI-002", "Thu ngân sách xã", "Kinh tế", "Tỷ đồng", "12.5", "8.3", "2026", "yearly", "Phòng Tài chính", "31/12/2026"],
+        ["KPI-001", "Tỷ lệ hộ nghèo giảm", "Xã hội", "%", "5.0", "7.2", "2026", "yearly", "Phòng LĐ-TB&XH", "31/12/2026", "Nguyễn Văn A"],
+        ["KPI-002", "Thu ngân sách xã", "Kinh tế", "Tỷ đồng", "12.5", "8.3", "2026", "yearly", "Phòng Tài chính", "31/12/2026", "Trần Thị B"],
     ]
     return _build_template(KPI_COLUMNS, sample)
 
@@ -221,15 +222,16 @@ def parse_kpi(data: bytes) -> tuple[list[dict], list[str]]:
         if period not in valid_periods:
             period = "yearly"
         records.append({
-            "code":             _str(row[0] if len(row) > 0 else "") or None,
-            "title":            title,
-            "category":         _str(row[2] if len(row) > 2 else "") or None,
-            "unit":             _str(row[3] if len(row) > 3 else "") or None,
-            "target_value":     target,
-            "current_value":    _parse_float(row[5] if len(row) > 5 else 0),
-            "year":             year,
-            "period":           period,
-            "responsible_unit": _str(row[8] if len(row) > 8 else "") or None,
-            "deadline_str":     _parse_date(row[9] if len(row) > 9 else None),
+            "code":               _str(row[0] if len(row) > 0 else "") or None,
+            "title":              title,
+            "category":           _str(row[2] if len(row) > 2 else "") or None,
+            "unit":               _str(row[3] if len(row) > 3 else "") or None,
+            "target_value":       target,
+            "current_value":      _parse_float(row[5] if len(row) > 5 else 0),
+            "year":               year,
+            "period":             period,
+            "responsible_unit":   _str(row[8] if len(row) > 8 else "") or None,
+            "deadline_str":       _parse_date(row[9] if len(row) > 9 else None),
+            "responsible_person": _str(row[10] if len(row) > 10 else "") or None,
         })
     return records, errors

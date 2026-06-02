@@ -367,6 +367,30 @@ async def import_kpi_excel(
     if not records and errors:
         raise HTTPException(422, {"errors": errors})
 
+    # Pre-load departments + staff for name-matching
+    from app.models.department import Department
+    from app.models.staff import Staff
+    dept_rows = (await db.execute(select(Department).where(Department.is_active == True))).scalars().all()
+    staff_rows = (await db.execute(select(Staff).where(Staff.is_active == True))).scalars().all()
+
+    def _match_dept(name: str | None):
+        if not name:
+            return None
+        n = name.strip().lower()
+        for d in dept_rows:
+            if (d.name or "").lower() == n or (d.short_name or "").lower() == n:
+                return d.id
+        return None
+
+    def _match_staff(name: str | None):
+        if not name:
+            return None, None
+        n = name.strip().lower()
+        for s in staff_rows:
+            if (s.full_name or "").lower() == n:
+                return s.id, s.user_id
+        return None, None
+
     imported = 0
     for r in records:
         deadline = None
@@ -378,6 +402,11 @@ async def import_kpi_excel(
         current_val = r["current_value"]
         target_val  = r["target_value"]
         progress    = round(min(100.0, current_val / target_val * 100), 1) if target_val > 0 else 0.0
+
+        # Match department and staff by name from responsible_unit / responsible_person columns
+        dept_id = _match_dept(r.get("responsible_unit"))
+        staff_id, user_id = _match_staff(r.get("responsible_person"))
+
         kpi = KPI(
             code=r["code"],
             title=r["title"],
@@ -388,7 +417,10 @@ async def import_kpi_excel(
             progress=progress,
             year=r["year"],
             period=r["period"],
-            responsible_unit=r["responsible_unit"],
+            responsible_unit=r.get("responsible_unit"),
+            responsible_department_id=dept_id,
+            responsible_staff_id=staff_id,
+            responsible_user_id=user_id,
             deadline=deadline,
             status="on_track",
             created_by=current_user.id,

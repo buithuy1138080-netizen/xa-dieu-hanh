@@ -167,6 +167,7 @@ export interface TaskUpdate {
   priority?: TaskPriority
   start_date?: string | null
   due_date?: string | null
+  program_id?: number | null
   parent_task_id?: number | null
   incoming_document_id?: number | null
   outgoing_document_id?: number | null
