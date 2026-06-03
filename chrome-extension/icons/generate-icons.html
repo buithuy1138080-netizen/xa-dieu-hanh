@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head><title>Generate Icons</title></head>
+<body>
+<p>Mở trang này bằng trình duyệt, sau đó nhấn nút để tải icon PNG.</p>
+<canvas id="c" style="border:1px solid #ccc"></canvas><br><br>
+<button onclick="gen(16)">Tải icon16.png</button>
+<button onclick="gen(48)">Tải icon48.png</button>
+<button onclick="gen(128)">Tải icon128.png</button>
+<script>
+function gen(size) {
+  const c = document.getElementById('c');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  // Background
+  const r = size * 0.156;
+  ctx.beginPath();
+  ctx.moveTo(r, 0); ctx.lineTo(size-r, 0);
+  ctx.arcTo(size,0,size,r,r);
+  ctx.lineTo(size, size-r);
+  ctx.arcTo(size,size,size-r,size,r);
+  ctx.lineTo(r, size);
+  ctx.arcTo(0,size,0,size-r,r);
+  ctx.lineTo(0, r);
+  ctx.arcTo(0,0,r,0,r);
+  ctx.fillStyle = '#2563eb'; ctx.fill();
+
+  // Arrow
+  const s = size;
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = size * 0.09;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // Horizontal line
+  ctx.beginPath();
+  ctx.moveTo(s*0.25, s*0.5); ctx.lineTo(s*0.75, s*0.5);
+  ctx.stroke();
+  // Arrowhead
+  ctx.beginPath();
+  ctx.moveTo(s*0.58, s*0.33); ctx.lineTo(s*0.75, s*0.5); ctx.lineTo(s*0.58, s*0.67);
+  ctx.stroke();
+
+  const a = document.createElement('a');
+  a.download = 'icon'+size+'.png';
+  a.href = c.toDataURL('image/png');
+  a.click();
+}
+</script>
+</body>
+</html>

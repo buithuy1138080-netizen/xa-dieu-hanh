@@ -1,0 +1,220 @@
+/* IOC Capture Extension Styles */
+#ioc-panel {
+  position: fixed;
+  top: 60px;
+  right: 16px;
+  z-index: 2147483647;
+  width: 360px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  border: 1px solid #e2e8f0;
+  display: none;
+  flex-direction: column;
+  animation: iocSlideIn 0.2s ease-out;
+}
+#ioc-panel.visible { display: flex; }
+
+@keyframes iocSlideIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+#ioc-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2147483646;
+  width: 52px;
+  height: 52px;
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(37, 99, 235, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, box-shadow 0.15s;
+  animation: iocPop 0.3s ease-out;
+}
+#ioc-fab:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 28px rgba(37, 99, 235, 0.55);
+}
+#ioc-fab svg { width: 24px; height: 24px; }
+
+@keyframes iocPop {
+  from { transform: scale(0); }
+  to   { transform: scale(1); }
+}
+
+.ioc-header {
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  padding: 14px 16px;
+  border-radius: 16px 16px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: white;
+}
+.ioc-header-title { font-weight: 700; font-size: 14px; }
+.ioc-header-sub   { font-size: 10px; opacity: 0.8; margin-top: 2px; }
+
+.ioc-close {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: white;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ioc-body { padding: 14px 16px; }
+
+.ioc-label {
+  font-weight: 600;
+  color: #475569;
+  font-size: 11px;
+  display: block;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.ioc-label:first-child { margin-top: 0; }
+
+.ioc-hint {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.ioc-input, .ioc-select, .ioc-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  background: #f8fafc;
+}
+.ioc-input:focus, .ioc-select:focus, .ioc-textarea:focus {
+  border-color: #2563eb;
+  background: #fff;
+}
+.ioc-textarea { resize: vertical; min-height: 60px; }
+
+.ioc-type-row {
+  display: flex;
+  gap: 8px;
+}
+.ioc-type-btn {
+  flex: 1;
+  padding: 7px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  transition: all 0.15s;
+  text-align: center;
+}
+.ioc-type-btn.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.ioc-task-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #eff6ff;
+  border-radius: 10px;
+  border: 1px solid #bfdbfe;
+}
+.ioc-task-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #1e40af;
+  font-size: 12px;
+}
+
+.ioc-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  gap: 8px;
+}
+
+.ioc-btn-primary {
+  flex: 1;
+  background: #2563eb;
+  color: white;
+  border: none;
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ioc-btn-primary:hover { background: #1d4ed8; }
+.ioc-btn-secondary {
+  padding: 9px 14px;
+  background: #f1f5f9;
+  color: #64748b;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ioc-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  background: #2563eb;
+  color: white;
+  padding: 8px 20px;
+  border-radius: 999px;
+  font-family: sans-serif;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.2);
+  white-space: nowrap;
+  animation: iocToastIn 0.25s ease-out;
+}
+@keyframes iocToastIn {
+  from { opacity: 0; top: 0; }
+  to   { opacity: 1; top: 16px; }
+}
+
+.ioc-badge {
+  display: inline-block;
+  background: #dbeafe;
+  color: #1e40af;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-weight: 600;
+  margin-left: 4px;
+}

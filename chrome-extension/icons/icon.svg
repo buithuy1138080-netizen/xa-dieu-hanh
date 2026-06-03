@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="20" fill="#2563eb"/>
+  <rect x="18" y="18" width="92" height="92" rx="12" fill="#1d4ed8"/>
+  <!-- Arrow right -->
+  <path d="M36 64h56M72 48l16 16-16 16" stroke="white" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Small doc icon -->
+  <rect x="24" y="30" width="28" height="36" rx="4" fill="white" opacity="0.25"/>
+  <line x1="29" y1="40" x2="46" y2="40" stroke="white" stroke-width="3" stroke-linecap="round"/>
+  <line x1="29" y1="48" x2="46" y2="48" stroke="white" stroke-width="3" stroke-linecap="round"/>
+  <line x1="29" y1="56" x2="40" y2="56" stroke="white" stroke-width="3" stroke-linecap="round"/>
+</svg>
