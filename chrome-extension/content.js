@@ -457,78 +457,85 @@ async function sendToIOC(panel) {
   if (!title.trim()) { showToast('⚠️ Vui lòng nhập trích yếu!','#dc2626'); return; }
 
   const checkedFiles = Array.from(panel.querySelectorAll('.ioc-attach-cb:checked'))
-    .map(cb=>({url:cb.dataset.url, name:cb.dataset.name}));
+    .map(cb => ({ url: cb.dataset.url, name: cb.dataset.name }));
 
   const token = await getIOCToken();
   const sendBtn = panel.querySelector('[data-ioc-action="send"]');
-  if (sendBtn) sendBtn.textContent = '⏳ Đang gửi...';
+  if (sendBtn) { sendBtn.textContent = '⏳ Đang gửi...'; sendBtn.disabled = true; }
 
   try {
-    if (token) {
-      // Gọi API trực tiếp
-      const resp = await fetch(`${API_URL}/documents/capture`, {
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
-        body: JSON.stringify({
-          title: title.trim(),
-          doc_number: get('ioc_doc_number').trim(),
-          doc_type:   get('ioc_doc_type') || currentDocType,
-          issuer:     get('ioc_issuer').trim(),
-          issue_date: get('ioc_date').trim(),
-          source_url: location.href,
-          create_task: !!(panel.querySelector('#ioc_create_task')||{}).checked,
-        }),
-      });
-
-      if (!resp.ok) {
-        const e = await resp.json().catch(()=>({}));
-        throw new Error(e.detail || `Lỗi ${resp.status}`);
-      }
-
-      const result = await resp.json();
-      showToast(`✅ Đã tạo văn bản #${result.doc_id}${checkedFiles.length?' — đang tải file...':''}`);
-
-      // Upload file
-      let uploaded = 0;
-      for (const f of checkedFiles) {
-        try {
-          const fr = await fetch(f.url, {credentials:'include'});
-          if (!fr.ok) continue;
-          const blob = await fr.blob();
-          const fd = new FormData();
-          fd.append('file', blob, f.name);
-          const ur = await fetch(`${API_URL}/documents/${result.doc_id}/file`, {
-            method:'POST', headers:{'Authorization':`Bearer ${token}`}, body:fd,
-          });
-          if (ur.ok) uploaded++;
-        } catch {}
-      }
-
-      const msg = uploaded > 0
-        ? `✅ Đã nhập văn bản + ${uploaded} file vào IOC!`
-        : `✅ Văn bản #${result.doc_id} đã được tạo trong IOC`;
-      showToast(msg);
-      panel.classList.remove('visible');
-      setTimeout(() => window.open(`${IOC_URL}/documents/${result.doc_id}`, '_blank'), 1000);
-
-    } else {
-      // Fallback: mở trang capture
+    if (!token) {
+      // Chưa đăng nhập → mở trang capture
       const p = new URLSearchParams({
-        title: title.trim(),
+        title:      title.trim(),
         doc_number: get('ioc_doc_number').trim(),
         doc_type:   get('ioc_doc_type') || currentDocType,
         issuer:     get('ioc_issuer').trim(),
         issue_date: get('ioc_date').trim(),
         source_url: location.href,
       });
-      window.open(`${IOC_URL}/capture?${p}`, 'ioc_cap',
-        `width=540,height=720,left=${Math.max(0,screen.width-560)},top=50`);
-      showToast('ℹ️ Đã mở xabacha.com — đăng nhập để lần sau tự upload file!');
+      chrome.runtime.sendMessage({
+        action: 'IOC_OPEN_TAB',
+        url: `${IOC_URL}/capture?${p}`,
+      });
+      showToast('ℹ️ Đã mở xabacha.com — đăng nhập để lần sau tự gửi nhanh hơn!');
+      panel.classList.remove('visible');
+      return;
     }
-  } catch(err) {
-    showToast('❌ ' + (err.message||'Lỗi không xác định'), '#dc2626');
+
+    // ── Bước 1: Tạo văn bản qua background (tránh CORS) ──
+    showToast('⏳ Đang tạo văn bản...', '#2563eb');
+    const createResult = await chrome.runtime.sendMessage({
+      action: 'IOC_API',
+      method: 'POST',
+      path:   '/documents/capture',
+      token,
+      body: {
+        title:       title.trim(),
+        doc_number:  get('ioc_doc_number').trim(),
+        doc_type:    get('ioc_doc_type') || currentDocType,
+        issuer:      get('ioc_issuer').trim(),
+        issue_date:  get('ioc_date').trim(),
+        source_url:  location.href,
+        create_task: !!(panel.querySelector('#ioc_create_task')||{}).checked,
+      },
+    });
+
+    if (!createResult.ok) {
+      throw new Error(createResult.data?.detail || `Lỗi ${createResult.status}`);
+    }
+
+    const docId = createResult.data.doc_id;
+    showToast(`✅ Văn bản #${docId} đã tạo${checkedFiles.length ? ' — đang tải file...' : ''}`, '#059669');
+
+    // ── Bước 2: Upload file qua background ──
+    let uploaded = 0;
+    for (const f of checkedFiles) {
+      const upResult = await chrome.runtime.sendMessage({
+        action:  'IOC_UPLOAD',
+        docId,
+        fileUrl: f.url,
+        fileName: f.name,
+        token,
+      });
+      if (upResult?.ok) uploaded++;
+    }
+
+    const finalMsg = uploaded > 0
+      ? `✅ Đã nhập văn bản + ${uploaded} file PDF vào IOC!`
+      : `✅ Văn bản #${docId} đã tạo trong IOC`;
+    showToast(finalMsg, '#059669');
+    panel.classList.remove('visible');
+
+    // Mở trang văn bản
+    setTimeout(() => {
+      chrome.runtime.sendMessage({ action: 'IOC_OPEN_TAB', url: `${IOC_URL}/documents/${docId}` });
+    }, 1200);
+
+  } catch (err) {
+    showToast('❌ ' + (err.message || 'Lỗi không xác định'), '#dc2626');
   } finally {
-    if (sendBtn) sendBtn.textContent = '🚀 Gửi sang xabacha.com';
+    if (sendBtn) { sendBtn.textContent = '🚀 Gửi sang xabacha.com'; sendBtn.disabled = false; }
   }
 }
 
