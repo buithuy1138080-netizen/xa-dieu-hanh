@@ -167,10 +167,22 @@ function injectRowButtons() {
     const numMatch = rowText.match(/\b\d{2,4}-[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ\-]+\/[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ]{2,15}/);
     // Ngày
     const dateMatch = rowText.match(/\d{1,2}\/\d{2}\/\d{4}/);
-    // Đơn vị ban hành (tìm text có chứa "Tỉnh ủy" hoặc "Đảng ủy"...)
-    const unitMatch = rowText.match(/(Văn phòng[^,\n\r]{5,40}|Tỉnh ủy[^,\n\r]{5,40}|Đảng ủy[^,\n\r]{5,40}|UBND[^,\n\r]{5,40})/);
-    // File PDF trong cùng row
-    const fileLink = row?.querySelector('a[href*=".pdf"],a[href*=".doc"],a[href*=".xlsx"]');
+    // Đơn vị ban hành — lấy từ cell "Đơn vị ban hành" riêng biệt thay vì dùng regex trên rowText
+    const unitCell = row ? Array.from(row.querySelectorAll('td')).find(td => {
+      const t = td.textContent.trim();
+      return (t.includes('Tỉnh ủy') || t.includes('Đảng ủy') || t.includes('UBND') || t.includes('Văn phòng'))
+        && t.length < 120 && !td.querySelector('a,button,.ioc-row-btn');
+    }) : null;
+    const unitMatch = unitCell ? [unitCell.textContent.trim()] : rowText.match(/(Văn phòng[^\n\r]{5,40}|Tỉnh ủy[^\n\r]{5,40}|Đảng ủy[^\n\r]{5,40}|UBND[^\n\r]{5,40})/);
+    // File PDF: tìm trong row trước, nếu không có thì leo lên DOM tối đa 6 cấp
+    let fileLink = row?.querySelector('a[href*=".pdf"],a[href*=".doc"],a[href*=".xlsx"]');
+    if (!fileLink) {
+      let node = el;
+      for (let i = 0; i < 6 && !fileLink; i++) {
+        node = node?.parentNode;
+        fileLink = node?.querySelector?.('a[href*=".pdf"],a[href*=".doc"],a[href*=".xlsx"]');
+      }
+    }
 
     const title = el.textContent.trim();
     const docNumber = numMatch ? numMatch[0] : '';
