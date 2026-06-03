@@ -184,8 +184,22 @@ async def list_kpis(
 async def create_kpi(
     body: KPICreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin_or_leader),
+    current_user: User = Depends(get_current_user),
 ):
+    # manager: can create KPI but only for their own department
+    if current_user.role not in ("admin", "leader"):
+        if current_user.role != "manager":
+            raise HTTPException(403, "Bạn không có quyền thêm KPI")
+        staff_row = (await db.execute(
+            select(Staff).where(Staff.user_id == current_user.id)
+        )).scalar_one_or_none()
+        user_dept_id = staff_row.department_id if staff_row else None
+        # If manager didn't specify dept, auto-assign their dept
+        if not body.responsible_department_id:
+            body = body.model_copy(update={"responsible_department_id": user_dept_id})
+        elif body.responsible_department_id != user_dept_id:
+            raise HTTPException(403, "Quản lý chỉ được thêm KPI cho đơn vị của mình")
+
     progress = _calc_progress(body.current_value, body.target_value)
     k = KPI(**body.model_dump(), created_by=current_user.id, progress=progress)
     if progress >= 100:
@@ -287,9 +301,20 @@ async def update_kpi(
     kpi_id: int,
     body: KPIUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin_or_leader),
+    current_user: User = Depends(get_current_user),
 ):
     k = await _get_or_404(db, kpi_id)
+
+    # manager: can only update KPIs of their own department
+    if current_user.role not in ("admin", "leader"):
+        if current_user.role != "manager":
+            raise HTTPException(403, "Bạn không có quyền sửa KPI")
+        staff_row = (await db.execute(
+            select(Staff).where(Staff.user_id == current_user.id)
+        )).scalar_one_or_none()
+        user_dept_id = staff_row.department_id if staff_row else None
+        if k.responsible_department_id != user_dept_id and k.created_by != current_user.id:
+            raise HTTPException(403, "Quản lý chỉ được sửa KPI của đơn vị mình")
     old_value = k.current_value
     old_status = k.status
 
