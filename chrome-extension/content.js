@@ -104,51 +104,67 @@ function findAttachments() {
 }
 
 /* ══════════════════════════════════════
-   INJECT NÚT →IOC VÀO TỪNG DÒNG (list page)
+   DANH SÁCH VĂN BẢN TRONG TRANG (list page)
 ══════════════════════════════════════ */
 
-function injectRowButtons() {
-  // Tìm tất cả link "Xem thêm" trong bảng
+function getDocumentsFromPage() {
+  // Tìm tất cả "Xem thêm" links — đây là link detail của từng văn bản
   const xemThemLinks = Array.from(document.querySelectorAll('a'))
-    .filter(a => a.textContent.trim() === 'Xem thêm');
+    .filter(a => {
+      const t = a.textContent.trim().toLowerCase();
+      return t === 'xem thêm' || t === 'xem chi tiết' || t === 'chi tiết';
+    });
 
-  let added = 0;
+  const docs = [];
   xemThemLinks.forEach(link => {
+    // Tìm row cha → lấy text các cell
+    const row = link.closest('tr') || link.closest('[class*="row"]') || link.parentNode?.parentNode;
+    if (!row) return;
+    const rowText = (row.textContent || '').replace(/\s+/g,' ').trim();
+
+    // Tìm trích yếu (text dài bắt đầu V/v)
+    const vvMatch = rowText.match(/V\/v\s+[^\n\r]{10,150}/);
+    const title = vvMatch ? vvMatch[0].trim() : '';
+
+    // Tìm số ký hiệu
+    const numMatch = rowText.match(/\b\d{2,4}-[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ\-]+\/[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ]{2,15}/);
+    const docNumber = numMatch ? numMatch[0] : '';
+
+    // Tìm ngày
+    const dateMatch = rowText.match(/\d{1,2}\/\d{2}\/\d{4}/);
+    const date = dateMatch ? dateMatch[0] : '';
+
+    if (title || docNumber) {
+      docs.push({ title, docNumber, date, link });
+    }
+  });
+
+  return docs;
+}
+
+function injectRowButtons() {
+  // Thử inject nút →IOC vào từng "Xem thêm" link
+  let added = 0;
+  Array.from(document.querySelectorAll('a')).forEach(link => {
+    const t = link.textContent.trim().toLowerCase();
+    if (t !== 'xem thêm' && t !== 'xem chi tiết') return;
     if (link.parentNode.querySelector('.ioc-row-btn')) return;
 
     const btn = document.createElement('span');
     btn.className = 'ioc-row-btn';
     btn.textContent = '→IOC';
-    btn.style.cssText = [
-      'display:inline-block','background:#2563eb','color:white',
-      'padding:2px 8px','border-radius:4px','font-size:11px',
-      'font-weight:700','cursor:pointer','margin-left:6px',
-      'border:none','vertical-align:middle','white-space:nowrap',
-    ].join(';');
-    btn.title = 'Nhấn để xem chi tiết và gửi sang xabacha.com';
-
+    btn.style.cssText = 'display:inline-block;background:#2563eb;color:white;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;vertical-align:middle;white-space:nowrap;';
+    btn.title = 'Nhấn để gửi văn bản sang xabacha.com';
     btn.addEventListener('click', (e) => {
       e.preventDefault(); e.stopPropagation();
       watchForDetail = true;
-      showToast('⏳ Đang mở chi tiết văn bản...', '#2563eb');
-      link.click();  // ZK tải trang chi tiết
+      showToast('⏳ Đang mở chi tiết...', '#2563eb');
+      link.click();
     });
-
     link.insertAdjacentElement('afterend', btn);
     added++;
   });
-
-  if (added > 0) {
-    const existing = document.getElementById('ioc-list-hint');
-    if (!existing) {
-      const hint = document.createElement('div');
-      hint.id = 'ioc-list-hint';
-      hint.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:2147483646;background:#1e3a8a;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-family:sans-serif;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-width:220px;line-height:1.4;';
-      hint.innerHTML = `📥 IOC sẵn sàng<br><span style="opacity:0.8;font-size:11px;">Nhấn <b>→IOC</b> trên dòng văn bản để nhập sang xabacha.com</span>`;
-      document.body.appendChild(hint);
-      setTimeout(() => hint.remove(), 6000);
-    }
-  }
+  return added;
 }
 
 /* ══════════════════════════════════════
@@ -191,26 +207,56 @@ function buildPanel() {
     </div>` : '';
 
   if (!isDetail) {
-    // Trang danh sách: hướng dẫn
+    const docs = getDocumentsFromPage();
+    const docListHtml = docs.length > 0
+      ? docs.map((d, i) => `
+          <div class="ioc-doc-row" data-ioc-doc="${i}"
+               style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;margin-bottom:6px;background:#f8fafc;transition:background .15s;">
+            <div style="font-size:11px;font-weight:700;color:#2563eb;">${escHtml(d.docNumber || '—')}</div>
+            <div style="font-size:12px;color:#334155;line-height:1.4;margin-top:2px;">${escHtml((d.title||'Chưa xác định trích yếu').slice(0,80))}${(d.title||'').length>80?'...':''}</div>
+            ${d.date?`<div style="font-size:10px;color:#94a3b8;margin-top:2px;">📅 ${escHtml(d.date)}</div>`:''}
+          </div>`).join('')
+      : `<div style="text-align:center;color:#94a3b8;padding:16px;font-size:12px;">
+           Chưa tìm thấy văn bản.<br>Hãy cuộn xuống để ZK tải danh sách.
+         </div>`;
+
     panel.innerHTML = `
       <div class="ioc-header">
         <div>
-          <div class="ioc-header-title">📥 IOC Capture</div>
-          <div class="ioc-header-sub">xabacha.com</div>
+          <div class="ioc-header-title">📥 Chọn văn bản để nhập</div>
+          <div class="ioc-header-sub">Tìm thấy ${docs.length} văn bản trên trang</div>
         </div>
         <button class="ioc-close" data-ioc-action="close">×</button>
       </div>
-      <div class="ioc-body" style="text-align:center;padding:20px 16px;">
-        <div style="font-size:32px;margin-bottom:12px;">👆</div>
-        <p style="font-weight:700;color:#1e40af;font-size:14px;margin:0 0 8px;">Nhấn nút →IOC</p>
-        <p style="color:#64748b;font-size:12px;line-height:1.5;margin:0;">
-          Nhấn nút <b style="background:#2563eb;color:white;padding:1px 6px;border-radius:4px;">→IOC</b>
-          bên cạnh văn bản trong danh sách để xem chi tiết và gửi sang xabacha.com
+      <div class="ioc-body" style="padding:12px 14px;">
+        <p style="font-size:11px;color:#64748b;margin:0 0 10px;">
+          Nhấn vào văn bản bên dưới → trang chi tiết mở → panel IOC tự hiện ra
         </p>
+        ${docListHtml}
       </div>
       <div class="ioc-footer">
         <button class="ioc-btn-secondary" style="flex:1" data-ioc-action="close">Đóng</button>
       </div>`;
+
+    // Click vào từng dòng văn bản → click "Xem thêm" tương ứng
+    panel.addEventListener('click', (e) => {
+      const row = e.target.closest('.ioc-doc-row');
+      if (!row) return;
+      const idx = parseInt(row.dataset.iocDoc || '0');
+      const doc = docs[idx];
+      if (doc && doc.link) {
+        watchForDetail = true;
+        showToast('⏳ Đang mở chi tiết...', '#2563eb');
+        panel.classList.remove('visible');
+        doc.link.click();
+      }
+    });
+
+    // Hover effect
+    panel.querySelectorAll('.ioc-doc-row').forEach(r => {
+      r.addEventListener('mouseenter', () => r.style.background = '#eff6ff');
+      r.addEventListener('mouseleave', () => r.style.background = '#f8fafc');
+    });
   } else {
     // Trang chi tiết: form đầy đủ
     panel.innerHTML = `
@@ -413,7 +459,6 @@ function init() {
   createFAB();
 
   if (isDetailPage()) {
-    // Trang chi tiết — nếu đang chờ (sau khi click →IOC) thì auto mở
     if (watchForDetail) {
       watchForDetail = false;
       setTimeout(() => {
@@ -423,8 +468,9 @@ function init() {
       }, 300);
     }
   } else {
-    // Trang danh sách — inject →IOC vào từng dòng
+    // Thử inject ngay + retry sau 1s, 2s, 4s (ZK lazy load)
     injectRowButtons();
+    [1000, 2000, 4000].forEach(delay => setTimeout(injectRowButtons, delay));
   }
 }
 
