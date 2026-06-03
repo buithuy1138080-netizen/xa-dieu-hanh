@@ -40,9 +40,12 @@ function getPageInfo() {
   const url = location.href.toLowerCase();
   const title = (document.title || '').toLowerCase();
 
-  const isDetail = url.includes('detail') || url.includes('chi-tiet')
-    || document.querySelector('.z-detail, [class*="detail"]') !== null
-    || !!document.querySelector('td, th'); // detail page has clear table
+  // Trang CHI TIẾT: có nhãn "Trích yếu" và "Số, ký hiệu" dạng label-value
+  const detailLabels = ['Trích yếu', 'Số, ký hiệu', 'Ngày văn bản', 'Thông tin chi tiết'];
+  const cells = Array.from(document.querySelectorAll('td, th, b, strong'));
+  const isDetail = detailLabels.some(lbl =>
+    cells.some(el => el.textContent.trim() === lbl)
+  );
 
   const docType = (url.includes('van-ban-den') || title.includes('văn bản đến'))
     ? 'incoming'
@@ -135,15 +138,14 @@ function buildPanel() {
   let data = {};
   if (isDetail) {
     data = extractFromDetailPage();
+    // Fallback nếu không trích xuất được từ detail
+    if (!data.title && !data.docNumber) {
+      const d = extractFromListPage();
+      data = { docNumber: d.nums[0]||'', title: d.vvs[0]||'', issueDate: d.dates[0]||'', issuer: d.issuer||'', nums: d.nums, dates: d.dates, vvs: d.vvs };
+    }
   } else {
     const d = extractFromListPage();
-    data = {
-      docNumber: d.nums[0] || '',
-      title:     d.vvs[0] || '',
-      issueDate: d.dates[0] || '',
-      issuer:    d.issuer || '',
-      nums: d.nums, dates: d.dates, vvs: d.vvs,
-    };
+    data = { docNumber: d.nums[0]||'', title: d.vvs[0]||'', issueDate: d.dates[0]||'', issuer: d.issuer||'', nums: d.nums, dates: d.dates, vvs: d.vvs };
   }
 
   const panel = document.createElement('div');
@@ -166,7 +168,12 @@ function buildPanel() {
     <div class="ioc-header">
       <div>
         <div class="ioc-header-title">📥 Nhập văn bản sang IOC</div>
-        <div class="ioc-header-sub">xabacha.com · ${isDetail ? 'Trang chi tiết ✅' : 'Trang danh sách'}</div>
+        <div class="ioc-header-sub">
+          ${isDetail
+            ? 'Trang chi tiết ✅ — dữ liệu tự động'
+            : '⚠️ Trang danh sách — hãy <b>mở chi tiết văn bản</b> để điền tự động'
+          }
+        </div>
       </div>
       <button class="ioc-close" data-ioc-action="close">×</button>
     </div>
