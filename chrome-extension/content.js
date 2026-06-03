@@ -520,17 +520,49 @@ async function sendToIOC(panel) {
     const docId = createResult.data.doc_id;
     showToast(`✅ Văn bản #${docId} đã tạo${checkedFiles.length ? ' — đang tải file...' : ''}`, '#059669');
 
-    // ── Bước 2: Upload file qua background ──
+    // ── Bước 2: Tải file từ dhtn (content script có session) rồi upload ──
     let uploaded = 0;
     for (const f of checkedFiles) {
-      const upResult = await chrome.runtime.sendMessage({
-        action:  'IOC_UPLOAD',
-        docId,
-        fileUrl: f.url,
-        fileName: f.name,
-        token,
-      });
-      if (upResult?.ok) uploaded++;
+      try {
+        showToast(`⏳ Đang tải file: ${f.name.slice(0, 30)}...`, '#2563eb');
+
+        // Content script fetch file từ dhtn — cùng origin, có đủ cookies
+        const fileResp = await fetch(f.url, { credentials: 'include' });
+        if (!fileResp.ok) {
+          console.warn('[IOC] File fetch failed:', fileResp.status, f.url);
+          continue;
+        }
+
+        const blob = await fileResp.blob();
+        const mimeType = blob.type || 'application/pdf';
+
+        // Chuyển blob → base64 để gửi qua chrome.runtime.sendMessage
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]); // lấy phần sau "data:...;base64,"
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+
+        // Background nhận base64 và upload lên xabacha.com
+        const upResult = await chrome.runtime.sendMessage({
+          action:   'IOC_UPLOAD_BASE64',
+          docId,
+          fileName: f.name,
+          mimeType,
+          base64,
+          token,
+        });
+
+        if (upResult?.ok) {
+          uploaded++;
+          showToast(`✅ File đã đính kèm: ${f.name.slice(0, 35)}`, '#059669');
+        } else {
+          console.warn('[IOC] Upload failed:', upResult);
+        }
+      } catch (fileErr) {
+        console.warn('[IOC] File error:', fileErr.message);
+      }
     }
 
     const finalMsg = uploaded > 0

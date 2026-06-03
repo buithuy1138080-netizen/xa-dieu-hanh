@@ -26,28 +26,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // async
   }
 
-  // ── Upload file (fetch từ dhtn + upload lên xabacha) ──
-  if (msg.action === 'IOC_UPLOAD') {
-    const { docId, fileUrl, fileName, token } = msg;
-    // Fetch file từ dhtn.dcs.vn (background bypass same-origin)
-    fetch(fileUrl, { credentials: 'include' })
-      .then(r => {
-        if (!r.ok) throw new Error(`File fetch failed: ${r.status}`);
-        return r.blob();
-      })
-      .then(blob => {
-        const fd = new FormData();
-        fd.append('file', blob, fileName || 'document.pdf');
-        return fetch(`${API_URL}/documents/${docId}/file`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
-          body: fd,
-        });
-      })
-      .then(r => r.json().then(data => ({ ok: r.ok, data })))
-      .then(result => sendResponse(result))
-      .catch(err => sendResponse({ ok: false, error: err.message }));
-    return true; // async
+  // ── Upload file từ base64 (content script đã fetch từ dhtn) ──
+  if (msg.action === 'IOC_UPLOAD_BASE64') {
+    const { docId, fileName, mimeType, base64, token } = msg;
+    try {
+      // base64 → binary → Blob
+      const binaryStr = atob(base64);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: mimeType || 'application/pdf' });
+
+      const fd = new FormData();
+      fd.append('file', blob, fileName || 'document.pdf');
+
+      const resp = await fetch(`${API_URL}/documents/${docId}/file`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await resp.json().catch(() => ({}));
+      sendResponse({ ok: resp.ok, status: resp.status, data });
+    } catch (err) {
+      sendResponse({ ok: false, error: err.message });
+    }
+    return true;
   }
 
   // ── Mở tab xabacha.com ──
