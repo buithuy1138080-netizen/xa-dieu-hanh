@@ -143,27 +143,59 @@ function getDocumentsFromPage() {
 }
 
 function injectRowButtons() {
-  // Thử inject nút →IOC vào từng "Xem thêm" link
+  // Tìm các cell chứa text trích yếu (bắt đầu V/v, Về việc, Báo cáo...)
+  // Đây là cách đáng tin nhất với ZK Framework
   let added = 0;
-  Array.from(document.querySelectorAll('a')).forEach(link => {
-    const t = link.textContent.trim().toLowerCase();
-    if (t !== 'xem thêm' && t !== 'xem chi tiết') return;
-    if (link.parentNode.querySelector('.ioc-row-btn')) return;
 
+  const candidates = Array.from(document.querySelectorAll('td, div'))
+    .filter(el => {
+      if (el.querySelector('.ioc-row-btn')) return false;  // đã có nút
+      const text = el.textContent.trim();
+      // Phải là node lá (không có nhiều con phức tạp) và có nội dung văn bản
+      const isLeafLike = el.children.length <= 2;
+      return isLeafLike && text.length > 20 &&
+        (text.startsWith('V/v') || text.startsWith('Về việc') ||
+         text.startsWith('Báo cáo') || text.startsWith('Tờ trình'));
+    });
+
+  candidates.forEach(el => {
+    // Tìm row cha để lấy thêm thông tin
+    const row = el.closest('tr');
+    const rowText = row ? row.textContent : el.parentNode?.textContent || '';
+
+    // Số ký hiệu
+    const numMatch = rowText.match(/\b\d{2,4}-[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ\-]+\/[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ]{2,15}/);
+    // Ngày
+    const dateMatch = rowText.match(/\d{1,2}\/\d{2}\/\d{4}/);
+    // Đơn vị ban hành (tìm text có chứa "Tỉnh ủy" hoặc "Đảng ủy"...)
+    const unitMatch = rowText.match(/(Văn phòng[^,\n\r]{5,40}|Tỉnh ủy[^,\n\r]{5,40}|Đảng ủy[^,\n\r]{5,40}|UBND[^,\n\r]{5,40})/);
+    // File PDF trong cùng row
+    const fileLink = row?.querySelector('a[href*=".pdf"],a[href*=".doc"],a[href*=".xlsx"]');
+
+    const title = el.textContent.trim();
+    const docNumber = numMatch ? numMatch[0] : '';
+    const date = dateMatch ? dateMatch[0] : '';
+    const issuer = unitMatch ? unitMatch[0].trim() : '';
+    const attachments = fileLink ? [{ url: fileLink.href, name: fileLink.textContent.trim() || fileLink.href.split('/').pop() }] : [];
+
+    // Tạo nút →IOC
     const btn = document.createElement('span');
     btn.className = 'ioc-row-btn';
-    btn.textContent = '→IOC';
-    btn.style.cssText = 'display:inline-block;background:#2563eb;color:white;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;vertical-align:middle;white-space:nowrap;';
-    btn.title = 'Nhấn để gửi văn bản sang xabacha.com';
+    btn.innerHTML = '📥 IOC';
+    btn.style.cssText = 'display:inline-block;background:#2563eb;color:white;padding:2px 9px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;vertical-align:middle;white-space:nowrap;box-shadow:0 2px 6px rgba(37,99,235,.3);';
+    btn.title = `Nhập "${title.slice(0,40)}..." vào xabacha.com`;
+
     btn.addEventListener('click', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      watchForDetail = true;
-      showToast('⏳ Đang mở chi tiết...', '#2563eb');
-      link.click();
+      e.preventDefault();
+      e.stopPropagation();
+      // Mở panel với dữ liệu từ dòng này — KHÔNG navigate
+      openPanelWithData({ title, docNumber, issueDate: date, issuer, attachments, docType: getDocType() });
     });
-    link.insertAdjacentElement('afterend', btn);
+
+    el.appendChild(btn);
     added++;
   });
+
   return added;
 }
 
@@ -176,10 +208,94 @@ let currentDocType = 'incoming';
 function openPanel() {
   const existing = document.getElementById('ioc-panel');
   if (existing) { existing.classList.toggle('visible'); return; }
-
   const panel = buildPanel();
   document.body.appendChild(panel);
   panel.classList.add('visible');
+}
+
+function openPanelWithData(data) {
+  // Xóa panel cũ nếu có
+  const old = document.getElementById('ioc-panel');
+  if (old) old.remove();
+
+  currentDocType = data.docType || 'incoming';
+  const panel = buildPanelWithData(data);
+  document.body.appendChild(panel);
+  panel.classList.add('visible');
+}
+
+function buildPanelWithData(data) {
+  const attachUI = (data.attachments || []).length > 0 ? `
+    <label class="ioc-label">File đính kèm <span class="ioc-badge">${data.attachments.length} file</span></label>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;">
+      ${data.attachments.map(f=>`
+        <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
+          <input type="checkbox" class="ioc-attach-cb"
+                 data-url="${escHtml(f.url)}" data-name="${escHtml(f.name)}" checked
+                 style="width:14px;height:14px;">
+          <span style="font-size:11px;color:#334155;word-break:break-all;">📎 ${escHtml(f.name.slice(0,55))}</span>
+        </label>`).join('')}
+    </div>` : '';
+
+  const panel = document.createElement('div');
+  panel.id = 'ioc-panel';
+  panel.innerHTML = `
+    <div class="ioc-header">
+      <div>
+        <div class="ioc-header-title">📥 Nhập văn bản sang IOC</div>
+        <div class="ioc-header-sub">xabacha.com · Dữ liệu từ danh sách</div>
+      </div>
+      <button class="ioc-close" data-ioc-action="close">×</button>
+    </div>
+    <div class="ioc-body">
+      <label class="ioc-label">Loại văn bản</label>
+      <div class="ioc-type-row">
+        <button class="ioc-type-btn ${currentDocType==='incoming'?'active':''}" data-ioc-action="set-type" data-type="incoming">📥 Văn bản đến</button>
+        <button class="ioc-type-btn ${currentDocType==='outgoing'?'active':''}" data-ioc-action="set-type" data-type="outgoing">📤 Văn bản đi</button>
+      </div>
+      <input type="hidden" id="ioc_doc_type" value="${currentDocType}">
+
+      <label class="ioc-label">Số/Ký hiệu</label>
+      <input id="ioc_doc_number" class="ioc-input" value="${escHtml(data.docNumber||'')}" placeholder="VD: 630-CV/VPTU">
+
+      <label class="ioc-label">Trích yếu nội dung *</label>
+      <textarea id="ioc_title" class="ioc-textarea">${escHtml(data.title||'')}</textarea>
+
+      <label class="ioc-label">Đơn vị ban hành</label>
+      <input id="ioc_issuer" class="ioc-input" value="${escHtml(data.issuer||'')}" placeholder="Đơn vị ban hành">
+
+      <label class="ioc-label">Ngày ban hành</label>
+      <input id="ioc_date" class="ioc-input" value="${escHtml(data.issueDate||'')}" placeholder="dd/mm/yyyy">
+
+      ${attachUI}
+
+      <div class="ioc-task-box">
+        <label class="ioc-task-toggle">
+          <input type="checkbox" id="ioc_create_task">
+          Tạo nhiệm vụ từ văn bản này
+        </label>
+      </div>
+    </div>
+    <div class="ioc-footer">
+      <button class="ioc-btn-primary" data-ioc-action="send">🚀 Gửi sang xabacha.com</button>
+      <button class="ioc-btn-secondary" data-ioc-action="close">Đóng</button>
+    </div>`;
+
+  panel.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-ioc-action]');
+    if (!btn) return;
+    if (btn.dataset.iocAction === 'close') panel.classList.remove('visible');
+    if (btn.dataset.iocAction === 'set-type') {
+      currentDocType = btn.dataset.type;
+      panel.querySelectorAll('.ioc-type-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const h = panel.querySelector('#ioc_doc_type');
+      if (h) h.value = currentDocType;
+    }
+    if (btn.dataset.iocAction === 'send') await sendToIOC(panel);
+  });
+
+  return panel;
 }
 
 function buildPanel() {
