@@ -58,6 +58,7 @@ export default function DirectiveDetailPage() {
   const directiveId = Number(id)
   const navigate = useNavigate()
   const { user: me } = useAuthStore()
+  const canDelete = me?.role === 'admin' || me?.role === 'leader'
 
   const [directive, setDirective] = useState<DirectiveReadDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -273,9 +274,11 @@ export default function DirectiveDetailPage() {
             <button onClick={() => setEditOpen(true)} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition text-slate-600">
               ✏ Sửa
             </button>
-            <button onClick={handleDelete} className="px-3 py-1.5 text-sm border border-red-200 rounded-lg hover:bg-red-50 transition text-red-600">
-              🗑 Xóa
-            </button>
+            {canDelete && (
+              <button onClick={handleDelete} className="px-3 py-1.5 text-sm border border-red-200 rounded-lg hover:bg-red-50 transition text-red-600">
+                🗑 Xóa
+              </button>
+            )}
           </div>
         </div>
 

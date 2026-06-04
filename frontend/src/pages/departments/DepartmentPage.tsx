@@ -3,6 +3,7 @@ import { Building, Plus, Pencil, Trash2, Users, CheckCircle, XCircle, Search } f
 import { useEffect, useState } from 'react'
 import apiClient from '../../api/client'
 import AppLayout from '../../components/layout/AppLayout'
+import { useAuthStore } from '../../store/authStore'
 
 interface DeptRead {
   id: number
@@ -30,6 +31,8 @@ interface DeptForm {
 const EMPTY: DeptForm = { name: '', code: '', short_name: '', description: '', is_active: true, sort_order: 0, parent_id: null }
 
 export default function DepartmentPage() {
+  const { user } = useAuthStore()
+  const isAdminOrLeader = user?.role === 'admin' || user?.role === 'leader'
   const [depts, setDepts] = useState<DeptRead[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -115,10 +118,12 @@ export default function DepartmentPage() {
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">{activeCount} đơn vị hoạt động · {totalStaff} nhân sự</p>
           </div>
-          <button onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition shadow-sm shadow-blue-200">
-            <Plus size={15} /> Thêm đơn vị
-          </button>
+          {isAdminOrLeader && (
+            <button onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition shadow-sm shadow-blue-200">
+              <Plus size={15} /> Thêm đơn vị
+            </button>
+          )}
         </motion.div>
 
         {/* Search */}
@@ -143,14 +148,16 @@ export default function DepartmentPage() {
                       ? <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Hoạt động</span>
                       : <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Không HĐ</span>}
                   </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => openEdit(d)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600">
-                      <Pencil size={13} />
-                    </button>
-                    <button onClick={() => handleDelete(d.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500">
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                  {isAdminOrLeader && (
+                    <div className="flex gap-1">
+                      <button onClick={() => openEdit(d)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => handleDelete(d.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <p className="font-semibold text-slate-800 text-sm">{d.name}</p>
                 {d.short_name && <p className="text-xs text-slate-400">{d.short_name}</p>}
@@ -225,16 +232,18 @@ export default function DepartmentPage() {
                       )}
                     </td>
                     <td className="px-5 py-3.5">
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition justify-end">
-                        <button onClick={() => openEdit(d)}
-                          className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition">
-                          <Pencil size={14} />
-                        </button>
-                        <button onClick={() => handleDelete(d.id)}
-                          className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      {isAdminOrLeader && (
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition justify-end">
+                          <button onClick={() => openEdit(d)}
+                            className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition">
+                            <Pencil size={14} />
+                          </button>
+                          <button onClick={() => handleDelete(d.id)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </motion.tr>
                 ))}

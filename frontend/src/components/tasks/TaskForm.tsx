@@ -11,6 +11,7 @@ import type { User } from '../../types'
 import type { DirectiveRead } from '../../types/directive'
 import type { DocumentRead } from '../../types/document'
 import type { Task, TaskCreate, TaskDetail, TaskPriority, TaskUpdate } from '../../types/task'
+import { useAuthStore } from '../../store/authStore'
 
 interface ProgramMin { id: number; name: string; short_name?: string | null; program_type: string }
 
@@ -58,6 +59,8 @@ function initSourceType(t?: Task): SourceType {
 }
 
 export default function TaskForm({ task, onClose, onSuccess, initialProgramId, initialParentTaskId }: Props) {
+  const { user } = useAuthStore()
+  const isManager = user?.role === 'manager'
   // Basic fields
   const [title, setTitle] = useState(task?.title ?? '')
   const [description, setDescription] = useState(task?.description ?? '')
@@ -123,10 +126,28 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
 
   // Load departments + users + staff + programs on mount
   useEffect(() => {
-    departmentsApi.list().then((r) => setDepartments(r.data)).catch(() => {})
+    departmentsApi.list().then((r) => {
+      setDepartments(r.data)
+      // Manager: tự điền đơn vị chủ trì = đơn vị của mình (nếu chưa có)
+      if (isManager && !task && !leadDeptId) {
+        apiClient.get<{ items: StaffItem[] }>('/staff?active_only=true&size=200')
+          .then((staffRes) => {
+            setStaffList(staffRes.data.items)
+            // Tìm staff của user hiện tại để lấy department_id
+            const myStaff = staffRes.data.items.find(s => s.user_id === user?.id)
+            if (myStaff?.department_id && !leadDeptId) {
+              setLeadDeptId(myStaff.department_id)
+            }
+          }).catch(() => {})
+      } else {
+        apiClient.get<{ items: StaffItem[] }>('/staff?active_only=true&size=200')
+          .then((r) => setStaffList(r.data.items)).catch(() => {})
+      }
+    }).catch(() => {
+      apiClient.get<{ items: StaffItem[] }>('/staff?active_only=true&size=200')
+        .then((r) => setStaffList(r.data.items)).catch(() => {})
+    })
     usersApi.list().then((r) => setUsers(r.data)).catch(() => {})
-    apiClient.get<{ items: StaffItem[] }>('/staff?active_only=true&size=200')
-      .then((r) => setStaffList(r.data.items)).catch(() => {})
     apiClient.get<ProgramMin[]>('/programs?status=active')
       .then((r) => setPrograms(r.data)).catch(() => {})
   }, [])
@@ -235,7 +256,14 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
     )
   )
 
+  // Manager chỉ thấy nhân sự đơn vị mình
+  const myStaffDeptId = isManager
+    ? staffList.find(s => s.user_id === user?.id)?.department_id
+    : undefined
+
   const filteredStaff = staffList.filter((s) => {
+    // Manager: chỉ nhân sự đơn vị mình (trừ khi họ tự chọn)
+    if (isManager && myStaffDeptId && s.department_id !== myStaffDeptId) return false
     const matchDept = !staffDeptFilter || String(s.department_id) === staffDeptFilter
     const term = staffSearch.toLowerCase()
     const matchSearch = !term ||
