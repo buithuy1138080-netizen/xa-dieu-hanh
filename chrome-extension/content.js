@@ -87,20 +87,59 @@ function extractDetail() {
    TÌM FILE ĐÍNH KÈM
 ══════════════════════════════════════ */
 
-function findAttachments() {
-  const EXT = ['.pdf','.doc','.docx','.xls','.xlsx'];
+const FILE_EXT_RE = /\.(pdf|doc|docx|xls|xlsx|zip|rar)(\b|$)/i;
+
+/** Tìm file links trong một element — kiểm tra cả href VÀ text/title */
+function findFileLinks(container) {
+  if (!container) return [];
   const seen = new Set();
-  return Array.from(document.querySelectorAll('a[href]'))
-    .filter(a => {
-      const h = (a.href||'').toLowerCase();
-      const ok = EXT.some(e=>h.includes(e)) || h.includes('download') || h.includes('attachment');
-      if (!ok || seen.has(a.href)) return false;
-      seen.add(a.href); return true;
-    })
-    .map(a => ({
-      url: a.href,
-      name: a.textContent.trim() || a.href.split('/').pop().split('?')[0] || 'file.pdf',
-    })).slice(0,5);
+
+  // Mở rộng tìm kiếm: container + các anh em (sibling tds trong cùng tr)
+  const searchRoots = [container];
+  const row = container.closest?.('tr');
+  if (row) searchRoots.push(row);
+  // Leo thêm 4 cấp nếu không tìm thấy
+  let node = container;
+  for (let i = 0; i < 4; i++) {
+    node = node?.parentNode;
+    if (node) searchRoots.push(node);
+  }
+
+  const results = [];
+  for (const root of searchRoots) {
+    const links = Array.from(root.querySelectorAll?.('a[href]') || []);
+    for (const a of links) {
+      if (seen.has(a.href)) continue;
+      const href  = (a.href || '').toLowerCase();
+      const text  = (a.textContent || '').trim();
+      const title = (a.title || '').toLowerCase();
+
+      const isFile = FILE_EXT_RE.test(text)       // tên file trong text link
+                  || FILE_EXT_RE.test(href)        // extension trong URL
+                  || FILE_EXT_RE.test(title)       // extension trong title
+                  || href.includes('/download')    // endpoint download
+                  || href.includes('attachment')   // endpoint attachment
+                  || href.includes('ztree')        // dhtn.dcs.vn file server
+                  || a.getAttribute('download') !== null; // download attribute
+
+      if (isFile && a.href && a.href.startsWith('http')) {
+        seen.add(a.href);
+        // Tên file: ưu tiên text > title > từ URL
+        const name = text || title
+          || a.href.split('/').pop().split('?')[0]
+          || 'document.pdf';
+        results.push({ url: a.href, name });
+        if (results.length >= 5) break;
+      }
+    }
+    if (results.length > 0) break; // Tìm thấy rồi, dừng
+  }
+  return results;
+}
+
+/** Tìm file trên toàn trang (dùng cho detail page) */
+function findAttachments() {
+  return findFileLinks(document.body).slice(0, 5);
 }
 
 /* ══════════════════════════════════════
@@ -174,21 +213,13 @@ function injectRowButtons() {
         && t.length < 120 && !td.querySelector('a,button,.ioc-row-btn');
     }) : null;
     const unitMatch = unitCell ? [unitCell.textContent.trim()] : rowText.match(/(Văn phòng[^\n\r]{5,40}|Tỉnh ủy[^\n\r]{5,40}|Đảng ủy[^\n\r]{5,40}|UBND[^\n\r]{5,40})/);
-    // File PDF: tìm trong row trước, nếu không có thì leo lên DOM tối đa 6 cấp
-    let fileLink = row?.querySelector('a[href*=".pdf"],a[href*=".doc"],a[href*=".xlsx"]');
-    if (!fileLink) {
-      let node = el;
-      for (let i = 0; i < 6 && !fileLink; i++) {
-        node = node?.parentNode;
-        fileLink = node?.querySelector?.('a[href*=".pdf"],a[href*=".doc"],a[href*=".xlsx"]');
-      }
-    }
-
     const title = el.textContent.trim();
     const docNumber = numMatch ? numMatch[0] : '';
     const date = dateMatch ? dateMatch[0] : '';
     const issuer = unitMatch ? unitMatch[0].trim() : '';
-    const attachments = fileLink ? [{ url: fileLink.href, name: fileLink.textContent.trim() || fileLink.href.split('/').pop() }] : [];
+
+    // File: tìm tất cả link trong row, kiểm tra cả href VÀ text
+    const attachments = findFileLinks(row || el);
 
     // Tạo nút →IOC
     const btn = document.createElement('span');
@@ -200,8 +231,14 @@ function injectRowButtons() {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // Mở panel với dữ liệu từ dòng này — KHÔNG navigate
-      openPanelWithData({ title, docNumber, issueDate: date, issuer, attachments, docType: getDocType() });
+      const data = { title, docNumber, issueDate: date, issuer, attachments, docType: getDocType() };
+      // Debug: thông báo tìm thấy bao nhiêu file
+      if (attachments.length > 0) {
+        showToast(`✅ Tìm thấy ${attachments.length} file: ${attachments[0].name.slice(0,30)}`, '#059669');
+      } else {
+        showToast('⚠️ Không tìm thấy file — có thể tải thủ công sau', '#f59e0b');
+      }
+      setTimeout(() => openPanelWithData(data), 500);
     });
 
     el.appendChild(btn);
