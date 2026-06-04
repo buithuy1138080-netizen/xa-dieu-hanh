@@ -97,12 +97,20 @@ function findFileLinks(container) {
   // Mở rộng tìm kiếm: container + các anh em (sibling tds trong cùng tr)
   const searchRoots = [container];
   const row = container.closest?.('tr');
-  if (row) searchRoots.push(row);
-  // Leo thêm 4 cấp nếu không tìm thấy
+  if (row) {
+    searchRoots.push(row);
+    // ZK đôi khi dùng <tr> tiếp theo cho file đính kèm
+    const next = row.nextElementSibling;
+    if (next && next.tagName === 'TR') searchRoots.push(next);
+    const prev = row.previousElementSibling;
+    if (prev && prev.tagName === 'TR') searchRoots.push(prev);
+  }
+  // Leo thêm 6 cấp để tìm trong container cha
   let node = container;
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     node = node?.parentNode;
     if (node) searchRoots.push(node);
+    if (node?.tagName === 'TBODY') break; // dừng ở tbody
   }
 
   const results = [];
