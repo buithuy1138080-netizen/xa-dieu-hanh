@@ -1,12 +1,18 @@
 {
   "manifest_version": 3,
   "name": "IOC Capture — dhtn.dcs.vn → xabacha.com",
-  "version": "1.4.0",
-  "description": "Chuyển văn bản từ dhtn.dcs.vn sang IOC xabacha.com — bao gồm cả file đính kèm",
+  "version": "2.0.0",
+  "description": "Chuyển văn bản + file đính kèm từ dhtn.dcs.vn sang IOC xabacha.com tự động",
   "action": {
     "default_title": "Mở IOC Capture"
   },
   "content_scripts": [
+    {
+      "matches": ["*://dhtn.dcs.vn/*"],
+      "js": ["interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": ["*://dhtn.dcs.vn/*"],
       "js": ["content.js"],

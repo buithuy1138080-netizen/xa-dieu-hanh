@@ -7,6 +7,51 @@
 const IOC_URL = 'https://xabacha.com';
 const API_URL = `${IOC_URL}/api/v1`;
 
+/* ══════════════════════════════════════
+   NHẬN FILE TỪ INTERCEPTOR (MAIN world)
+   interceptor.js bắt được blob → dispatch
+   → content.js lưu tạm để dùng khi gửi
+══════════════════════════════════════ */
+
+// Lưu file đã bắt được (tối đa 5 file gần nhất)
+const _capturedFiles = [];
+
+window.addEventListener('__ioc_file_captured__', (e) => {
+  const { base64, filename, mimeType, sourceUrl, size } = e.detail || {};
+  if (!base64 || !filename) return;
+
+  // Tránh duplicate
+  const key = filename + size;
+  if (_capturedFiles.find(f => f._key === key)) return;
+
+  _capturedFiles.unshift({ base64, name: filename, mimeType, sourceUrl, _key: key });
+  if (_capturedFiles.length > 5) _capturedFiles.pop();
+
+  // Hiện indicator xanh nhỏ góc dưới
+  showFileIndicator(filename, size);
+});
+
+function showFileIndicator(filename, size) {
+  const old = document.getElementById('ioc-file-indicator');
+  if (old) old.remove();
+
+  const kb = Math.round((size || 0) / 1024);
+  const el = document.createElement('div');
+  el.id = 'ioc-file-indicator';
+  el.style.cssText = [
+    'position:fixed','bottom:80px','left:20px','z-index:2147483646',
+    'background:#059669','color:white','padding:6px 14px',
+    'border-radius:999px','font-family:sans-serif','font-size:12px',
+    'font-weight:600','box-shadow:0 2px 12px rgba(0,0,0,0.2)',
+    'cursor:pointer','max-width:280px','white-space:nowrap',
+    'overflow:hidden','text-overflow:ellipsis',
+  ].join(';');
+  el.textContent = `📎 Đã bắt: ${filename.slice(0, 35)} (${kb}KB)`;
+  el.title = 'File đã được ghi nhận — nhấn 📥 IOC để gửi sang xabacha.com';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 8000);
+}
+
 let watchForDetail = false;  // khi user click →IOC trên list page
 
 /* ══════════════════════════════════════
@@ -652,50 +697,57 @@ async function sendToIOC(panel) {
     const docId = createResult.data.doc_id;
     showToast(`✅ Văn bản #${docId} đã tạo${checkedFiles.length ? ' — đang tải file...' : ''}`, '#059669');
 
-    // ── Bước 2: Tải file từ dhtn (content script có session) rồi upload ──
+    // ── Bước 2: Upload file ──
+    // Ưu tiên: file đã bắt được qua interceptor (tự động, không cần fetch lại)
+    // Fallback: fetch từ URL (nếu href có sẵn)
     let uploaded = 0;
-    for (const f of checkedFiles) {
-      try {
-        showToast(`⏳ Đang tải file: ${f.name.slice(0, 30)}...`, '#2563eb');
 
-        // Content script fetch file từ dhtn — cùng origin, có đủ cookies
-        const fileResp = await fetch(f.url, { credentials: 'include' });
-        if (!fileResp.ok) {
-          console.warn('[IOC] File fetch failed:', fileResp.status, f.url);
-          continue;
+    // Merge: intercepted files + checked files (từ panel checkbox)
+    const allFiles = [
+      ..._capturedFiles,                         // bắt được qua interceptor
+      ...checkedFiles.filter(f => f.url && !_capturedFiles.find(c => c.name === f.name)),
+    ].slice(0, 5);
+
+    for (const f of allFiles) {
+      try {
+        showToast(`⏳ Đang upload: ${(f.name || f.fileName || '').slice(0, 30)}...`, '#2563eb');
+
+        let base64 = f.base64;
+        let mimeType = f.mimeType || 'application/octet-stream';
+        const fileName = f.name || f.fileName || 'document.pdf';
+
+        // Nếu không có base64 sẵn → fetch từ URL
+        if (!base64 && f.url) {
+          const fileResp = await fetch(f.url, { credentials: 'include' });
+          if (!fileResp.ok) continue;
+          const blob = await fileResp.blob();
+          mimeType = blob.type || mimeType;
+          base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
         }
 
-        const blob = await fileResp.blob();
-        const mimeType = blob.type || 'application/pdf';
+        if (!base64) continue;
 
-        // Chuyển blob → base64 để gửi qua chrome.runtime.sendMessage
-        const base64 = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result.split(',')[1]); // lấy phần sau "data:...;base64,"
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-
-        // Background nhận base64 và upload lên xabacha.com
         const upResult = await chrome.runtime.sendMessage({
-          action:   'IOC_UPLOAD_BASE64',
-          docId,
-          fileName: f.name,
-          mimeType,
-          base64,
-          token,
+          action: 'IOC_UPLOAD_BASE64',
+          docId, fileName, mimeType, base64, token,
         });
 
         if (upResult?.ok) {
           uploaded++;
-          showToast(`✅ File đã đính kèm: ${f.name.slice(0, 35)}`, '#059669');
-        } else {
-          console.warn('[IOC] Upload failed:', upResult);
+          showToast(`✅ Đã đính kèm: ${fileName.slice(0, 35)}`, '#059669');
         }
       } catch (fileErr) {
-        console.warn('[IOC] File error:', fileErr.message);
+        console.warn('[IOC] File upload error:', fileErr.message);
       }
     }
+
+    // Xóa captured files sau khi upload
+    if (uploaded > 0) _capturedFiles.length = 0;
 
     const finalMsg = uploaded > 0
       ? `✅ Đã nhập văn bản + ${uploaded} file PDF vào IOC!`
