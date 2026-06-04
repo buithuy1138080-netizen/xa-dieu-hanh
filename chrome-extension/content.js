@@ -638,7 +638,15 @@ async function sendToIOC(panel) {
     });
 
     if (!createResult.ok) {
-      throw new Error(createResult.data?.detail || `Lỗi ${createResult.status}`);
+      const detail = (createResult.data?.detail || '').toString();
+      // Token hết hạn → xóa cache + mở xabacha để đăng nhập lại
+      if (createResult.status === 401 || detail.toLowerCase().includes('token')) {
+        chrome.storage.local.remove(['ioc_token', 'ioc_token_ts']);
+        showToast('🔑 Token hết hạn! Đang mở xabacha.com — đăng nhập lại rồi thử lại', '#dc2626');
+        setTimeout(() => chrome.runtime.sendMessage({ action: 'IOC_OPEN_TAB', url: 'https://xabacha.com' }), 1500);
+        return;
+      }
+      throw new Error(detail || `Lỗi ${createResult.status}`);
     }
 
     const docId = createResult.data.doc_id;
