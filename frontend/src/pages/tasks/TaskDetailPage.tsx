@@ -10,6 +10,7 @@ import PriorityBadge from '../../components/tasks/PriorityBadge'
 import StatusBadge from '../../components/tasks/StatusBadge'
 import TaskForm from '../../components/tasks/TaskForm'
 import type { TaskDetail, TaskStatus } from '../../types/task'
+import { useAuthStore } from '../../store/authStore'
 
 const STATUS_FLOW: { id: TaskStatus; label: string; activeCls: string; baseCls: string }[] = [
   { id: 'pending',     label: 'Chờ xử lý',      activeCls: 'bg-slate-600 text-white ring-2 ring-slate-400 ring-offset-1',   baseCls: 'border border-slate-300 text-slate-600 hover:bg-slate-50' },
@@ -57,6 +58,8 @@ function initials(name: string | null | undefined, username: string) {
 export default function TaskDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canDelete = user?.role === 'admin' || user?.role === 'leader'
   const [task, setTask] = useState<TaskDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [comment, setComment] = useState('')
@@ -245,12 +248,14 @@ export default function TaskDetailPage() {
             >
               <Pencil size={13} />Sửa
             </button>
-            <button
-              onClick={handleDelete}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-200 rounded-lg hover:bg-red-50 text-red-500 transition-colors"
-            >
-              <Trash2 size={13} />Xóa
-            </button>
+            {canDelete && (
+              <button
+                onClick={handleDelete}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-200 rounded-lg hover:bg-red-50 text-red-500 transition-colors"
+              >
+                <Trash2 size={13} />Xóa
+              </button>
+            )}
           </div>
         </div>
 

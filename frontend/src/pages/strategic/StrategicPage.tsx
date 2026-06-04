@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useAuthStore } from '../../store/authStore'
 import {
   AlertTriangle, BarChart2, BookOpen, ChevronDown, ChevronUp,
   DollarSign, Edit2, FileText, FolderKanban, Layers, Loader2, Plus, Search,
@@ -398,6 +399,8 @@ function ProjectForm({ initial, onSave, onClose }: {
 // ─── Projects Tab ─────────────────────────────────────────────────────────────
 
 function ProjectsTab() {
+  const { user } = useAuthStore()
+  const canDelete = user?.role === 'admin' || user?.role === 'leader'
   const [projects, setProjects] = useState<StrategicProject[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -495,7 +498,7 @@ function ProjectsTab() {
               </div>
               <div className="flex gap-1 shrink-0">
                 <button onClick={() => { setEditing(p); setShowForm(true) }} className="p-1.5 hover:bg-blue-50 rounded-lg"><Edit2 size={14} className="text-blue-500" /></button>
-                <button onClick={() => handleDelete(p.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="text-red-500" /></button>
+                {canDelete && <button onClick={() => handleDelete(p.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="text-red-500" /></button>}
               </div>
             </div>
             <div className="flex flex-wrap gap-1 mb-2">
@@ -579,7 +582,7 @@ function ProjectsTab() {
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
                       <button onClick={() => { setEditing(p); setShowForm(true) }} className="p-1.5 hover:bg-blue-50 rounded-lg"><Edit2 size={14} className="text-blue-500" /></button>
-                      <button onClick={() => handleDelete(p.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="text-red-500" /></button>
+                      {canDelete && <button onClick={() => handleDelete(p.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="text-red-500" /></button>}
                     </div>
                   </td>
                 </tr>
@@ -698,6 +701,8 @@ function BudgetForm({ initial, onSave, onClose, projects }: {
 // ─── Budget Tab ───────────────────────────────────────────────────────────────
 
 function BudgetTab() {
+  const { user } = useAuthStore()
+  const canDelete = user?.role === 'admin' || user?.role === 'leader'
   const [budgets, setBudgets] = useState<BudgetPlan[]>([])
   const [projects, setProjects] = useState<StrategicProject[]>([])
   const [loading, setLoading] = useState(true)
@@ -799,7 +804,7 @@ function BudgetTab() {
                   </div>
                   <div className="flex gap-1 shrink-0">
                     <button onClick={() => { setEditing(b); setShowForm(true) }} className="p-1.5 hover:bg-blue-50 rounded-lg"><Edit2 size={14} className="text-blue-500" /></button>
-                    <button onClick={() => handleDelete(b.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="text-red-500" /></button>
+                    {canDelete && <button onClick={() => handleDelete(b.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="text-red-500" /></button>}
                     <button onClick={() => toggleExpand(b.id)} className="p-1.5 hover:bg-gray-100 rounded-lg">
                       {expandedId === b.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                     </button>
@@ -855,7 +860,7 @@ function BudgetTab() {
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="font-semibold text-blue-600">{fmt(fs.funding_amount)}</span>
-                            <button onClick={() => handleDeleteFs(fs)} className="p-1 hover:bg-red-50 rounded"><Trash2 size={12} className="text-red-400" /></button>
+                            {canDelete && <button onClick={() => handleDeleteFs(fs)} className="p-1 hover:bg-red-50 rounded"><Trash2 size={12} className="text-red-400" /></button>}
                           </div>
                         </div>
                       ))}
@@ -950,6 +955,8 @@ function DisbursementForm({ onSave, onClose, budgets }: {
 }
 
 function DisbursementTab() {
+  const { user } = useAuthStore()
+  const canDelete = user?.role === 'admin' || user?.role === 'leader'
   const [items, setItems] = useState<Disbursement[]>([])
   const [total, setTotal] = useState(0)
   const [budgets, setBudgets] = useState<BudgetPlan[]>([])
@@ -1013,7 +1020,7 @@ function DisbursementTab() {
                 <p className="text-xs text-gray-500 mt-1">{d.disbursement_date}</p>
                 <p className="text-xs text-gray-400">KH: {budgetMap[d.budget_plan_id] ?? `#${d.budget_plan_id}`}</p>
               </div>
-              <button onClick={() => handleDelete(d.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="text-red-500" /></button>
+              {canDelete && <button onClick={() => handleDelete(d.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="text-red-500" /></button>}
             </div>
             {d.note && <p className="text-xs text-gray-500 mt-2 border-t pt-2">{d.note}</p>}
           </div>
@@ -1049,7 +1056,7 @@ function DisbursementTab() {
                   <td className="px-4 py-3 text-xs text-gray-500 max-w-xs truncate">{d.note ?? '—'}</td>
                   <td className="px-4 py-3 text-xs text-gray-400">{d.creator?.full_name ?? d.creator?.username ?? '—'}</td>
                   <td className="px-4 py-3">
-                    <button onClick={() => handleDelete(d.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="text-red-500" /></button>
+                    {canDelete && <button onClick={() => handleDelete(d.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="text-red-500" /></button>}
                   </td>
                 </tr>
               ))}
