@@ -101,8 +101,11 @@ function getAllPageFileLinks() {
     const isFile = FILE_EXT_RE.test(text) || FILE_EXT_RE.test(href)
                 || FILE_EXT_RE.test(title) || href.includes('/download')
                 || href.includes('attachment') || href.includes('ztree')
-                || a.getAttribute('download') !== null;
-    if (isFile) {
+                || href.includes('file') || href.includes('export')
+                || a.getAttribute('download') !== null
+                // Link icon nhỏ (icon download, không có text dài) nhưng href có query params
+                || (text.length <= 3 && href.includes('?') && !href.includes('login'));
+    if (isFile && !href.includes('javascript') && href !== '#') {
       seen.add(a.href);
       const rect = a.getBoundingClientRect();
       const name = text || title || a.href.split('/').pop().split('?')[0] || 'document.pdf';
@@ -304,17 +307,22 @@ function openPanelWithData(data) {
 }
 
 function buildPanelWithData(data) {
-  const attachUI = (data.attachments || []).length > 0 ? `
-    <label class="ioc-label">File đính kèm <span class="ioc-badge">${data.attachments.length} file</span></label>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;">
+  const hasFiles = (data.attachments || []).length > 0;
+  const attachUI = `
+    <label class="ioc-label">File đính kèm ${hasFiles ? `<span class="ioc-badge">${data.attachments.length} tìm thấy</span>` : '<span style="color:#f59e0b;font-size:10px;">⚠ không tự động tìm được</span>'}</label>
+    ${hasFiles ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;">
       ${data.attachments.map(f=>`
         <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
           <input type="checkbox" class="ioc-attach-cb"
                  data-url="${escHtml(f.url)}" data-name="${escHtml(f.name)}" checked
-                 style="width:14px;height:14px;">
-          <span style="font-size:11px;color:#334155;word-break:break-all;">📎 ${escHtml(f.name.slice(0,55))}</span>
+                 style="width:14px;height:14px;flex-shrink:0">
+          <span style="font-size:11px;color:#334155;word-break:break-all;">📎 ${escHtml(f.name.slice(0,60))}</span>
         </label>`).join('')}
-    </div>` : '';
+    </div>` : ''}
+    <div style="margin-top:6px;">
+      <input id="ioc_manual_url" class="ioc-input" placeholder="Hoặc dán URL file từ dhtn vào đây (tùy chọn)"
+             style="font-size:11px;color:#64748b;">
+    </div>`;
 
   const panel = document.createElement('div');
   panel.id = 'ioc-panel';
@@ -537,6 +545,12 @@ async function sendToIOC(panel) {
 
   const checkedFiles = Array.from(panel.querySelectorAll('.ioc-attach-cb:checked'))
     .map(cb => ({ url: cb.dataset.url, name: cb.dataset.name }));
+
+  // Thêm URL nhập thủ công nếu có
+  const manualUrl = ((panel.querySelector('#ioc_manual_url') || {}).value || '').trim();
+  if (manualUrl && manualUrl.startsWith('http')) {
+    checkedFiles.push({ url: manualUrl, name: manualUrl.split('/').pop().split('?')[0] || 'document.pdf' });
+  }
 
   const token = await getIOCToken();
   const sendBtn = panel.querySelector('[data-ioc-action="send"]');
