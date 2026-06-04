@@ -113,33 +113,57 @@ function getAllPageFileLinks() {
 }
 
 /**
- * Tìm file links gần nhất với element được click.
- * ZK dùng absolute positioning → không thể dùng DOM hierarchy.
- * Dùng vị trí màn hình (getBoundingClientRect) để tìm file gần nhất.
+ * Tìm file links cho văn bản được click.
+ * Chiến lược:
+ * 1. Match theo số văn bản trong tên file (ví dụ "CV-0787" trong filename)
+ * 2. Match theo thứ tự: văn bản thứ N → file thứ N
+ * 3. Fallback: trả về tất cả files trên trang (user tự chọn)
  */
-function findFileLinks(clickedEl) {
+function findFileLinks(clickedEl, docNumber) {
   const allFiles = getAllPageFileLinks();
   if (!allFiles.length) return [];
 
-  const elRect = clickedEl?.getBoundingClientRect?.() || { top: 0, bottom: 0 };
-  const elMidY = (elRect.top + elRect.bottom) / 2;
-
-  // Lấy các file nằm trong vùng ±200px theo chiều dọc
-  const nearby = allFiles.filter(f => Math.abs(f.top - elMidY) < 200);
-
-  if (nearby.length === 0) {
-    // Không có file gần → lấy file gần nhất theo Y
-    allFiles.sort((a, b) => Math.abs(a.top - elMidY) - Math.abs(b.top - elMidY));
-    return allFiles.slice(0, 2);
+  // Strategy 1: Match số ký hiệu trong tên file
+  // VD: "787-CV/ĐU" → tìm file có "787" hoặc "CV-0787"
+  if (docNumber) {
+    const numPart = docNumber.replace(/[^0-9]/g, ''); // chỉ lấy số
+    const codePart = docNumber.split('-')[0];          // phần trước dấu -
+    const matched = allFiles.filter(f => {
+      const name = (f.name + f.url).toLowerCase();
+      return (numPart && name.includes(numPart))
+          || (codePart && name.includes(codePart.toLowerCase()));
+    });
+    if (matched.length > 0) return matched.slice(0, 2);
   }
 
-  // Sắp xếp: ưu tiên file nằm bên phải (cột cuối bảng) và gần Y nhất
-  nearby.sort((a, b) => {
-    const distA = Math.abs(a.top - elMidY);
-    const distB = Math.abs(b.top - elMidY);
-    return distA - distB;
-  });
-  return nearby.slice(0, 3);
+  // Strategy 2: Match theo thứ tự DOM
+  // Đếm clickedEl là tên văn bản thứ mấy trên trang
+  const allTitleEls = Array.from(document.querySelectorAll('td, div'))
+    .filter(el => {
+      const t = el.textContent.trim();
+      return (t.startsWith('V/v') || t.startsWith('Về việc') ||
+              t.startsWith('Báo cáo') || t.startsWith('Tờ trình'))
+          && t.length > 20 && el.children.length <= 3;
+    });
+
+  const idx = allTitleEls.indexOf(clickedEl);
+  if (idx >= 0 && idx < allFiles.length) {
+    return [allFiles[idx]];
+  }
+
+  // Strategy 3: Vị trí màn hình (chỉ dùng khi element hiển thị)
+  const elRect = clickedEl?.getBoundingClientRect?.() || null;
+  if (elRect && (elRect.top > 0 || elRect.bottom > 0)) {
+    const elMidY = (elRect.top + elRect.bottom) / 2;
+    const visible = allFiles.filter(f => f.top > 0 && Math.abs(f.top - elMidY) < 250);
+    if (visible.length > 0) {
+      visible.sort((a,b) => Math.abs(a.top-elMidY) - Math.abs(b.top-elMidY));
+      return visible.slice(0,2);
+    }
+  }
+
+  // Fallback: Trả về tất cả → hiển thị trong panel để user tự chọn
+  return allFiles.slice(0, 5);
 }
 
 /** Tìm file trên toàn trang (dùng cho detail page) */
@@ -236,8 +260,8 @@ function injectRowButtons() {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // Tìm file bằng vị trí màn hình (không dùng DOM hierarchy vì ZK dùng absolute position)
-      const files = findFileLinks(btn);
+      // Tìm file: match số ký hiệu → index → vị trí → fallback tất cả
+      const files = findFileLinks(el, docNumber);
       const data = { title, docNumber, issueDate: date, issuer, attachments: files, docType: getDocType() };
       if (files.length > 0) {
         showToast(`✅ Tìm thấy ${files.length} file: ${files[0].name.slice(0,35)}`, '#059669');
