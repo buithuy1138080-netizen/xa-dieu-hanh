@@ -89,60 +89,57 @@ function extractDetail() {
 
 const FILE_EXT_RE = /\.(pdf|doc|docx|xls|xlsx|zip|rar)(\b|$)/i;
 
-/** Tìm file links trong một element — kiểm tra cả href VÀ text/title */
-function findFileLinks(container) {
-  if (!container) return [];
+/** Lấy tất cả file links trên trang — ZK dùng absolute positioning nên không nằm trong <tr> */
+function getAllPageFileLinks() {
   const seen = new Set();
-
-  // Mở rộng tìm kiếm: container + các anh em (sibling tds trong cùng tr)
-  const searchRoots = [container];
-  const row = container.closest?.('tr');
-  if (row) {
-    searchRoots.push(row);
-    // ZK đôi khi dùng <tr> tiếp theo cho file đính kèm
-    const next = row.nextElementSibling;
-    if (next && next.tagName === 'TR') searchRoots.push(next);
-    const prev = row.previousElementSibling;
-    if (prev && prev.tagName === 'TR') searchRoots.push(prev);
-  }
-  // Leo thêm 6 cấp để tìm trong container cha
-  let node = container;
-  for (let i = 0; i < 6; i++) {
-    node = node?.parentNode;
-    if (node) searchRoots.push(node);
-    if (node?.tagName === 'TBODY') break; // dừng ở tbody
-  }
-
   const results = [];
-  for (const root of searchRoots) {
-    const links = Array.from(root.querySelectorAll?.('a[href]') || []);
-    for (const a of links) {
-      if (seen.has(a.href)) continue;
-      const href  = (a.href || '').toLowerCase();
-      const text  = (a.textContent || '').trim();
-      const title = (a.title || '').toLowerCase();
-
-      const isFile = FILE_EXT_RE.test(text)       // tên file trong text link
-                  || FILE_EXT_RE.test(href)        // extension trong URL
-                  || FILE_EXT_RE.test(title)       // extension trong title
-                  || href.includes('/download')    // endpoint download
-                  || href.includes('attachment')   // endpoint attachment
-                  || href.includes('ztree')        // dhtn.dcs.vn file server
-                  || a.getAttribute('download') !== null; // download attribute
-
-      if (isFile && a.href && a.href.startsWith('http')) {
-        seen.add(a.href);
-        // Tên file: ưu tiên text > title > từ URL
-        const name = text || title
-          || a.href.split('/').pop().split('?')[0]
-          || 'document.pdf';
-        results.push({ url: a.href, name });
-        if (results.length >= 5) break;
-      }
+  for (const a of document.querySelectorAll('a[href]')) {
+    if (seen.has(a.href) || !a.href.startsWith('http')) continue;
+    const text  = (a.textContent || '').trim();
+    const href  = (a.href || '').toLowerCase();
+    const title = (a.title || '').toLowerCase();
+    const isFile = FILE_EXT_RE.test(text) || FILE_EXT_RE.test(href)
+                || FILE_EXT_RE.test(title) || href.includes('/download')
+                || href.includes('attachment') || href.includes('ztree')
+                || a.getAttribute('download') !== null;
+    if (isFile) {
+      seen.add(a.href);
+      const rect = a.getBoundingClientRect();
+      const name = text || title || a.href.split('/').pop().split('?')[0] || 'document.pdf';
+      results.push({ url: a.href, name, top: rect.top, bottom: rect.bottom, left: rect.left });
     }
-    if (results.length > 0) break; // Tìm thấy rồi, dừng
   }
   return results;
+}
+
+/**
+ * Tìm file links gần nhất với element được click.
+ * ZK dùng absolute positioning → không thể dùng DOM hierarchy.
+ * Dùng vị trí màn hình (getBoundingClientRect) để tìm file gần nhất.
+ */
+function findFileLinks(clickedEl) {
+  const allFiles = getAllPageFileLinks();
+  if (!allFiles.length) return [];
+
+  const elRect = clickedEl?.getBoundingClientRect?.() || { top: 0, bottom: 0 };
+  const elMidY = (elRect.top + elRect.bottom) / 2;
+
+  // Lấy các file nằm trong vùng ±200px theo chiều dọc
+  const nearby = allFiles.filter(f => Math.abs(f.top - elMidY) < 200);
+
+  if (nearby.length === 0) {
+    // Không có file gần → lấy file gần nhất theo Y
+    allFiles.sort((a, b) => Math.abs(a.top - elMidY) - Math.abs(b.top - elMidY));
+    return allFiles.slice(0, 2);
+  }
+
+  // Sắp xếp: ưu tiên file nằm bên phải (cột cuối bảng) và gần Y nhất
+  nearby.sort((a, b) => {
+    const distA = Math.abs(a.top - elMidY);
+    const distB = Math.abs(b.top - elMidY);
+    return distA - distB;
+  });
+  return nearby.slice(0, 3);
 }
 
 /** Tìm file trên toàn trang (dùng cho detail page) */
@@ -239,14 +236,15 @@ function injectRowButtons() {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const data = { title, docNumber, issueDate: date, issuer, attachments, docType: getDocType() };
-      // Debug: thông báo tìm thấy bao nhiêu file
-      if (attachments.length > 0) {
-        showToast(`✅ Tìm thấy ${attachments.length} file: ${attachments[0].name.slice(0,30)}`, '#059669');
+      // Tìm file bằng vị trí màn hình (không dùng DOM hierarchy vì ZK dùng absolute position)
+      const files = findFileLinks(btn);
+      const data = { title, docNumber, issueDate: date, issuer, attachments: files, docType: getDocType() };
+      if (files.length > 0) {
+        showToast(`✅ Tìm thấy ${files.length} file: ${files[0].name.slice(0,35)}`, '#059669');
       } else {
-        showToast('⚠️ Không tìm thấy file — có thể tải thủ công sau', '#f59e0b');
+        showToast('⚠️ Không tìm thấy file đính kèm', '#f59e0b');
       }
-      setTimeout(() => openPanelWithData(data), 500);
+      setTimeout(() => openPanelWithData(data), 600);
     });
 
     el.appendChild(btn);
