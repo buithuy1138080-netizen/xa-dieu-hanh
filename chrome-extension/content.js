@@ -699,20 +699,101 @@ async function sendToIOC(panel) {
 
     const finalMsg = uploaded > 0
       ? `✅ Đã nhập văn bản + ${uploaded} file PDF vào IOC!`
-      : `✅ Văn bản #${docId} đã tạo trong IOC`;
+      : `✅ Văn bản #${docId} tạo thành công!`;
     showToast(finalMsg, '#059669');
     panel.classList.remove('visible');
 
-    // Mở trang văn bản
-    setTimeout(() => {
-      chrome.runtime.sendMessage({ action: 'IOC_OPEN_TAB', url: `${IOC_URL}/documents/${docId}` });
-    }, 1200);
+    // Nếu chưa có file → hiện widget upload nhanh
+    if (uploaded === 0) {
+      showUploadWidget(docId, token);
+    } else {
+      setTimeout(() => {
+        chrome.runtime.sendMessage({ action: 'IOC_OPEN_TAB', url: `${IOC_URL}/documents/${docId}` });
+      }, 1200);
+    }
 
   } catch (err) {
     showToast('❌ ' + (err.message || 'Lỗi không xác định'), '#dc2626');
   } finally {
     if (sendBtn) { sendBtn.textContent = '🚀 Gửi sang xabacha.com'; sendBtn.disabled = false; }
   }
+}
+
+/* ══════════════════════════════════════
+   UPLOAD WIDGET — hiện sau khi tạo VB
+══════════════════════════════════════ */
+
+function showUploadWidget(docId, token) {
+  const old = document.getElementById('ioc-upload-widget');
+  if (old) old.remove();
+
+  const w = document.createElement('div');
+  w.id = 'ioc-upload-widget';
+  w.style.cssText = [
+    'position:fixed','bottom:80px','right:20px','z-index:2147483647',
+    'width:300px','background:white','border-radius:16px',
+    'box-shadow:0 8px 32px rgba(0,0,0,0.25)','font-family:sans-serif',
+    'border:2px solid #2563eb','overflow:hidden',
+  ].join(';');
+
+  w.innerHTML = `
+    <div style="background:#2563eb;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
+      <span style="color:white;font-size:13px;font-weight:700;">📎 Đính kèm file vào văn bản #${docId}</span>
+      <button id="ioc-uw-close" style="background:rgba(255,255,255,.2);border:none;color:white;width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:16px;line-height:1;">×</button>
+    </div>
+    <div style="padding:12px 14px;">
+      <p style="font-size:12px;color:#374151;margin:0 0 10px;line-height:1.5;">
+        <b>Bước 1:</b> Tải file PDF từ dhtn (nhấn icon ↓ trên trang này)<br>
+        <b>Bước 2:</b> Chọn file vừa tải để đính kèm vào IOC
+      </p>
+      <label style="display:block;width:100%;box-sizing:border-box;background:#eff6ff;border:2px dashed #2563eb;border-radius:10px;padding:14px;text-align:center;cursor:pointer;font-size:12px;color:#1d4ed8;font-weight:600;">
+        📂 Chọn file để upload
+        <input type="file" id="ioc-uw-file" accept=".pdf,.doc,.docx,.xls,.xlsx" style="display:none">
+      </label>
+      <div id="ioc-uw-status" style="margin-top:8px;font-size:11px;color:#6b7280;text-align:center;"></div>
+    </div>`;
+
+  document.body.appendChild(w);
+
+  document.getElementById('ioc-uw-close').onclick = () => w.remove();
+
+  document.getElementById('ioc-uw-file').onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const status = document.getElementById('ioc-uw-status');
+    status.textContent = `⏳ Đang upload ${file.name}...`;
+    status.style.color = '#2563eb';
+
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const result = await chrome.runtime.sendMessage({
+        action: 'IOC_UPLOAD_BASE64',
+        docId, fileName: file.name, mimeType: file.type, base64, token,
+      });
+
+      if (result?.ok) {
+        status.textContent = `✅ Đã đính kèm ${file.name}`;
+        status.style.color = '#059669';
+        showToast(`✅ File "${file.name}" đã đính kèm vào văn bản #${docId}!`, '#059669');
+        setTimeout(() => {
+          w.remove();
+          chrome.runtime.sendMessage({ action: 'IOC_OPEN_TAB', url: `${IOC_URL}/documents/${docId}` });
+        }, 2000);
+      } else {
+        status.textContent = '❌ Upload thất bại: ' + (result?.data?.detail || '');
+        status.style.color = '#dc2626';
+      }
+    } catch (err) {
+      status.textContent = '❌ Lỗi: ' + err.message;
+      status.style.color = '#dc2626';
+    }
+  };
 }
 
 /* ══════════════════════════════════════
