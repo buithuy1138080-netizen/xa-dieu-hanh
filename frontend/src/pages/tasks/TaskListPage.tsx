@@ -19,6 +19,7 @@ import TaskCard from '../../components/tasks/TaskCard'
 import TaskFilters, { type Filters } from '../../components/tasks/TaskFilters'
 import TaskForm from '../../components/tasks/TaskForm'
 import type { Task, TaskStats, TaskStatus } from '../../types/task'
+import { useAuthStore } from '../../store/authStore'
 
 type View = 'list' | 'kanban' | 'overdue'
 
@@ -116,6 +117,8 @@ function ViewBtn({ active, onClick, icon: Icon, label }: {
 export default function TaskListPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const { user } = useAuthStore()
+  const canDelete = user?.role === 'admin' || user?.role === 'leader'
 
   // ── View ──
   const [view, setView] = useState<View>(() => {
@@ -448,8 +451,10 @@ export default function TaskListPage() {
                       <div className="flex gap-1">
                         <button onClick={(e) => { e.stopPropagation(); setEditTask(task); setShowForm(true) }}
                           className="px-2.5 py-1 text-[11px] text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg">Sửa</button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDelete(task.id) }}
-                          className="px-2.5 py-1 text-[11px] text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg">Xóa</button>
+                        {canDelete && (
+                          <button onClick={(e) => { e.stopPropagation(); handleDelete(task.id) }}
+                            className="px-2.5 py-1 text-[11px] text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg">Xóa</button>
+                        )}
                       </div>
                     </div>
                   </motion.div>
@@ -571,10 +576,12 @@ export default function TaskListPage() {
                               className="px-2.5 py-1 text-[11px] font-medium text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
                               Sửa
                             </button>
-                            <button onClick={() => handleDelete(task.id)}
-                              className="px-2.5 py-1 text-[11px] font-medium text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                              Xóa
-                            </button>
+                            {canDelete && (
+                              <button onClick={() => handleDelete(task.id)}
+                                className="px-2.5 py-1 text-[11px] font-medium text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                                Xóa
+                              </button>
+                            )}
                           </div>
                         </td>
                       </motion.tr>

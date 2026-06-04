@@ -29,20 +29,47 @@ async def _get_user_dept_id(db: AsyncSession, user_id: int) -> int | None:
 
 
 async def _check_task_write_permission(
-    db: AsyncSession, current_user: User, lead_dept_id: int | None, action: str
+    db: AsyncSession,
+    current_user: User,
+    lead_dept_id: int | None,
+    action: str,
+    task_id: int | None = None,
 ) -> None:
-    """Enforce department-based write permissions for manager and staff roles."""
+    """Enforce role-based write permissions.
+
+    admin / leader : full access
+    manager        : create/view/edit for own dept (lead or coordinating); NO delete
+    staff          : view only; NO create/edit/delete
+    """
     if current_user.role in ("admin", "leader"):
         return
+
     user_dept = await _get_user_dept_id(db, current_user.id)
+
+    if current_user.role == "staff":
+        if action in ("update", "delete", "create"):
+            raise HTTPException(403, "Nhân viên không có quyền thêm, sửa hoặc xóa nhiệm vụ")
+        return
+
     if current_user.role == "manager":
-        if lead_dept_id and lead_dept_id != user_dept:
-            raise HTTPException(403, "Quản lý chỉ được thao tác nhiệm vụ của đơn vị mình phụ trách")
-    elif current_user.role == "staff":
-        if action in ("update", "delete"):
-            raise HTTPException(403, "Nhân viên không có quyền sửa hoặc xóa nhiệm vụ")
-        if action == "create" and lead_dept_id and lead_dept_id != user_dept:
-            raise HTTPException(403, "Nhân viên chỉ được tạo nhiệm vụ cho đơn vị mình")
+        # Manager không được xóa nhiệm vụ
+        if action == "delete":
+            raise HTTPException(403, "Quản lý không có quyền xóa nhiệm vụ")
+
+        # Kiểm tra đơn vị phụ trách hoặc phối hợp
+        is_lead = lead_dept_id and lead_dept_id == user_dept
+        is_coord = False
+        if task_id and user_dept:
+            coord = (await db.execute(
+                select(TaskDepartment).where(
+                    TaskDepartment.task_id == task_id,
+                    TaskDepartment.department_id == user_dept,
+                )
+            )).scalar_one_or_none()
+            is_coord = coord is not None
+
+        if not is_lead and not is_coord:
+            raise HTTPException(403, "Quản lý chỉ được thao tác nhiệm vụ của đơn vị mình phụ trách hoặc phối hợp")
 
 
 from app.core.config import settings as _settings
@@ -849,7 +876,7 @@ async def update_task(
     current_user: User = Depends(get_current_user),
 ):
     t = await _get_task(db, task_id)
-    await _check_task_write_permission(db, current_user, t.lead_department_id, "update")
+    await _check_task_write_permission(db, current_user, t.lead_department_id, "update", task_id)
 
     if body.priority is not None and body.priority not in VALID_PRIORITIES:
         raise HTTPException(400, f"priority must be one of {VALID_PRIORITIES}")
@@ -958,7 +985,7 @@ async def delete_task(
     current_user: User = Depends(get_current_user),
 ):
     t = await _get_task(db, task_id)
-    await _check_task_write_permission(db, current_user, t.lead_department_id, "delete")
+    await _check_task_write_permission(db, current_user, t.lead_department_id, "delete", task_id)
     t.deleted_at = datetime.now(timezone.utc)
     t.updated_by = current_user.id
     await _audit(db, t.id, current_user.id, "deleted")
