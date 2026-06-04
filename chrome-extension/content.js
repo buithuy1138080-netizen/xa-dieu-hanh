@@ -89,6 +89,40 @@ function extractDetail() {
 
 const FILE_EXT_RE = /\.(pdf|doc|docx|xls|xlsx|zip|rar)(\b|$)/i;
 
+/**
+ * Tìm file trong section "File đính kèm" của trang chi tiết
+ * Đây là cách đáng tin nhất vì trang chi tiết có href thật
+ */
+function findDetailSectionFiles() {
+  const LABELS = ['File đính kèm', 'File biểu mẫu', 'Tài liệu liên quan'];
+  const results = [];
+  const seen = new Set();
+
+  // Tìm cell có nhãn "File đính kèm" rồi lấy link trong cell kế bên
+  const allCells = Array.from(document.querySelectorAll('td, th, div, span'));
+  for (const cell of allCells) {
+    const text = cell.textContent.trim();
+    if (!LABELS.includes(text)) continue;
+
+    // Tìm trong parent và siblings
+    const searchIn = [cell.parentNode, cell.nextElementSibling,
+      cell.parentNode?.nextElementSibling].filter(Boolean);
+
+    for (const root of searchIn) {
+      for (const a of root.querySelectorAll?.('a[href]') || []) {
+        if (seen.has(a.href) || !a.href || a.href === '#') continue;
+        const name = a.textContent.trim() || a.href.split('/').pop();
+        if (name.length > 3) {
+          seen.add(a.href);
+          results.push({ url: a.href, name });
+        }
+      }
+    }
+    if (results.length > 0) return results; // Tìm thấy thì dừng
+  }
+  return results;
+}
+
 /** Lấy tất cả file links trên trang — ZK dùng absolute positioning nên không nằm trong <tr> */
 function getAllPageFileLinks() {
   const seen = new Set();
@@ -171,7 +205,11 @@ function findFileLinks(clickedEl, docNumber) {
 
 /** Tìm file trên toàn trang (dùng cho detail page) */
 function findAttachments() {
-  return findFileLinks(document.body).slice(0, 5);
+  // Ưu tiên tìm trong section "File đính kèm" (trang chi tiết có href thật)
+  const sectionFiles = findDetailSectionFiles();
+  if (sectionFiles.length > 0) return sectionFiles.slice(0, 5);
+  // Fallback: quét toàn trang
+  return getAllPageFileLinks().slice(0, 5);
 }
 
 /* ══════════════════════════════════════
@@ -308,21 +346,26 @@ function openPanelWithData(data) {
 
 function buildPanelWithData(data) {
   const hasFiles = (data.attachments || []).length > 0;
-  const attachUI = `
-    <label class="ioc-label">File đính kèm ${hasFiles ? `<span class="ioc-badge">${data.attachments.length} tìm thấy</span>` : '<span style="color:#f59e0b;font-size:10px;">⚠ không tự động tìm được</span>'}</label>
-    ${hasFiles ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;">
-      ${data.attachments.map(f=>`
-        <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
-          <input type="checkbox" class="ioc-attach-cb"
-                 data-url="${escHtml(f.url)}" data-name="${escHtml(f.name)}" checked
-                 style="width:14px;height:14px;flex-shrink:0">
-          <span style="font-size:11px;color:#334155;word-break:break-all;">📎 ${escHtml(f.name.slice(0,60))}</span>
-        </label>`).join('')}
-    </div>` : ''}
-    <div style="margin-top:6px;">
-      <input id="ioc_manual_url" class="ioc-input" placeholder="Hoặc dán URL file từ dhtn vào đây (tùy chọn)"
-             style="font-size:11px;color:#64748b;">
-    </div>`;
+  const attachUI = hasFiles
+    ? `<label class="ioc-label">File đính kèm <span class="ioc-badge">${data.attachments.length} file</span></label>
+       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;">
+         ${data.attachments.map(f=>`
+           <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
+             <input type="checkbox" class="ioc-attach-cb"
+                    data-url="${escHtml(f.url)}" data-name="${escHtml(f.name)}" checked
+                    style="width:14px;height:14px;flex-shrink:0">
+             <span style="font-size:11px;color:#334155;word-break:break-all;">📎 ${escHtml(f.name.slice(0,60))}</span>
+           </label>`).join('')}
+       </div>`
+    : `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-top:8px;">
+         <p style="font-size:11px;font-weight:700;color:#92400e;margin:0 0 6px;">📎 Đính kèm file sau khi gửi</p>
+         <p style="font-size:11px;color:#78350f;margin:0;line-height:1.5;">
+           dhtn.dcs.vn dùng JavaScript cho tải file — không thể tự động lấy link.<br>
+           Sau khi nhấn "Gửi", trang văn bản sẽ mở trong IOC, bạn có thể:<br>
+           <b>1.</b> Tải file PDF từ dhtn (nhấn icon ↓)<br>
+           <b>2.</b> Nhấn "+ Tải file lên" trong trang văn bản IOC
+         </p>
+       </div>`;
 
   const panel = document.createElement('div');
   panel.id = 'ioc-panel';
