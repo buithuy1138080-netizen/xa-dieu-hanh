@@ -270,6 +270,9 @@ function PasswordModal({ staff, onClose }: { staff: StaffRecord & { has_password
 export default function StaffPage() {
   const { user: currentUser } = useAuthStore()
   const canManage = isAdminOrLeader(currentUser ?? null)
+  const isManager = currentUser?.role === 'manager'
+  // Manager cũng được thêm nhân sự (chỉ đơn vị mình)
+  const canAdd = canManage || isManager
 
   const [items, setItems] = useState<StaffRecord[]>([])
   const [total, setTotal] = useState(0)
@@ -345,10 +348,10 @@ export default function StaffPage() {
             }
           </p>
         </div>
-        {canManage && (
+        {canAdd && (
           <button onClick={() => { setEditing(null); setModalOpen(true) }}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition shadow-sm">
-            <Plus size={16} /> Thêm nhân sự
+            <Plus size={16} /> {isManager ? 'Thêm nhân sự đơn vị' : 'Thêm nhân sự'}
           </button>
         )}
       </div>

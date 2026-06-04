@@ -280,8 +280,21 @@ async def create_staff(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role not in ("admin", "leader"):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Chỉ Admin/Lãnh đạo mới được thêm nhân sự")
+    if current_user.role not in ("admin", "leader", "manager"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Không có quyền thêm nhân sự")
+
+    # Manager: chỉ thêm được nhân viên (role=staff) cho đơn vị của mình
+    if current_user.role == "manager":
+        mgr_staff = (await db.execute(
+            select(Staff).where(Staff.user_id == current_user.id)
+        )).scalar_one_or_none()
+        mgr_dept_id = mgr_staff.department_id if mgr_staff else None
+        if not mgr_dept_id:
+            raise HTTPException(403, "Không tìm thấy đơn vị của bạn")
+        if body.department_id != mgr_dept_id:
+            raise HTTPException(403, "Quản lý chỉ được thêm nhân viên cho đơn vị mình")
+        if body.role not in ("staff",):
+            raise HTTPException(403, "Quản lý chỉ được thêm nhân viên với quyền 'Nhân viên'")
 
     if body.role not in VALID_ROLES:
         raise HTTPException(400, f"Role không hợp lệ. Chọn: {list(VALID_ROLES)}")
