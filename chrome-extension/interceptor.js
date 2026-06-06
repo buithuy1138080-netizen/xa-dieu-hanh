@@ -1,12 +1,11 @@
 /**
- * interceptor.js — chạy trong MAIN world của dhtn.dcs.vn
- * Bắt chặn file download từ ZK Framework TRƯỚC khi xuống máy user
+ * interceptor.js — v2.1 (an toàn hơn)
+ * Chỉ bắt file download, KHÔNG ảnh hưởng đến ZK Framework AJAX
  *
  * Kỹ thuật:
- *  1. Override URL.createObjectURL → bắt Blob được tạo ra
- *  2. Override fetch → bắt binary response (PDF, DOCX...)
- *  3. Override XMLHttpRequest → bắt XHR binary response
- *  4. Dispatch CustomEvent → gửi file data sang content.js (isolated world)
+ *  1. URL.createObjectURL — ZK tạo blob trước khi download (phương pháp chính)
+ *  2. fetch — chỉ bắt khi Content-Disposition = attachment (không động tới JSON/HTML)
+ *  XHR KHÔNG override (sẽ phá vỡ ZK page rendering)
  */
 
 (function () {
@@ -26,17 +25,14 @@
   }
 
   function guessFilename(url, contentDisposition, mimeType) {
-    // Try Content-Disposition header first
     if (contentDisposition) {
       const m = contentDisposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)/i);
       if (m) return decodeURIComponent(m[1].trim());
     }
-    // Try URL
     if (url) {
       const part = url.split('/').pop()?.split('?')[0];
-      if (part && part.includes('.')) return part;
+      if (part && part.match(/\.[a-z]{2,5}$/i)) return part;
     }
-    // Fallback by mime
     const ext = (mimeType || '').includes('pdf') ? '.pdf'
               : (mimeType || '').includes('word') ? '.docx'
               : (mimeType || '').includes('excel') || (mimeType || '').includes('sheet') ? '.xlsx'
@@ -45,85 +41,80 @@
   }
 
   function dispatchFile(blob, filename, sourceUrl) {
-    if (!blob || blob.size === 0) return;
+    if (!blob || blob.size < 100) return; // bỏ qua blob rỗng
     const reader = new FileReader();
     reader.onload = function () {
       const base64 = (reader.result || '').toString().split(',')[1];
       if (!base64) return;
-      window.dispatchEvent(new CustomEvent('__ioc_file_captured__', {
-        detail: {
-          base64,
-          filename: filename || 'document.pdf',
-          mimeType: blob.type || 'application/octet-stream',
-          sourceUrl: sourceUrl || location.href,
-          size: blob.size,
-        },
-      }));
+      try {
+        window.dispatchEvent(new CustomEvent('__ioc_file_captured__', {
+          detail: {
+            base64,
+            filename: filename || 'document.pdf',
+            mimeType: blob.type || 'application/octet-stream',
+            sourceUrl: sourceUrl || location.href,
+            size: blob.size,
+          },
+        }));
+      } catch (_) {}
     };
+    reader.onerror = () => {};
     reader.readAsDataURL(blob);
   }
 
   /* ══════════════════════════════
      1. Bắt URL.createObjectURL
-     ZK tạo blob URL → trigger download
+     Phương pháp AN TOÀN nhất — ZK tạo blob
+     URL trước khi trigger download
   ══════════════════════════════ */
-  const _createObjectURL = URL.createObjectURL.bind(URL);
-  URL.createObjectURL = function (blob) {
-    const url = _createObjectURL(blob);
-    if (blob instanceof Blob && isBinaryMime(blob.type)) {
-      const filename = guessFilename(null, null, blob.type);
-      dispatchFile(blob, filename, location.href);
-    }
-    return url;
-  };
-
-  /* ══════════════════════════════
-     2. Bắt window.fetch binary
-  ══════════════════════════════ */
-  const _fetch = window.fetch.bind(window);
-  window.fetch = async function (...args) {
-    const response = await _fetch(...args);
-    const url = (args[0] instanceof Request ? args[0].url : args[0]) || '';
-    const contentType = response.headers.get('content-type') || '';
-    const contentDisp  = response.headers.get('content-disposition') || '';
-
-    if (isBinaryMime(contentType) || contentDisp.includes('attachment')) {
-      const cloned = response.clone();
-      cloned.blob().then(blob => {
-        const filename = guessFilename(url, contentDisp, contentType);
-        dispatchFile(blob, filename, url);
-      }).catch(() => {});
-    }
-    return response;
-  };
-
-  /* ══════════════════════════════
-     3. Bắt XMLHttpRequest binary
-  ══════════════════════════════ */
-  const _XHROpen = XMLHttpRequest.prototype.open;
-  const _XHRSend = XMLHttpRequest.prototype.send;
-
-  XMLHttpRequest.prototype.open = function (method, url) {
-    this.__ioc_url__ = url;
-    return _XHROpen.apply(this, arguments);
-  };
-
-  XMLHttpRequest.prototype.send = function () {
-    this.addEventListener('load', function () {
+  try {
+    const _createObjectURL = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = function (blob) {
+      const url = _createObjectURL(blob);
       try {
-        const contentType = this.getResponseHeader('content-type') || '';
-        const contentDisp  = this.getResponseHeader('content-disposition') || '';
-        if ((isBinaryMime(contentType) || contentDisp.includes('attachment'))
-            && this.response instanceof Blob) {
-          const filename = guessFilename(this.__ioc_url__, contentDisp, contentType);
-          dispatchFile(this.response, filename, this.__ioc_url__);
+        if (blob instanceof Blob && blob.size > 500 && isBinaryMime(blob.type)) {
+          const filename = guessFilename(null, null, blob.type);
+          dispatchFile(blob, filename, location.href);
         }
       } catch (_) {}
-    });
-    // Ensure binary response type for blobs
-    if (!this.responseType) this.responseType = 'blob';
-    return _XHRSend.apply(this, arguments);
-  };
+      return url;
+    };
+  } catch (_) {}
 
-  console.log('[IOC Interceptor] Active on', location.hostname);
+  /* ══════════════════════════════
+     2. Bắt fetch — CHỈ khi có
+     Content-Disposition: attachment
+     Không động tới JSON/HTML của ZK
+  ══════════════════════════════ */
+  try {
+    const _fetch = window.fetch.bind(window);
+    window.fetch = async function (...args) {
+      let response;
+      try {
+        response = await _fetch(...args);
+      } catch (e) {
+        throw e; // không can thiệp vào network errors
+      }
+
+      try {
+        const url = (args[0] instanceof Request ? args[0].url : String(args[0])) || '';
+        const cd   = response.headers.get('content-disposition') || '';
+        const ct   = response.headers.get('content-type') || '';
+
+        // Chỉ bắt nếu server nói đây là file download
+        if (cd.toLowerCase().includes('attachment') && isBinaryMime(ct)) {
+          const cloned = response.clone();
+          cloned.blob().then(blob => {
+            const filename = guessFilename(url, cd, ct);
+            dispatchFile(blob, filename, url);
+          }).catch(() => {});
+        }
+      } catch (_) {}
+
+      return response; // luôn trả về response gốc
+    };
+  } catch (_) {}
+
+  // KHÔNG override XMLHttpRequest — ZK dùng XHR cho mọi thứ
+
 })();
