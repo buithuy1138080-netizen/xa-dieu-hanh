@@ -59,18 +59,41 @@ export default function TaskDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const canDelete = user?.role === 'admin' || user?.role === 'leader'
+  const canDelete  = user?.role === 'admin' || user?.role === 'leader'
+  const isStaff    = user?.role === 'staff'
+  const isViewOnly = isStaff  // staff = chỉ xem, không sửa trạng thái/tiến độ
+
   const [task, setTask] = useState<TaskDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [comment, setComment] = useState('')
   const [commenting, setCommenting] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
   const [progress, setProgress] = useState(0)
   const [showCreateSubtask, setShowCreateSubtask] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const dropZoneRef = useRef<HTMLDivElement>(null)
+
+  // Kiểm tra manager/staff có phải đơn vị của nhiệm vụ không
+  function canEdit(t: TaskDetail | null): boolean {
+    if (!t) return false
+    if (user?.role === 'admin' || user?.role === 'leader') return true
+    if (isViewOnly) return false
+    // manager: chỉ sửa được nhiệm vụ đơn vị mình chủ trì hoặc phối hợp
+    if (user?.role === 'manager') {
+      // Kiểm tra qua departments list trong task detail
+      const depts = (t as any).departments || []
+      const userDeptId = (user as any).department_id
+      if (!userDeptId) return true // nếu không có info, cho phép
+      const isLead = t.lead_department_id === userDeptId
+      const isCoord = depts.some((d: any) => d.department_id === userDeptId)
+      return isLead || isCoord || t.created_by === user?.id
+    }
+    return true
+  }
 
   function showToast(msg: string, type: 'success' | 'error' = 'success') {
     setToast({ msg, type })
@@ -94,6 +117,13 @@ export default function TaskDetailPage() {
 
   async function handleStatusChange(newStatus: TaskStatus) {
     if (!task || task.status === newStatus || actionLoading) return
+    // Hoàn thành bắt buộc phải có file đính kèm
+    if (newStatus === 'completed' && task.attachments.length === 0) {
+      showToast('⚠️ Phải đính kèm ít nhất 1 file trước khi đánh dấu Hoàn thành', 'error')
+      // Scroll đến phần đính kèm
+      document.querySelector('[data-section="attachments"]')?.scrollIntoView({ behavior: 'smooth' })
+      return
+    }
     setActionLoading(true)
     try {
       await tasksApi.updateStatus(task.id, newStatus)
@@ -145,10 +175,8 @@ export default function TaskDetailPage() {
     }
   }
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!task) return
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function uploadFile(file: File) {
+    if (!task || !file) return
     setUploading(true)
     try {
       await tasksApi.uploadAttachment(task.id, file)
@@ -160,6 +188,26 @@ export default function TaskDetailPage() {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
     }
+  }
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) uploadFile(file)
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault(); e.stopPropagation()
+    setDragging(true)
+  }
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault(); e.stopPropagation()
+    setDragging(false)
+  }
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault(); e.stopPropagation()
+    setDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) uploadFile(file)
   }
 
   async function handleDeleteAttachment(attId: number) {
@@ -242,12 +290,14 @@ export default function TaskDetailPage() {
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-lg md:text-2xl font-bold text-slate-800 leading-snug">{task.title}</h1>
           <div className="flex gap-2 shrink-0">
-            <button
-              onClick={() => setShowEdit(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-600 transition-colors"
-            >
-              <Pencil size={13} />Sửa
-            </button>
+            {canEdit(task) && (
+              <button
+                onClick={() => setShowEdit(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-600 transition-colors"
+              >
+                <Pencil size={13} />Sửa
+              </button>
+            )}
             {canDelete && (
               <button
                 onClick={handleDelete}
@@ -265,9 +315,10 @@ export default function TaskDetailPage() {
             {STATUS_FLOW.map((s) => (
               <button
                 key={s.id}
-                onClick={() => handleStatusChange(s.id)}
-                disabled={actionLoading}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all disabled:opacity-60 disabled:cursor-not-allowed ${task.status === s.id ? s.activeCls : s.baseCls}`}
+                onClick={() => !isViewOnly && handleStatusChange(s.id)}
+                disabled={actionLoading || isViewOnly}
+                title={isViewOnly ? 'Bạn chỉ có quyền xem' : undefined}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all disabled:cursor-not-allowed ${isViewOnly ? 'opacity-60' : 'disabled:opacity-60'} ${task.status === s.id ? s.activeCls : s.baseCls}`}
               >
                 {s.label}
               </button>
@@ -438,21 +489,47 @@ export default function TaskDetailPage() {
             </Card>
 
             {/* Attachments */}
+            <div data-section="attachments">
             <Card
               icon={<Paperclip size={14} />}
               title={`Tệp đính kèm (${task.attachments.length})`}
               action={
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 disabled:opacity-50 transition-colors"
-                >
-                  {uploading ? 'Đang tải...' : '+ Đính kèm'}
-                </button>
+                !isViewOnly ? (
+                  <button
+                    onClick={() => fileRef.current?.click()}
+                    disabled={uploading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 disabled:opacity-50 transition-colors"
+                  >
+                    {uploading ? 'Đang tải...' : '+ Đính kèm'}
+                  </button>
+                ) : undefined
               }
             >
               <input ref={fileRef} type="file" className="hidden" onChange={handleUpload} />
-              {task.attachments.length === 0 && (
+
+              {/* Drag & drop zone */}
+              {!isViewOnly && (
+                <div
+                  ref={dropZoneRef}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => fileRef.current?.click()}
+                  className={`mb-3 flex flex-col items-center justify-center py-4 rounded-xl border-2 border-dashed cursor-pointer transition-all text-sm
+                    ${dragging
+                      ? 'border-blue-400 bg-blue-50 text-blue-600'
+                      : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50 text-slate-400'
+                    }`}
+                >
+                  <Paperclip size={18} className="mb-1" />
+                  <span>{dragging ? 'Thả file vào đây' : 'Kéo thả hoặc nhấn để đính kèm'}</span>
+                  {task.attachments.length === 0 && (
+                    <span className="text-xs text-amber-500 mt-1">⚠️ Cần đính kèm file trước khi Hoàn thành</span>
+                  )}
+                </div>
+              )}
+
+              {task.attachments.length === 0 && isViewOnly && (
                 <div className="flex flex-col items-center py-6 text-slate-300">
                   <Paperclip size={24} className="mb-2 opacity-40" />
                   <p className="text-sm">Chưa có tệp đính kèm</p>
@@ -480,7 +557,8 @@ export default function TaskDetailPage() {
                 ))}
               </div>
             </Card>
-          </div>
+            </div>{/* end data-section="attachments" */}
+          </div>{/* end lg:col-span-2 */}
 
           {/* Right: Details + Audit log */}
           <div className="space-y-4">
@@ -579,7 +657,6 @@ export default function TaskDetailPage() {
           </div>
         </div>
       </div>
-
       {showEdit && (
         <TaskForm
           task={task}
