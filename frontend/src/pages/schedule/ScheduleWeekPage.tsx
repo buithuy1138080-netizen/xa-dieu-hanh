@@ -88,14 +88,14 @@ export default function ScheduleWeekPage() {
               {leaders.map(l => <option key={l.id} value={l.id}>{l.full_name}</option>)}
             </select>
             <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
-              <button onClick={prevWeek} className="p-1.5 hover:bg-white rounded-lg transition">
-                <ChevronLeft size={16} />
+              <button onClick={prevWeek} className="flex items-center gap-1 px-2 py-1.5 hover:bg-white rounded-lg transition text-sm">
+                <ChevronLeft size={15} /><span className="hidden sm:inline">Tuần trước</span>
               </button>
               <button onClick={thisWeek} className="px-3 py-1 text-sm font-medium hover:bg-white rounded-lg transition">
                 Tuần này
               </button>
-              <button onClick={nextWeek} className="p-1.5 hover:bg-white rounded-lg transition">
-                <ChevronRight size={16} />
+              <button onClick={nextWeek} className="flex items-center gap-1 px-2 py-1.5 hover:bg-white rounded-lg transition text-sm">
+                <span className="hidden sm:inline">Tuần sau</span><ChevronRight size={15} />
               </button>
             </div>
             <button onClick={exportExcel}
