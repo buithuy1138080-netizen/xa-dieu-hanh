@@ -4,7 +4,7 @@ import {
   BarChart3, Bell, BookTemplate, Briefcase, Building,
   CheckSquare, ChevronRight, ClipboardList, FileText,
   LayoutDashboard, LogOut,
-  PanelLeftClose, PanelLeftOpen,
+  CalendarDays, PanelLeftClose, PanelLeftOpen,
   Shield, Target, Users, X,
 } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
@@ -49,6 +49,13 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { to: '/kpi', label: 'KPI & Chỉ tiêu', icon: Target },
       // /kpi-cl (KPI Chiến lược) accessible via URL for admin/leader
+    ],
+  },
+  {
+    label: 'LỊCH CÔNG TÁC',
+    items: [
+      { to: '/lich-tuan',     label: 'Xem lịch tuần',   icon: CalendarDays },
+      { to: '/lich-cong-tac', label: 'Quản lý lịch',    icon: CalendarDays, allowedRoles: ['admin', 'leader'] },
     ],
   },
   {

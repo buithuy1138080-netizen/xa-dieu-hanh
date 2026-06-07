@@ -522,3 +522,128 @@ scheduler.add_job(
     replace_existing=True,
     misfire_grace_time=3600,
 )
+
+
+# ── Nhắc lịch công tác qua Zalo ──────────────────────────────────────────────
+
+async def _send_schedule_reminders() -> None:
+    """Gửi nhắc lịch công tác Zalo — chạy mỗi 5 phút."""
+    from app.models.schedule import ScheduleItem, ScheduleReminder
+    from app.models.zalo import ZaloConfig
+    from app.services import zalo_api_service
+    from sqlalchemy import update as sa_update
+
+    now = datetime.now(timezone.utc)
+
+    try:
+        async with AsyncSessionLocal() as db:
+            # Kiểm tra Zalo config
+            cfg = (await db.execute(
+                select(ZaloConfig).where(ZaloConfig.is_active == True).limit(1)
+            )).scalar_one_or_none()
+            if not cfg or not cfg.access_token:
+                return
+
+            # Lấy reminders sắp đến hạn (window: -10 phút đến +1 phút)
+            reminders = (await db.execute(
+                select(ScheduleReminder)
+                .join(ScheduleItem, ScheduleReminder.schedule_id == ScheduleItem.id)
+                .where(
+                    ScheduleReminder.status == "pending",
+                    ScheduleReminder.scheduled_at >= now - timedelta(minutes=10),
+                    ScheduleReminder.scheduled_at <= now + timedelta(minutes=1),
+                    ScheduleItem.deleted_at.is_(None),
+                )
+            )).scalars().all()
+
+            if not reminders:
+                return
+
+            log.info("Schedule reminders: %d cần gửi", len(reminders))
+
+            for reminder in reminders:
+                if not reminder.zalo_user_id:
+                    await db.execute(
+                        sa_update(ScheduleReminder)
+                        .where(ScheduleReminder.id == reminder.id)
+                        .values(status="skipped", error_msg="Chưa liên kết Zalo")
+                    )
+                    continue
+
+                # Lấy thông tin lịch
+                item = await db.get(ScheduleItem, reminder.schedule_id)
+                if not item:
+                    continue
+
+                # Render nội dung
+                session_map = {"sang": "Sáng", "chieu": "Chiều", "ca_ngay": "Cả ngày", "toi": "Tối"}
+                session_lbl = session_map.get(item.session, item.session)
+                time_str = item.start_time.strftime("%H:%M") if item.start_time else ""
+                date_str = item.work_date.strftime("%d/%m/%Y")
+
+                before = reminder.scheduled_at
+                diff = (datetime.combine(item.work_date, item.start_time or datetime.min.time())
+                        .replace(tzinfo=timezone.utc) - now)
+                diff_min = max(0, int(diff.total_seconds() / 60))
+                if diff_min >= 60:
+                    time_left = f"{diff_min // 60} giờ {diff_min % 60} phút" if diff_min % 60 else f"{diff_min // 60} giờ"
+                else:
+                    time_left = f"{diff_min} phút"
+
+                msg = (
+                    f"📅 NHẮC LỊCH CÔNG TÁC\n\n"
+                    f"🕐 {session_lbl}{' ' + time_str if time_str else ''} ngày {date_str}\n"
+                    f"📋 {item.title}\n"
+                )
+                if item.location:
+                    msg += f"📍 {item.location}\n"
+                msg += f"\nCòn {time_left} nữa.\n— Hệ thống IOC"
+
+                try:
+                    result = await zalo_api_service.send_oa_message(
+                        cfg.access_token, reminder.zalo_user_id, msg
+                    )
+                    if result.get("error") == 0:
+                        await db.execute(
+                            sa_update(ScheduleReminder)
+                            .where(ScheduleReminder.id == reminder.id)
+                            .values(
+                                status="sent",
+                                sent_at=now,
+                                zalo_msg_id=str((result.get("data") or {}).get("msg_id", "")),
+                            )
+                        )
+                        log.info("Schedule reminder sent: id=%s leader=%s", reminder.id, reminder.leader_id)
+                    else:
+                        err = result.get("message", str(result))[:300]
+                        new_retry = reminder.retry_count + 1
+                        new_status = "failed" if new_retry >= 3 else "pending"
+                        new_scheduled = now + timedelta(minutes=5) if new_status == "pending" else reminder.scheduled_at
+                        await db.execute(
+                            sa_update(ScheduleReminder)
+                            .where(ScheduleReminder.id == reminder.id)
+                            .values(
+                                status=new_status,
+                                error_msg=err,
+                                retry_count=new_retry,
+                                scheduled_at=new_scheduled,
+                            )
+                        )
+                        log.warning("Schedule reminder failed id=%s err=%s retry=%s", reminder.id, err, new_retry)
+                except Exception as exc:
+                    log.warning("Schedule reminder exception id=%s: %s", reminder.id, exc)
+
+            await db.commit()
+    except Exception:
+        log.exception("_send_schedule_reminders job failed")
+
+
+# Gửi nhắc lịch mỗi 5 phút (06:00 – 22:00)
+scheduler.add_job(
+    _send_schedule_reminders,
+    "interval",
+    minutes=5,
+    id="schedule_zalo_remind",
+    replace_existing=True,
+    misfire_grace_time=120,
+)

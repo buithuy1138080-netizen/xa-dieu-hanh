@@ -55,6 +55,8 @@ const ProgramsPage          = lazy(() => import('./pages/programs/ProgramsPage')
 const PublicMeetingsPage    = lazy(() => import('./pages/public/PublicMeetingsPage'))
 const CapturePage           = lazy(() => import('./pages/capture/CapturePage'))
 const BookmarkletGuidePage  = lazy(() => import('./pages/capture/BookmarkletGuidePage'))
+const ScheduleAdminPage     = lazy(() => import('./pages/schedule/ScheduleAdminPage'))
+const ScheduleWeekPage      = lazy(() => import('./pages/schedule/ScheduleWeekPage'))
 
 function PageLoader() {
   return (
@@ -155,6 +157,8 @@ function AnimatedRoutes() {
         <Route path="/departments"        element={<P><DepartmentPage /></P>} />
         <Route path="/staff"              element={<P><StaffPage /></P>} />
         <Route path="/users"              element={<P><UserManagementPage /></P>} />
+        <Route path="/lich-cong-tac"      element={<P><ScheduleAdminPage /></P>} />
+        <Route path="/lich-tuan"          element={<P><ScheduleWeekPage /></P>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
   )
