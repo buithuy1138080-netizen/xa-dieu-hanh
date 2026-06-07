@@ -25,7 +25,7 @@ router = APIRouter()
 VALID_SESSIONS = {"sang", "chieu", "ca_ngay", "toi"}
 VALID_REMIND_MINUTES = {15, 30, 60, 120, 1440}  # 1440 = 1 ngày trước
 
-# Chỉ hiển thị 5 lãnh đạo này trong module lịch công tác
+# Thứ tự hiển thị cố định 5 lãnh đạo trong module lịch công tác
 SCHEDULE_LEADER_NAMES = [
     "Nguyễn Duy Hòa",
     "Bùi Thị Lý",
@@ -33,6 +33,12 @@ SCHEDULE_LEADER_NAMES = [
     "Nguyễn Tài Nghệ",
     "Phạm Thị Non",
 ]
+_LEADER_ORDER = {name: idx for idx, name in enumerate(SCHEDULE_LEADER_NAMES)}
+
+
+def _sort_leaders(leaders: list) -> list:
+    """Sắp xếp danh sách lãnh đạo theo thứ tự SCHEDULE_LEADER_NAMES."""
+    return sorted(leaders, key=lambda s: _LEADER_ORDER.get(s.full_name, 999))
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -244,12 +250,19 @@ async def week_view(
     items = (await db.execute(q)).scalars().all()
 
     # Lấy danh sách lãnh đạo
-    leaders = (await db.execute(
+    leaders_raw = (await db.execute(
         select(Staff).where(
             Staff.is_active == True,
             Staff.full_name.in_(SCHEDULE_LEADER_NAMES),
-        ).order_by(Staff.full_name)
+        )
     )).scalars().all()
+
+    # Sắp xếp theo thứ tự tùy chỉnh
+    all_leaders = _sort_leaders(leaders_raw)
+
+    # Chỉ hiển thị lãnh đạo có ít nhất 1 lịch trong tuần
+    leader_ids_with_items = {i.leader_id for i in items}
+    leaders = [l for l in all_leaders if l.id in leader_ids_with_items]
 
     # Cấu trúc dữ liệu theo lãnh đạo × ngày
     result = []
@@ -286,9 +299,9 @@ async def list_leaders(
         select(Staff).where(
             Staff.is_active == True,
             Staff.full_name.in_(SCHEDULE_LEADER_NAMES),
-        ).order_by(Staff.full_name)
+        )
     )).scalars().all()
-    return [LeaderMin.model_validate(i) for i in items]
+    return [LeaderMin.model_validate(i) for i in _sort_leaders(items)]
 
 
 @router.get("/reminders/logs", response_model=list[ReminderLogRead])
@@ -353,12 +366,12 @@ async def export_excel(
 
     items = (await db.execute(q)).scalars().all()
 
-    leaders = (await db.execute(
+    leaders = _sort_leaders((await db.execute(
         select(Staff).where(
             Staff.is_active == True,
             Staff.full_name.in_(SCHEDULE_LEADER_NAMES),
-        ).order_by(Staff.full_name)
-    )).scalars().all()
+        )
+    )).scalars().all())
 
     wb = openpyxl.Workbook()
     ws = wb.active
