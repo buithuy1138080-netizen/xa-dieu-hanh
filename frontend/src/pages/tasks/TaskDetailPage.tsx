@@ -77,22 +77,14 @@ export default function TaskDetailPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
 
-  // Kiểm tra manager/staff có phải đơn vị của nhiệm vụ không
+  // Chỉ admin/leader được sửa tự do
+  // Manager/staff chỉ sửa nhiệm vụ do CHÍNH MÌNH tạo ra
   function canEdit(t: TaskDetail | null): boolean {
     if (!t) return false
     if (user?.role === 'admin' || user?.role === 'leader') return true
     if (isViewOnly) return false
-    // manager: chỉ sửa được nhiệm vụ đơn vị mình chủ trì hoặc phối hợp
-    if (user?.role === 'manager') {
-      // Kiểm tra qua departments list trong task detail
-      const depts = (t as any).departments || []
-      const userDeptId = (user as any).department_id
-      if (!userDeptId) return true // nếu không có info, cho phép
-      const isLead = t.lead_department_id === userDeptId
-      const isCoord = depts.some((d: any) => d.department_id === userDeptId)
-      return isLead || isCoord || t.created_by === user?.id
-    }
-    return true
+    // manager/staff: chỉ sửa khi là người tạo
+    return t.created_by === user?.id
   }
 
   function showToast(msg: string, type: 'success' | 'error' = 'success') {
