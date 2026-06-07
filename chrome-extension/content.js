@@ -4,6 +4,15 @@
  * - Trang chi tiết: tự động điền form và hiển thị panel
  */
 
+// Inject interceptor.js vào MAIN world (tương thích mọi Chrome/Cốc Cốc)
+(function () {
+  try {
+    const s = document.createElement('script');
+    s.src = chrome.runtime.getURL('interceptor.js');
+    (document.head || document.documentElement).appendChild(s);
+  } catch (_) {}
+})();
+
 const IOC_URL = 'https://xabacha.com';
 const API_URL = `${IOC_URL}/api/v1`;
 
