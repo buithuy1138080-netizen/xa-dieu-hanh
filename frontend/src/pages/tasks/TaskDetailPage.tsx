@@ -61,7 +61,6 @@ export default function TaskDetailPage() {
   const { user } = useAuthStore()
   const canDelete  = user?.role === 'admin' || user?.role === 'leader'
   const isStaff    = user?.role === 'staff'
-  const isViewOnly = isStaff  // staff = chỉ xem, không sửa trạng thái/tiến độ
 
   const [task, setTask] = useState<TaskDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -76,6 +75,20 @@ export default function TaskDetailPage() {
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
+
+  // Nhân viên được phân công thực hiện (assignee) có thể đổi trạng thái + đính kèm file
+  const isAssignee = !!task && (
+    (user?.id != null && task.assignee_id === user.id) ||
+    (user?.staff_id != null && task.assignee_staff_id === user.staff_id)
+  )
+  const isViewOnly = isStaff && !isAssignee
+
+  // Nhân viên assignee chỉ được chuyển sang "đang thực hiện" hoặc "hoàn thành"
+  function canClickStatus(statusId: string): boolean {
+    if (isViewOnly) return false
+    if (isStaff && isAssignee) return statusId === 'in_progress' || statusId === 'completed'
+    return true
+  }
 
   // Chỉ admin/leader được sửa tự do
   // Manager/staff chỉ sửa nhiệm vụ do CHÍNH MÌNH tạo ra
@@ -109,6 +122,7 @@ export default function TaskDetailPage() {
 
   async function handleStatusChange(newStatus: TaskStatus) {
     if (!task || task.status === newStatus || actionLoading) return
+    if (!canClickStatus(newStatus)) return
     // Hoàn thành bắt buộc phải có file đính kèm
     if (newStatus === 'completed' && task.attachments.length === 0) {
       showToast('⚠️ Phải đính kèm ít nhất 1 file trước khi đánh dấu Hoàn thành', 'error')
@@ -307,10 +321,14 @@ export default function TaskDetailPage() {
             {STATUS_FLOW.map((s) => (
               <button
                 key={s.id}
-                onClick={() => !isViewOnly && handleStatusChange(s.id)}
-                disabled={actionLoading || isViewOnly}
-                title={isViewOnly ? 'Bạn chỉ có quyền xem' : undefined}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all disabled:cursor-not-allowed ${isViewOnly ? 'opacity-60' : 'disabled:opacity-60'} ${task.status === s.id ? s.activeCls : s.baseCls}`}
+                onClick={() => canClickStatus(s.id) && handleStatusChange(s.id)}
+                disabled={actionLoading || !canClickStatus(s.id)}
+                title={
+                  !canClickStatus(s.id)
+                    ? isViewOnly ? 'Bạn chỉ có quyền xem' : 'Không có quyền thay đổi trạng thái này'
+                    : undefined
+                }
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all disabled:cursor-not-allowed ${!canClickStatus(s.id) ? 'opacity-60' : 'disabled:opacity-60'} ${task.status === s.id ? s.activeCls : s.baseCls}`}
               >
                 {s.label}
               </button>

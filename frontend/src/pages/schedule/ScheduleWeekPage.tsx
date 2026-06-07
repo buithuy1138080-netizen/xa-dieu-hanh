@@ -24,8 +24,15 @@ function fmt(dateStr: string) {
   return `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}`
 }
 
+function getDefaultWeek(): Date {
+  const today = new Date()
+  const monday = getMonday(today)
+  if (today.getDay() === 0) monday.setDate(monday.getDate() + 7)
+  return monday
+}
+
 export default function ScheduleWeekPage() {
-  const [weekStart, setWeekStart] = useState<Date>(() => getMonday(new Date()))
+  const [weekStart, setWeekStart] = useState<Date>(getDefaultWeek)
   const [data, setData] = useState<WeekView | null>(null)
   const [leaders, setLeaders] = useState<LeaderMin[]>([])
   const [filterLeader, setFilterLeader] = useState('')
@@ -46,7 +53,7 @@ export default function ScheduleWeekPage() {
 
   function prevWeek() { setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n }) }
   function nextWeek() { setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n }) }
-  function thisWeek() { setWeekStart(getMonday(new Date())) }
+  function thisWeek() { setWeekStart(getDefaultWeek()) }
 
   async function exportExcel() {
     const r = await scheduleApi.exportExcel(weekStartStr, filterLeader ? Number(filterLeader) : undefined)
