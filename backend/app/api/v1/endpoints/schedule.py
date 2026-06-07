@@ -25,6 +25,15 @@ router = APIRouter()
 VALID_SESSIONS = {"sang", "chieu", "ca_ngay", "toi"}
 VALID_REMIND_MINUTES = {15, 30, 60, 120, 1440}  # 1440 = 1 ngày trước
 
+# Chỉ hiển thị 5 lãnh đạo này trong module lịch công tác
+SCHEDULE_LEADER_NAMES = [
+    "Nguyễn Duy Hòa",
+    "Bùi Thị Lý",
+    "Bùi Minh Hải",
+    "Nguyễn Tài Nghệ",
+    "Phạm Thị Non",
+]
+
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -234,11 +243,11 @@ async def week_view(
 
     items = (await db.execute(q)).scalars().all()
 
-    # Lấy danh sách lãnh đạo (role = leader/admin)
+    # Lấy danh sách lãnh đạo
     leaders = (await db.execute(
         select(Staff).where(
             Staff.is_active == True,
-            Staff.role.in_(["leader", "admin", "manager"]),
+            Staff.full_name.in_(SCHEDULE_LEADER_NAMES),
         ).order_by(Staff.full_name)
     )).scalars().all()
 
@@ -276,7 +285,7 @@ async def list_leaders(
     items = (await db.execute(
         select(Staff).where(
             Staff.is_active == True,
-            Staff.role.in_(["leader", "admin", "manager"]),
+            Staff.full_name.in_(SCHEDULE_LEADER_NAMES),
         ).order_by(Staff.full_name)
     )).scalars().all()
     return [LeaderMin.model_validate(i) for i in items]
@@ -347,7 +356,7 @@ async def export_excel(
     leaders = (await db.execute(
         select(Staff).where(
             Staff.is_active == True,
-            Staff.role.in_(["leader", "admin", "manager"]),
+            Staff.full_name.in_(SCHEDULE_LEADER_NAMES),
         ).order_by(Staff.full_name)
     )).scalars().all()
 
@@ -452,12 +461,22 @@ async def create_schedule(
         created_by=current_user.id,
     )
     db.add(item)
-    await db.flush()
+    try:
+        await db.flush()
+    except Exception as exc:
+        await db.rollback()
+        logger.error("schedule create flush error: %s", exc, exc_info=True)
+        raise HTTPException(500, f"Lỗi lưu lịch: {exc}")
 
     await _upsert_reminder(db, item)
+    new_id = item.id
     await db.commit()
 
-    result = await db.get(ScheduleItem, item.id, options=[selectinload(ScheduleItem.leader)])
+    result = (await db.execute(
+        select(ScheduleItem)
+        .options(selectinload(ScheduleItem.leader))
+        .where(ScheduleItem.id == new_id)
+    )).scalar_one()
     return ScheduleItemRead.model_validate(result)
 
 
@@ -506,7 +525,12 @@ async def update_schedule(
         await _upsert_reminder(db, item)
         await db.commit()
 
-    result = await db.get(ScheduleItem, item.id, options=[selectinload(ScheduleItem.leader)])
+    item_id = item.id
+    result = (await db.execute(
+        select(ScheduleItem)
+        .options(selectinload(ScheduleItem.leader))
+        .where(ScheduleItem.id == item_id)
+    )).scalar_one()
     return ScheduleItemRead.model_validate(result)
 
 
@@ -595,12 +619,16 @@ async def copy_schedule(
         await _upsert_reminder(db, new_item)
         created.append(new_item)
 
+    created_ids = [item.id for item in created]
     await db.commit()
 
-    # Load relationships
     result = []
-    for item in created:
-        r = await db.get(ScheduleItem, item.id, options=[selectinload(ScheduleItem.leader)])
+    for cid in created_ids:
+        r = (await db.execute(
+            select(ScheduleItem)
+            .options(selectinload(ScheduleItem.leader))
+            .where(ScheduleItem.id == cid)
+        )).scalar_one()
         result.append(ScheduleItemRead.model_validate(r))
 
     return result

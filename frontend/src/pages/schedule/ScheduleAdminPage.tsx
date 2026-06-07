@@ -136,7 +136,18 @@ export default function ScheduleAdminPage() {
       setFormError('')
       load(1)
     } catch (e: any) {
-      setFormError(e?.response?.data?.detail ?? 'Có lỗi xảy ra. Vui lòng thử lại.')
+      const detail = e?.response?.data?.detail
+      if (typeof detail === 'string') {
+        setFormError(detail)
+      } else if (Array.isArray(detail) && detail.length > 0) {
+        const first = detail[0]
+        setFormError(typeof first === 'string' ? first : (first?.msg ?? 'Lỗi xác thực dữ liệu'))
+      } else if (e?.response?.status) {
+        setFormError(`Lỗi ${e.response.status}: ${JSON.stringify(e?.response?.data).slice(0, 120)}`)
+      } else {
+        setFormError('Không kết nối được máy chủ. Vui lòng kiểm tra kết nối.')
+      }
+      console.error('[schedule create]', e?.response?.status, e?.response?.data)
     } finally { setSaving(false) }
   }
 
