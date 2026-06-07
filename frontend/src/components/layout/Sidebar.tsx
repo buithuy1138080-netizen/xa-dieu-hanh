@@ -3,10 +3,11 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   BarChart3, Bell, BookTemplate, Briefcase, Building,
   CheckSquare, ChevronRight, ClipboardList, FileText,
-  LayoutDashboard, LogOut,
+  KeyRound, LayoutDashboard, LogOut,
   CalendarDays, PanelLeftClose, PanelLeftOpen,
   Shield, Target, Users, X,
 } from 'lucide-react'
+import ChangePasswordModal from '../common/ChangePasswordModal'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import type { User } from '../../types'
@@ -125,6 +126,7 @@ export default function Sidebar({ onClose }: Props) {
   const [collapsed, setCollapsed] = useState(false)
   const { ripples, trigger } = useRipple()
 
+  const [showChangePwd, setShowChangePwd] = useState(false)
   const handleLogout = useCallback(() => { logout(); navigate('/login') }, [logout, navigate])
   const handleNavClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
     trigger(e)
@@ -377,6 +379,22 @@ export default function Sidebar({ onClose }: Props) {
           </AnimatePresence>
         </div>
 
+        {/* Đổi mật khẩu */}
+        <button
+          onClick={() => setShowChangePwd(true)}
+          title={collapsed ? 'Đổi mật khẩu' : undefined}
+          className={`flex items-center gap-2.5 w-full rounded-xl px-3 py-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all duration-200 text-[13px] font-medium ${collapsed ? 'justify-center' : ''}`}
+        >
+          <KeyRound size={15} className="shrink-0" />
+          <AnimatePresence>
+            {!collapsed && (
+              <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="whitespace-nowrap">
+                Đổi mật khẩu
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </button>
+
         {/* Logout */}
         <button
           onClick={handleLogout}
@@ -386,18 +404,16 @@ export default function Sidebar({ onClose }: Props) {
           <LogOut size={15} className="shrink-0" />
           <AnimatePresence>
             {!collapsed && (
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="whitespace-nowrap"
-              >
+              <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="whitespace-nowrap">
                 Đăng xuất
               </motion.span>
             )}
           </AnimatePresence>
         </button>
       </div>
+
+      {/* Modal đổi mật khẩu */}
+      {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
     </motion.aside>
   )
 }

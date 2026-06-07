@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
+from app.core.deps import get_current_user
 from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password, verify_password
 from app.models.staff import Staff
 from app.models.user import User
@@ -117,6 +118,42 @@ async def get_me(
         data.department_id = staff.department_id
         data.role          = staff.role or user.role
     return data
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@router.post("/change-password", status_code=200)
+async def change_password(
+    body: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Người dùng đổi mật khẩu (yêu cầu nhập mật khẩu cũ)."""
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "Mật khẩu mới phải có ít nhất 6 ký tự")
+
+    # Xác minh mật khẩu cũ — ưu tiên Staff.password_hash (giao diện login dùng)
+    staff_row = (await db.execute(
+        select(Staff).where(Staff.user_id == current_user.id)
+    )).scalar_one_or_none()
+
+    if staff_row and staff_row.password_hash:
+        if not verify_password(body.old_password, staff_row.password_hash):
+            raise HTTPException(400, "Mật khẩu cũ không đúng")
+        staff_row.password_hash = hash_password(body.new_password)
+    else:
+        # Fallback: User.hashed_password
+        if not current_user.hashed_password:
+            raise HTTPException(400, "Tài khoản chưa có mật khẩu, vui lòng liên hệ quản trị viên")
+        if not verify_password(body.old_password, current_user.hashed_password):
+            raise HTTPException(400, "Mật khẩu cũ không đúng")
+        current_user.hashed_password = hash_password(body.new_password)
+
+    await db.commit()
+    return {"message": "Đổi mật khẩu thành công"}
 
 
 class RefreshRequest(BaseModel):
