@@ -1,7 +1,7 @@
 """add schedule (lich cong tac) module
 
-Revision ID: a1b2c3d4e5f6
-Revises: z0a1b2c3d4e5
+Revision ID: dd2e3f4a5b6c
+Revises: cc1d2e3f4a5b
 Create Date: 2026-06-07
 """
 from __future__ import annotations
@@ -9,8 +9,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-revision = 'a1b2c3d4e5f6'
-down_revision = 'z0a1b2c3d4e5'
+revision = 'dd2e3f4a5b6c'
+down_revision = 'cc1d2e3f4a5b'
 branch_labels = None
 depends_on = None
 
