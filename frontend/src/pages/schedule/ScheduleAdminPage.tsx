@@ -54,6 +54,7 @@ export default function ScheduleAdminPage() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<ScheduleItemRead | null>(null)
   const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
   const [copyItem, setCopyItem] = useState<ScheduleItemRead | null>(null)
   const [form, setForm] = useState<ScheduleItemCreate>({
     leader_id: 0, title: '', location: '', note: '',
@@ -97,6 +98,7 @@ export default function ScheduleAdminPage() {
 
   function openCreate() {
     setEditing(null)
+    setFormError('')
     setForm({
       leader_id: leaders[0]?.id || 0, title: '', location: '', note: '',
       work_date: new Date().toISOString().split('T')[0],
@@ -119,7 +121,10 @@ export default function ScheduleAdminPage() {
   }
 
   async function handleSave() {
-    if (!form.title.trim() || !form.leader_id || !form.work_date) return
+    setFormError('')
+    if (!form.title.trim()) { setFormError('Vui lòng nhập nội dung'); return }
+    if (!form.leader_id)    { setFormError('Vui lòng chọn lãnh đạo'); return }
+    if (!form.work_date)    { setFormError('Vui lòng chọn ngày'); return }
     setSaving(true)
     try {
       if (editing) {
@@ -128,7 +133,10 @@ export default function ScheduleAdminPage() {
         await scheduleApi.create(form)
       }
       setShowForm(false)
+      setFormError('')
       load(1)
+    } catch (e: any) {
+      setFormError(e?.response?.data?.detail ?? 'Có lỗi xảy ra. Vui lòng thử lại.')
     } finally { setSaving(false) }
   }
 
@@ -372,6 +380,11 @@ export default function ScheduleAdminPage() {
                 <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
               </div>
               <div className="p-6 space-y-4">
+                {formError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-xl">
+                    ⚠️ {formError}
+                  </div>
+                )}
                 {/* Lãnh đạo */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">Lãnh đạo *</label>
