@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.limiter import limiter
 from app.api.v1.router import api_router
 from app.api.public import meetings as public_meetings
+from app.api.public import schedule as public_schedule
 from app.services.scheduler import scheduler
 
 
@@ -65,7 +66,8 @@ async def _limit_body_size(request: Request, call_next):
 
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
-app.include_router(public_meetings.router, prefix="/api/public", tags=["public"])
+app.include_router(public_meetings.router,  prefix="/api/public", tags=["public"])
+app.include_router(public_schedule.router,  prefix="/api/public", tags=["public"])
 
 
 @app.get("/health", tags=["system"])

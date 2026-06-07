@@ -53,6 +53,7 @@ const UserManagementPage    = lazy(() => import('./pages/users/UserManagementPag
 const DepartmentPage        = lazy(() => import('./pages/departments/DepartmentPage'))
 const ProgramsPage          = lazy(() => import('./pages/programs/ProgramsPage'))
 const PublicMeetingsPage    = lazy(() => import('./pages/public/PublicMeetingsPage'))
+const PublicSchedulePage    = lazy(() => import('./pages/public/PublicSchedulePage'))
 const CapturePage           = lazy(() => import('./pages/capture/CapturePage'))
 const BookmarkletGuidePage  = lazy(() => import('./pages/capture/BookmarkletGuidePage'))
 const ScheduleAdminPage     = lazy(() => import('./pages/schedule/ScheduleAdminPage'))
@@ -131,6 +132,7 @@ function AnimatedRoutes() {
         <Route path="/capture" element={<Suspense fallback={<PageLoader />}><CapturePage /></Suspense>} />
         <Route path="/capture/guide" element={<P><BookmarkletGuidePage /></P>} />
         <Route path="/public/meetings" element={<Suspense fallback={<PageLoader />}><PublicMeetingsPage /></Suspense>} />
+        <Route path="/public/lich-cong-tac" element={<Suspense fallback={<PageLoader />}><PublicSchedulePage /></Suspense>} />
         <Route path="/dashboard"          element={<P><DashboardPage /></P>} />
         <Route path="/tasks"              element={<P><TaskListPage /></P>} />
         <Route path="/tasks/:id"          element={<P><TaskDetailPage /></P>} />
