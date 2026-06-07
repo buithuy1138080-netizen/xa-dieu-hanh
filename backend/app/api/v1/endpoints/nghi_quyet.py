@@ -111,6 +111,81 @@ def _build_tree(nodes: list[MucTieuNQ]) -> list[MucTieuReadWithChildren]:
     return roots
 
 
+# ─── NghiQuyet overview (aggregate stats) ────────────────────────────────────
+
+@router.get("/overview")
+async def get_overview(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Tổng quan toàn bộ nghị quyết/đề án/kế hoạch."""
+    # Đếm theo loại
+    count_by_loai = (await db.execute(
+        select(NghiQuyet.loai, func.count().label("cnt"))
+        .where(NghiQuyet.deleted_at.is_(None))
+        .group_by(NghiQuyet.loai)
+    )).all()
+
+    # Tổng số mục tiêu và KPI
+    from app.models.nghi_quyet import MucTieuNQ, BangTheoDoi
+    total_muc_tieu = (await db.execute(
+        select(func.count(MucTieuNQ.id))
+        .join(NghiQuyet, MucTieuNQ.nghi_quyet_id == NghiQuyet.id)
+        .where(NghiQuyet.deleted_at.is_(None))
+    )).scalar_one() or 0
+
+    # Tiến độ trung bình từ bảng theo dõi mới nhất
+    from sqlalchemy import over
+    avg_pct = (await db.execute(
+        select(func.avg(BangTheoDoi.pct_so_lieu))
+        .join(MucTieuNQ, BangTheoDoi.muc_tieu_id == MucTieuNQ.id)
+        .join(NghiQuyet, MucTieuNQ.nghi_quyet_id == NghiQuyet.id)
+        .where(NghiQuyet.deleted_at.is_(None))
+    )).scalar_one() or 0
+
+    # Trạng thái KPI
+    status_counts = (await db.execute(
+        select(MucTieuNQ.trang_thai, func.count().label("cnt"))
+        .join(NghiQuyet, MucTieuNQ.nghi_quyet_id == NghiQuyet.id)
+        .where(NghiQuyet.deleted_at.is_(None), MucTieuNQ.cap == 3)
+        .group_by(MucTieuNQ.trang_thai)
+    )).all()
+
+    # Danh sách NQ có tiến độ (top 10)
+    nqs = (await db.execute(
+        select(
+            NghiQuyet.id, NghiQuyet.ten, NghiQuyet.loai,
+            NghiQuyet.nam_bat_dau, NghiQuyet.nam_ket_thuc,
+            func.count(MucTieuNQ.id).label("so_kpi"),
+            func.avg(BangTheoDoi.pct_so_lieu).label("tien_do"),
+        )
+        .outerjoin(MucTieuNQ, MucTieuNQ.nghi_quyet_id == NghiQuyet.id)
+        .outerjoin(BangTheoDoi, BangTheoDoi.muc_tieu_id == MucTieuNQ.id)
+        .where(NghiQuyet.deleted_at.is_(None))
+        .group_by(NghiQuyet.id, NghiQuyet.ten, NghiQuyet.loai,
+                  NghiQuyet.nam_bat_dau, NghiQuyet.nam_ket_thuc)
+        .order_by(NghiQuyet.nam_ket_thuc.desc())
+        .limit(10)
+    )).all()
+
+    return {
+        "by_loai": {r.loai: r.cnt for r in count_by_loai},
+        "total": sum(r.cnt for r in count_by_loai),
+        "total_muc_tieu": total_muc_tieu,
+        "avg_progress": round(float(avg_pct), 1),
+        "status_counts": {r.trang_thai or "chua_cap_nhat": r.cnt for r in status_counts},
+        "programs": [
+            {
+                "id": r.id, "ten": r.ten, "loai": r.loai,
+                "nam_bat_dau": r.nam_bat_dau, "nam_ket_thuc": r.nam_ket_thuc,
+                "so_kpi": r.so_kpi or 0,
+                "tien_do": round(float(r.tien_do or 0), 1),
+            }
+            for r in nqs
+        ],
+    }
+
+
 # ─── NghiQuyet list / create ─────────────────────────────────────────────────
 # NOTE: tất cả static path (/dashboard-*, /muc-tieu) phải đứng TRƯỚC /{nq_id}
 

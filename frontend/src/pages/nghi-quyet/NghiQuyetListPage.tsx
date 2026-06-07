@@ -1,7 +1,7 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, BarChart2, BookOpen, CheckCircle2, FileText, TrendingUp } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { nghiQuyetApi } from '../../api/nghiQuyet'
+import { nghiQuyetApi, type NQOverview } from '../../api/nghiQuyet'
 import AppLayout from '../../components/layout/AppLayout'
 import type { NghiQuyetCreate, NghiQuyetRead } from '../../types/nghiQuyet'
 
@@ -48,6 +48,7 @@ export default function NghiQuyetListPage() {
   const [editItem, setEditItem] = useState<NghiQuyetRead | null>(null)
   const [form, setForm] = useState<NghiQuyetCreate>(INIT_FORM)
   const [saving, setSaving] = useState(false)
+  const [overview, setOverview] = useState<NQOverview | null>(null)
   const SIZE = 12
 
   const load = useCallback(async (p = 1) => {
@@ -69,6 +70,11 @@ export default function NghiQuyetListPage() {
   }, [loaiFilter])
 
   useEffect(() => { load(1) }, [loaiFilter])
+
+  // Load overview on mount
+  useEffect(() => {
+    nghiQuyetApi.overview().then(r => setOverview(r.data)).catch(() => {})
+  }, [])
 
   function openCreate() {
     setEditItem(null)
@@ -138,6 +144,78 @@ export default function NghiQuyetListPage() {
             + Thêm mới
           </button>
         </div>
+
+        {/* ── TỔNG QUAN ── */}
+        {overview && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {/* Stat cards */}
+            {[
+              { label: 'Tổng NQ/Đề án/KH', value: overview.total, icon: FileText, color: 'blue' },
+              { label: 'Tổng KPI/Chỉ tiêu', value: overview.total_muc_tieu, icon: BarChart2, color: 'indigo' },
+              { label: 'Tiến độ TB', value: `${overview.avg_progress}%`, icon: TrendingUp, color: 'emerald' },
+              { label: 'Hoàn thành', value: overview.status_counts['hoan_thanh'] || 0, icon: CheckCircle2, color: 'green' },
+            ].map(s => (
+              <div key={s.label} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  s.color === 'blue' ? 'bg-blue-100' :
+                  s.color === 'indigo' ? 'bg-indigo-100' :
+                  s.color === 'emerald' ? 'bg-emerald-100' : 'bg-green-100'
+                }`}>
+                  <s.icon size={18} className={
+                    s.color === 'blue' ? 'text-blue-600' :
+                    s.color === 'indigo' ? 'text-indigo-600' :
+                    s.color === 'emerald' ? 'text-emerald-600' : 'text-green-600'
+                  } />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">{s.label}</p>
+                  <p className="text-xl font-bold text-slate-800">{s.value}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── TIẾN ĐỘ TỪNG CHƯƠNG TRÌNH ── */}
+        {overview && overview.programs.length > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <BookOpen size={16} className="text-indigo-600" />
+              <h3 className="font-bold text-slate-700 text-sm">Tiến độ các Chương trình / Nghị quyết</h3>
+            </div>
+            <div className="space-y-3">
+              {overview.programs.map(p => (
+                <div
+                  key={p.id}
+                  className="cursor-pointer hover:bg-indigo-50 rounded-xl px-3 py-2 transition-colors"
+                  onClick={() => navigate(`/nghi-quyet/${p.id}`)}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${loaiBadgeCls(p.loai)}`}>
+                        {loaiLabel(p.loai)}
+                      </span>
+                      <span className="text-sm font-medium text-slate-700 truncate">{p.ten}</span>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0 text-xs text-slate-500">
+                      <span>{p.so_kpi} KPI</span>
+                      <span className="font-bold text-slate-700">{p.tien_do}%</span>
+                    </div>
+                  </div>
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${Math.min(100, p.tien_do)}%`,
+                        background: p.tien_do >= 80 ? '#22c55e' : p.tien_do >= 50 ? '#3b82f6' : '#f59e0b'
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Filter bar */}
         <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">

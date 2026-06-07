@@ -13,10 +13,22 @@ import type {
   TopDelayedItem,
 } from '../types/nghiQuyet'
 
+export interface NQOverview {
+  by_loai: Record<string, number>
+  total: number
+  total_muc_tieu: number
+  avg_progress: number
+  status_counts: Record<string, number>
+  programs: Array<{ id: number; ten: string; loai: string; nam_bat_dau: number; nam_ket_thuc: number; so_kpi: number; tien_do: number }>
+}
+
 export const nghiQuyetApi = {
   // ─── NghiQuyet CRUD ───────────────────────────────────────────────────────────
   list: (params?: { page?: number; size?: number; loai?: string }) =>
     apiClient.get<PaginatedNQ>('/nghi-quyet', { params }),
+
+  overview: () =>
+    apiClient.get<NQOverview>('/nghi-quyet/overview'),
 
   get: (id: number) =>
     apiClient.get<NghiQuyetReadDetail>(`/nghi-quyet/${id}`),
