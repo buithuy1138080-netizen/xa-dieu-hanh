@@ -529,3 +529,78 @@ async def delete_schedule(
         )
     )
     await db.commit()
+
+
+# ── Sao chép lịch sang lãnh đạo khác ─────────────────────────────────────────
+
+class CopyScheduleRequest(BaseModel):
+    item_id: int
+    leader_ids: list[int]          # danh sách lãnh đạo đích
+    work_date: Optional[date] = None  # nếu None: giữ nguyên ngày gốc
+    zalo_remind: Optional[bool] = None  # nếu None: giữ nguyên cài đặt gốc
+
+
+@router.post("/copy", response_model=list[ScheduleItemRead], status_code=201)
+async def copy_schedule(
+    body: CopyScheduleRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Sao chép 1 lịch sang nhiều lãnh đạo khác (có thể đổi ngày)."""
+    # Lấy lịch nguồn
+    source = (await db.execute(
+        select(ScheduleItem).where(
+            ScheduleItem.id == body.item_id,
+            ScheduleItem.deleted_at.is_(None),
+        )
+    )).scalar_one_or_none()
+    if not source:
+        raise HTTPException(404, "Không tìm thấy lịch nguồn")
+
+    if not body.leader_ids:
+        raise HTTPException(400, "Cần chọn ít nhất 1 lãnh đạo")
+
+    target_date    = body.work_date or source.work_date
+    target_remind  = body.zalo_remind if body.zalo_remind is not None else source.zalo_remind
+
+    created = []
+    for leader_id in body.leader_ids:
+        # Bỏ qua nếu trùng lãnh đạo + cùng ngày (tránh duplicate)
+        existing = (await db.execute(
+            select(ScheduleItem).where(
+                ScheduleItem.leader_id == leader_id,
+                ScheduleItem.work_date == target_date,
+                ScheduleItem.session == source.session,
+                ScheduleItem.title == source.title,
+                ScheduleItem.deleted_at.is_(None),
+            )
+        )).scalar_one_or_none()
+        if existing:
+            continue
+
+        new_item = ScheduleItem(
+            leader_id=leader_id,
+            title=source.title,
+            location=source.location,
+            note=source.note,
+            work_date=target_date,
+            session=source.session,
+            start_time=source.start_time,
+            zalo_remind=target_remind,
+            remind_before_minutes=source.remind_before_minutes,
+            created_by=current_user.id,
+        )
+        db.add(new_item)
+        await db.flush()
+        await _upsert_reminder(db, new_item)
+        created.append(new_item)
+
+    await db.commit()
+
+    # Load relationships
+    result = []
+    for item in created:
+        r = await db.get(ScheduleItem, item.id, options=[selectinload(ScheduleItem.leader)])
+        result.append(ScheduleItemRead.model_validate(r))
+
+    return result

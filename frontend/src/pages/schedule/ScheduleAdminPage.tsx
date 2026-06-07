@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, Calendar, Download, Edit2, Plus, Trash2, X } from 'lucide-react'
+import { Bell, Calendar, Copy, Download, Edit2, Plus, Trash2, X } from 'lucide-react'
 import AppLayout from '../../components/layout/AppLayout'
 import { scheduleApi } from '../../api/schedule'
 import type {
@@ -7,6 +7,7 @@ import type {
 } from '../../types/schedule'
 import { REMIND_OPTIONS, SESSION_COLORS, SESSION_LABELS } from '../../types/schedule'
 import { useAuthStore } from '../../store/authStore'
+import CopyScheduleModal from './CopyScheduleModal'
 
 const SESSION_OPTIONS = [
   { value: 'sang',    label: 'Sáng' },
@@ -53,6 +54,7 @@ export default function ScheduleAdminPage() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<ScheduleItemRead | null>(null)
   const [saving, setSaving] = useState(false)
+  const [copyItem, setCopyItem] = useState<ScheduleItemRead | null>(null)
   const [form, setForm] = useState<ScheduleItemCreate>({
     leader_id: 0, title: '', location: '', note: '',
     work_date: new Date().toISOString().split('T')[0],
@@ -268,6 +270,12 @@ export default function ScheduleAdminPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
+                        {/* Sao chép — tất cả đều dùng được */}
+                        <button onClick={() => setCopyItem(item)}
+                          className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-400 hover:text-indigo-600"
+                          title="Sao chép lịch cho lãnh đạo khác">
+                          <Copy size={13} />
+                        </button>
                         {canManage && (
                           <>
                             <button onClick={() => openEdit(item)}
@@ -343,6 +351,16 @@ export default function ScheduleAdminPage() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {/* COPY MODAL */}
+        {copyItem && (
+          <CopyScheduleModal
+            item={copyItem}
+            leaders={leaders}
+            onClose={() => setCopyItem(null)}
+            onSuccess={() => load(1)}
+          />
         )}
 
         {/* FORM MODAL */}

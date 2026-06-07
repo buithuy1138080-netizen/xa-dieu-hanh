@@ -51,4 +51,8 @@ export const scheduleApi = {
       params: { week_start: weekStart, ...(leaderId ? { leader_id: leaderId } : {}) },
       responseType: 'blob',
     }),
+
+  // ── Copy schedule ─────────────────────────────────────────────────────────
+  copy: (body: { item_id: number; leader_ids: number[]; work_date?: string; zalo_remind?: boolean }) =>
+    apiClient.post<ScheduleItemRead[]>(`${BASE}/copy`, body),
 }
