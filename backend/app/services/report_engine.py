@@ -352,32 +352,30 @@ async def _nq57_stats(db: AsyncSession) -> dict:
 
 
 async def _nq57_task_stats(db: AsyncSession) -> dict:
-    """Full task breakdown from NQ57Task model — used as main stats for NQ57 report type."""
-    from datetime import date as d_type
-    try:
-        from app.models.nq57 import NQ57Task
-    except ImportError:
-        return {"total": 0, "completed": 0, "in_progress": 0, "pending": 0,
-                "cancelled": 0, "overdue": 0, "completion_rate": 0.0, "avg_progress": 0.0}
+    """Task stats for NQ57 report — queries Task with task_type='nq57' (same source as NQ57 dashboard)."""
+    from app.models.task import Task
+    from datetime import datetime as dt, timezone
 
-    today = d_type.today()
+    now = dt.now(timezone.utc)
     q = select(
         func.count().label("total"),
-        func.sum(case((NQ57Task.status == "completed",   1), else_=0)).label("completed"),
-        func.sum(case((NQ57Task.status == "in_progress", 1), else_=0)).label("in_progress"),
-        func.sum(case((NQ57Task.status == "pending",     1), else_=0)).label("pending"),
-        # overdue = deadline passed and not completed (same logic as _nq57_overdue_tasks)
+        func.sum(case((Task.status == "completed",   1), else_=0)).label("completed"),
+        func.sum(case((Task.status == "in_progress", 1), else_=0)).label("in_progress"),
+        func.sum(case((Task.status == "pending",     1), else_=0)).label("pending"),
+        func.sum(case((Task.status == "cancelled",   1), else_=0)).label("cancelled"),
         func.sum(case(
             (
-                (NQ57Task.status != "completed") &
-                NQ57Task.deadline.isnot(None) &
-                (NQ57Task.deadline < today),
+                (Task.status != "completed") &
+                (Task.status != "cancelled") &
+                Task.due_date.isnot(None) &
+                (Task.due_date < now),
                 1
             ),
             else_=0
         )).label("overdue"),
-        func.avg(NQ57Task.progress).label("avg_progress"),
-    )
+        func.avg(Task.progress_percent).label("avg_progress"),
+    ).where(Task.deleted_at.is_(None), Task.task_type == "nq57")
+
     row = (await db.execute(q)).one()
     total     = row.total or 0
     completed = row.completed or 0
@@ -388,7 +386,7 @@ async def _nq57_task_stats(db: AsyncSession) -> dict:
         "completed":    completed,
         "in_progress":  row.in_progress or 0,
         "pending":      row.pending or 0,
-        "cancelled":    0,
+        "cancelled":    row.cancelled or 0,
         "overdue":      row.overdue or 0,
         "completion_rate": rate,
         "avg_progress": round(float(row.avg_progress or 0), 1),
@@ -396,36 +394,36 @@ async def _nq57_task_stats(db: AsyncSession) -> dict:
 
 
 async def _nq57_overdue_tasks(db: AsyncSession) -> list[dict]:
-    """Overdue tasks from NQ57Task model for NQ57 report type."""
-    from datetime import date as d_type
-    try:
-        from app.models.nq57 import NQ57Task
-    except ImportError:
-        return []
+    """Overdue tasks for NQ57 report — queries Task with task_type='nq57'."""
+    from app.models.task import Task
+    from app.models.staff import Staff
+    from app.models.user import User
+    from datetime import datetime as dt, timezone
 
-    today = d_type.today()
+    now = dt.now(timezone.utc)
     stmt = (
-        select(NQ57Task.id, NQ57Task.code, NQ57Task.title,
-               NQ57Task.deadline, NQ57Task.responsible_unit)
+        select(Task.id, Task.title, Task.task_code, Task.due_date, Task.priority)
         .where(
-            NQ57Task.status.notin_(["completed"]),
-            NQ57Task.deadline.isnot(None),
-            NQ57Task.deadline < today,
+            Task.deleted_at.is_(None),
+            Task.task_type == "nq57",
+            Task.status.notin_(["completed", "cancelled"]),
+            Task.due_date.isnot(None),
+            Task.due_date < now,
         )
-        .order_by(NQ57Task.deadline.asc())
+        .order_by(Task.due_date.asc())
         .limit(20)
     )
     rows = (await db.execute(stmt)).all()
     result = []
     for r in rows:
-        days = (today - r.deadline).days if r.deadline else 0
+        days = int((now - r.due_date.replace(tzinfo=timezone.utc) if r.due_date.tzinfo is None else now - r.due_date).total_seconds() / 86400)
         result.append({
             "id":           r.id,
             "title":        r.title,
-            "task_code":    r.code,
-            "due_date":     r.deadline.isoformat() if r.deadline else None,
-            "days_overdue": days,
-            "priority":     "normal",
-            "assignee_name": r.responsible_unit,
+            "task_code":    r.task_code,
+            "due_date":     r.due_date.isoformat() if r.due_date else None,
+            "days_overdue": max(0, days),
+            "priority":     r.priority or "normal",
+            "assignee_name": None,
         })
     return result
