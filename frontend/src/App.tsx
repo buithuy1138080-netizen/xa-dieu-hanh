@@ -132,6 +132,7 @@ function AnimatedRoutes() {
         <Route path="/capture" element={<Suspense fallback={<PageLoader />}><CapturePage /></Suspense>} />
         <Route path="/capture/guide" element={<P><BookmarkletGuidePage /></P>} />
         <Route path="/public/meetings" element={<Suspense fallback={<PageLoader />}><PublicMeetingsPage /></Suspense>} />
+        <Route path="/lich" element={<Suspense fallback={<PageLoader />}><PublicSchedulePage /></Suspense>} />
         <Route path="/public/lich-cong-tac" element={<Suspense fallback={<PageLoader />}><PublicSchedulePage /></Suspense>} />
         <Route path="/dashboard"          element={<P><DashboardPage /></P>} />
         <Route path="/tasks"              element={<P><TaskListPage /></P>} />
