@@ -306,20 +306,18 @@ function getDocumentsFromPage() {
 }
 
 function injectRowButtons() {
-  // Tìm các cell chứa text trích yếu (bắt đầu V/v, Về việc, Báo cáo...)
-  // Đây là cách đáng tin nhất với ZK Framework
+  // Chỉ quét td (không quét div — ZK có hàng nghìn div không liên quan)
+  // Dùng data-ioc để tránh quét lại cell đã xử lý
   let added = 0;
 
-  const candidates = Array.from(document.querySelectorAll('td, div'))
-    .filter(el => {
-      if (el.querySelector('.ioc-row-btn')) return false;  // đã có nút
-      const text = el.textContent.trim();
-      // Phải là node lá (không có nhiều con phức tạp) và có nội dung văn bản
-      const isLeafLike = el.children.length <= 2;
-      return isLeafLike && text.length > 20 &&
-        (text.startsWith('V/v') || text.startsWith('Về việc') ||
-         text.startsWith('Báo cáo') || text.startsWith('Tờ trình'));
-    });
+  const candidates = Array.from(document.querySelectorAll('td:not([data-ioc])')).filter(el => {
+    if (el.children.length > 2) return false;
+    const text = el.textContent;
+    if (text.length < 20) return false;
+    const t = text.trimStart();
+    return t.startsWith('V/v') || t.startsWith('Về việc') ||
+           t.startsWith('Báo cáo') || t.startsWith('Tờ trình');
+  });
 
   candidates.forEach(el => {
     // Tìm row cha để lấy thêm thông tin
@@ -366,6 +364,7 @@ function injectRowButtons() {
       setTimeout(() => openPanelWithData(data), 600);
     });
 
+    el.dataset.ioc = '1';
     el.appendChild(btn);
     added++;
   });
@@ -909,9 +908,16 @@ function init() {
       }, 300);
     }
   } else {
-    // Thử inject ngay + retry sau 1s, 2s, 4s (ZK lazy load)
-    injectRowButtons();
-    [1000, 2000, 4000].forEach(delay => setTimeout(injectRowButtons, delay));
+    // Retry thông minh: dừng khi đã inject thành công, tối đa 3 lần
+    let retries = 0;
+    function tryInject() {
+      const added = injectRowButtons();
+      if (added === 0 && retries < 3) {
+        retries++;
+        setTimeout(tryInject, 1000 * retries); // 1s, 2s, 3s
+      }
+    }
+    tryInject();
   }
 }
 
@@ -919,8 +925,14 @@ if (document.readyState === 'complete') init();
 else window.addEventListener('load', init);
 
 // ZK dùng AJAX nên theo dõi DOM thay đổi
+// Chỉ react khi có row/cell mới thực sự được thêm vào (bỏ qua style/class changes)
 let debounceTimer = null;
-new MutationObserver(() => {
+new MutationObserver((mutations) => {
+  const hasNewRows = mutations.some(m =>
+    m.addedNodes.length > 0 &&
+    Array.from(m.addedNodes).some(n => n.nodeType === 1)
+  );
+  if (!hasNewRows) return;
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     if (isDetailPage()) {
