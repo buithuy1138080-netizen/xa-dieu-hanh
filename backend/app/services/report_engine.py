@@ -352,8 +352,9 @@ async def _nq57_stats(db: AsyncSession) -> dict:
 
 
 async def _nq57_task_stats(db: AsyncSession) -> dict:
-    """Task stats for NQ57 report — queries Task with task_type='nq57' (same source as NQ57 dashboard)."""
+    """Task stats for NQ57 report — queries Task linked to NQ57 programs (same source as program dashboard)."""
     from app.models.task import Task
+    from app.models.program import Program
     from datetime import datetime as dt, timezone
 
     now = dt.now(timezone.utc)
@@ -374,7 +375,10 @@ async def _nq57_task_stats(db: AsyncSession) -> dict:
             else_=0
         )).label("overdue"),
         func.avg(Task.progress_percent).label("avg_progress"),
-    ).where(Task.deleted_at.is_(None), Task.task_type == "nq57")
+    ).join(Program, Task.program_id == Program.id).where(
+        Task.deleted_at.is_(None),
+        Program.code.ilike("%NQ57%"),
+    )
 
     row = (await db.execute(q)).one()
     total     = row.total or 0
@@ -394,18 +398,18 @@ async def _nq57_task_stats(db: AsyncSession) -> dict:
 
 
 async def _nq57_overdue_tasks(db: AsyncSession) -> list[dict]:
-    """Overdue tasks for NQ57 report — queries Task with task_type='nq57'."""
+    """Overdue tasks for NQ57 report — tasks linked to NQ57 programs."""
     from app.models.task import Task
-    from app.models.staff import Staff
-    from app.models.user import User
+    from app.models.program import Program
     from datetime import datetime as dt, timezone
 
     now = dt.now(timezone.utc)
     stmt = (
         select(Task.id, Task.title, Task.task_code, Task.due_date, Task.priority)
+        .join(Program, Task.program_id == Program.id)
         .where(
             Task.deleted_at.is_(None),
-            Task.task_type == "nq57",
+            Program.code.ilike("%NQ57%"),
             Task.status.notin_(["completed", "cancelled"]),
             Task.due_date.isnot(None),
             Task.due_date < now,
@@ -416,13 +420,14 @@ async def _nq57_overdue_tasks(db: AsyncSession) -> list[dict]:
     rows = (await db.execute(stmt)).all()
     result = []
     for r in rows:
-        days = int((now - r.due_date.replace(tzinfo=timezone.utc) if r.due_date.tzinfo is None else now - r.due_date).total_seconds() / 86400)
+        due = r.due_date if r.due_date.tzinfo else r.due_date.replace(tzinfo=timezone.utc)
+        days = max(0, int((now - due).total_seconds() / 86400))
         result.append({
             "id":           r.id,
             "title":        r.title,
             "task_code":    r.task_code,
             "due_date":     r.due_date.isoformat() if r.due_date else None,
-            "days_overdue": max(0, days),
+            "days_overdue": days,
             "priority":     r.priority or "normal",
             "assignee_name": None,
         })
