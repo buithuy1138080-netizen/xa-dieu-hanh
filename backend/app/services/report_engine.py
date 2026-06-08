@@ -353,18 +353,29 @@ async def _nq57_stats(db: AsyncSession) -> dict:
 
 async def _nq57_task_stats(db: AsyncSession) -> dict:
     """Full task breakdown from NQ57Task model — used as main stats for NQ57 report type."""
+    from datetime import date as d_type
     try:
         from app.models.nq57 import NQ57Task
     except ImportError:
         return {"total": 0, "completed": 0, "in_progress": 0, "pending": 0,
                 "cancelled": 0, "overdue": 0, "completion_rate": 0.0, "avg_progress": 0.0}
 
+    today = d_type.today()
     q = select(
         func.count().label("total"),
         func.sum(case((NQ57Task.status == "completed",   1), else_=0)).label("completed"),
         func.sum(case((NQ57Task.status == "in_progress", 1), else_=0)).label("in_progress"),
         func.sum(case((NQ57Task.status == "pending",     1), else_=0)).label("pending"),
-        func.sum(case((NQ57Task.status == "delayed",     1), else_=0)).label("delayed"),
+        # overdue = deadline passed and not completed (same logic as _nq57_overdue_tasks)
+        func.sum(case(
+            (
+                (NQ57Task.status != "completed") &
+                NQ57Task.deadline.isnot(None) &
+                (NQ57Task.deadline < today),
+                1
+            ),
+            else_=0
+        )).label("overdue"),
         func.avg(NQ57Task.progress).label("avg_progress"),
     )
     row = (await db.execute(q)).one()
@@ -378,7 +389,7 @@ async def _nq57_task_stats(db: AsyncSession) -> dict:
         "in_progress":  row.in_progress or 0,
         "pending":      row.pending or 0,
         "cancelled":    0,
-        "overdue":      row.delayed or 0,
+        "overdue":      row.overdue or 0,
         "completion_rate": rate,
         "avg_progress": round(float(row.avg_progress or 0), 1),
     }
