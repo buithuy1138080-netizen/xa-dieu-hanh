@@ -193,6 +193,11 @@ async function handleClearToken() {
   return { ok: true };
 }
 
+async function handleGetToken() {
+  const token = await getToken();
+  return { token: token || null };
+}
+
 // ── Router ───────────────────────────────────────────────────────
 
 async function routeMessage(msg, sender) {
@@ -208,6 +213,7 @@ async function routeMessage(msg, sender) {
       case 'IOC_UPLOAD_BASE64': return await handleIocUploadBase64(msg);
       case 'IOC_OPEN_TAB':      return await handleIocOpenTab(msg);
       case 'IOC_CHECK_AUTH':    return await handleCheckAuth();
+      case 'IOC_GET_TOKEN':     return await handleGetToken();
       case 'IOC_CLEAR_TOKEN':   return await handleClearToken();
       default:
         return { error: `Unknown action: ${msg.action}` };

@@ -41,13 +41,14 @@ window.addEventListener('__ioc_file_captured__', async (e) => {
 
   // AUTO-UPLOAD: nếu đang ở capture mode → upload ngay lên văn bản chờ
   if (_pendingUpload) {
-    const { docId, token } = _pendingUpload;
+    const { docId } = _pendingUpload;
     try {
       const result = await chrome.runtime.sendMessage({
         action: 'IOC_UPLOAD_BASE64',
-        docId, fileName: filename, mimeType: mimeType || 'application/octet-stream', base64, token,
+        path: `/api/v1/documents/${docId}/file`,
+        filename, mimeType: mimeType || 'application/octet-stream', base64, docId,
       });
-      if (result?.ok) {
+      if (result && !result.error) {
         _pendingUpload.count = (_pendingUpload.count || 0) + 1;
         updateCaptureModeBanner(_pendingUpload.count);
         showToast(`✅ Đính kèm tự động: ${filename.slice(0, 35)}`, '#059669');
@@ -654,12 +655,11 @@ function buildPanel() {
 ══════════════════════════════════════ */
 
 async function getIOCToken() {
-  return new Promise(resolve => {
-    chrome.storage.local.get(['ioc_token','ioc_token_ts'], d => {
-      const age = Date.now() - (d.ioc_token_ts||0);
-      resolve(age < 8*3600*1000 ? (d.ioc_token||null) : null);
-    });
-  });
+  // Dùng background.js để đọc token — tránh chrome.storage không khả dụng trong content script
+  try {
+    const resp = await chrome.runtime.sendMessage({ action: 'IOC_GET_TOKEN' });
+    return (resp && resp.token) || null;
+  } catch (_) { return null; }
 }
 
 async function sendToIOC(panel) {
@@ -705,8 +705,7 @@ async function sendToIOC(panel) {
     const createResult = await chrome.runtime.sendMessage({
       action: 'IOC_API',
       method: 'POST',
-      path:   '/documents/capture',
-      token,
+      path:   '/api/v1/documents/capture',
       body: {
         title:       title.trim(),
         doc_number:  get('ioc_doc_number').trim(),
@@ -718,19 +717,19 @@ async function sendToIOC(panel) {
       },
     });
 
-    if (!createResult.ok) {
-      const detail = (createResult.data?.detail || '').toString();
-      // Token hết hạn → xóa cache + mở xabacha để đăng nhập lại
-      if (createResult.status === 401 || detail.toLowerCase().includes('token')) {
-        chrome.storage.local.remove(['ioc_token', 'ioc_token_ts']);
+    if (createResult && createResult.error) {
+      const err = createResult.error;
+      if (err === 'NOT_AUTHENTICATED' || err.includes('401')) {
+        chrome.runtime.sendMessage({ action: 'IOC_CLEAR_TOKEN' });
         showToast('🔑 Token hết hạn! Đang mở xabacha.com — đăng nhập lại rồi thử lại', '#dc2626');
         setTimeout(() => chrome.runtime.sendMessage({ action: 'IOC_OPEN_TAB', url: 'https://xabacha.com' }), 1500);
         return;
       }
-      throw new Error(detail || `Lỗi ${createResult.status}`);
+      throw new Error(err);
     }
 
-    const docId = createResult.data.doc_id;
+    const docId = (createResult && (createResult.doc_id || createResult.id)) || null;
+    if (!docId) throw new Error('API không trả về doc_id');
     showToast(`✅ Văn bản #${docId} đã tạo${checkedFiles.length ? ' — đang tải file...' : ''}`, '#059669');
 
     // ── Bước 2: Upload file ──
@@ -770,10 +769,13 @@ async function sendToIOC(panel) {
 
         const upResult = await chrome.runtime.sendMessage({
           action: 'IOC_UPLOAD_BASE64',
-          docId, fileName, mimeType, base64, token,
+          path: `/api/v1/documents/${docId}/file`,
+          filename: fileName, mimeType, base64, docId,
         });
 
-        if (upResult?.ok) {
+        if (!upResult || upResult.error) {
+          console.warn('[IOC] Upload error:', upResult?.error);
+        } else {
           uploaded++;
           showToast(`✅ Đã đính kèm: ${fileName.slice(0, 35)}`, '#059669');
         }
@@ -849,8 +851,8 @@ function showCaptureModeBanner(docId) {
 
   // Chọn file thủ công → upload ngay
   document.getElementById('ioc-cm-file').onchange = async (e) => {
-    const { docId: did, token } = _pendingUpload || {};
-    if (!did || !token) return;
+    const { docId: did } = _pendingUpload || {};
+    if (!did) return;
     for (const file of e.target.files) {
       try {
         const base64 = await new Promise((res, rej) => {
@@ -861,9 +863,10 @@ function showCaptureModeBanner(docId) {
         });
         const result = await chrome.runtime.sendMessage({
           action: 'IOC_UPLOAD_BASE64',
-          docId: did, fileName: file.name, mimeType: file.type, base64, token,
+          path: `/api/v1/documents/${did}/file`,
+          filename: file.name, mimeType: file.type, base64, docId: did,
         });
-        if (result?.ok) {
+        if (result && !result.error) {
           _pendingUpload.count = (_pendingUpload.count || 0) + 1;
           updateCaptureModeBanner(_pendingUpload.count);
           showToast(`✅ Đính kèm: ${file.name.slice(0,35)}`, '#059669');
@@ -927,6 +930,7 @@ function showUploadWidget(docId, token) {
   document.getElementById('ioc-uw-close').onclick = () => w.remove();
 
   document.getElementById('ioc-uw-file').onchange = async (e) => {
+    // docId và token đã được truyền qua closure
     const file = e.target.files[0];
     if (!file) return;
     const status = document.getElementById('ioc-uw-status');
@@ -943,10 +947,11 @@ function showUploadWidget(docId, token) {
 
       const result = await chrome.runtime.sendMessage({
         action: 'IOC_UPLOAD_BASE64',
-        docId, fileName: file.name, mimeType: file.type, base64, token,
+        path: `/api/v1/documents/${docId}/file`,
+        filename: file.name, mimeType: file.type, base64, docId,
       });
 
-      if (result?.ok) {
+      if (result && !result.error) {
         status.textContent = `✅ Đã đính kèm ${file.name}`;
         status.style.color = '#059669';
         showToast(`✅ File "${file.name}" đã đính kèm vào văn bản #${docId}!`, '#059669');
@@ -955,7 +960,7 @@ function showUploadWidget(docId, token) {
           chrome.runtime.sendMessage({ action: 'IOC_OPEN_TAB', url: `${IOC_URL}/documents/${docId}` });
         }, 2000);
       } else {
-        status.textContent = '❌ Upload thất bại: ' + (result?.data?.detail || '');
+        status.textContent = '❌ Upload thất bại: ' + (result?.error || '');
         status.style.color = '#dc2626';
       }
     } catch (err) {
@@ -967,119 +972,280 @@ function showUploadWidget(docId, token) {
 
 /* ══════════════════════════════════════
    POPUP "Danh sách file văn bản" — inject nút IOC
+   Fix: dùng class dedup, nút absolute trong popup,
+   auto-click ↓ buttons khi không có href trực tiếp
 ══════════════════════════════════════ */
 
-function injectFilePopupButton() {
-  // Dùng TreeWalker quét text node — không phụ thuộc CSS class ZK
-  // Tìm node text "Danh sách file văn bản..." rồi leo lên tìm container popup
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-  const found = [];
-  let n;
-  while ((n = walker.nextNode())) {
-    const t = n.textContent.trim();
-    if (t.startsWith('Danh sách file văn bản') || t.startsWith('Danh sách tài liệu')) {
-      found.push(n.parentElement);
+function getDocDataFromContext() {
+  const rows = Array.from(document.querySelectorAll('tr')).filter(r => DOC_NUM_RE.test(r.textContent));
+  if (!rows.length) return { title: '', docNumber: '', issueDate: '', issuer: '', docType: getDocType() };
+  const row = rows.find(r => r.querySelector('[data-ioc]')) || rows[0];
+  const rowText = row.textContent;
+  const numMatch  = rowText.match(DOC_NUM_RE);
+  const dateMatch = rowText.match(/\d{1,2}\/\d{2}\/\d{4}/);
+  const cells     = Array.from(row.querySelectorAll('td'));
+  const best      = cells.reduce((b, td) => {
+    const l = td.textContent.trim().length;
+    return (l > 25 && l < 600 && l > (b?.textContent.trim().length || 0)) ? td : b;
+  }, null);
+  return {
+    title:     best ? best.textContent.trim().replace(/^[A-ZĐÀÁẢÃẠ\s]{1,6}\n/, '').trim() : '',
+    docNumber: numMatch  ? numMatch[0]  : '',
+    issueDate: dateMatch ? dateMatch[0] : '',
+    issuer:    '',
+    docType:   getDocType(),
+  };
+}
+
+// Tìm nút ↓ (download trigger) trong container của ZK
+function findDownloadTriggers(container) {
+  const DL_CHARS = ['↓', '⬇', '⬇️', '⬇'];
+  const SKIP_SEL = '.ioc-popup-btn,.ioc-row-btn,#ioc-panel,#ioc-fab,#ioc-auto-fab,#ioc-capture-banner';
+  const results  = [];
+  const seen     = new Set();
+
+  for (const el of container.querySelectorAll('*')) {
+    if (el.closest(SKIP_SEL)) continue;
+    if (seen.has(el)) continue;
+    const tag       = el.tagName.toLowerCase();
+    if (!['a','button','span','div','i','img','td'].includes(tag)) continue;
+
+    const title     = (el.getAttribute('title') || el.getAttribute('aria-label') || '').toLowerCase();
+    const cls       = (el.className || '').toLowerCase();
+    const onclick   = (el.getAttribute('onclick') || '').toLowerCase();
+    const directTxt = Array.from(el.childNodes)
+      .filter(n => n.nodeType === 3).map(n => n.textContent.trim()).join('');
+    const innerTxt  = (el.textContent || '').trim();
+
+    const isDownload =
+      DL_CHARS.includes(directTxt) ||
+      DL_CHARS.includes(innerTxt) ||
+      title.includes('tải') || title.includes('download') ||
+      cls.includes('download') || cls.includes('dlbtn') ||
+      // ZK button có onclick chứa zkdl hoặc window.open
+      onclick.includes('zkdl') || onclick.includes('download') ||
+      // ZK toolbarbutton cuối cùng trong mỗi row file list
+      (cls.includes('z-toolbarbutton') && (title.includes('tải') || !title));
+
+    if (isDownload) {
+      seen.add(el);
+      results.push(el);
     }
   }
 
-  for (const titleEl of found) {
-    if (!titleEl || titleEl.dataset.iocPopup) continue;
-    titleEl.dataset.iocPopup = '1';
+  // Fallback: nếu không tìm được gì, lấy TẤT CẢ z-button/z-toolbarbutton trong popup
+  // (các popup "Danh sách file" ZK chỉ chứa download buttons)
+  if (results.length === 0) {
+    for (const el of container.querySelectorAll('.z-toolbarbutton, .z-button, [class*="toolbarbutton"]')) {
+      if (el.closest(SKIP_SEL)) continue;
+      if (!seen.has(el)) {
+        seen.add(el);
+        results.push(el);
+      }
+    }
+  }
 
-    // Leo lên tìm popup container (tối đa 10 cấp)
+  return results;
+}
+
+// Auto-click tất cả nút ↓, chờ interceptor bắt file, rồi mở panel
+async function autoClickCapture(dlBtns, docData) {
+  // Xóa file cũ để không upload nhầm file từ session trước
+  _capturedFiles.length = 0;
+
+  const expected = dlBtns.length;
+  const batch    = [];
+  let done       = false;
+  let timer      = null;
+
+  const onCapture = (e) => {
+    const d = e.detail || {};
+    if (!d.base64 || !d.filename) return;
+    const key = d.filename + '|' + (d.size || 0);
+    if (batch.find(f => f._key === key)) return;
+    batch.push({ base64: d.base64, name: d.filename, mimeType: d.mimeType, size: d.size, _key: key });
+    showToast(`📎 Đã bắt ${batch.length}/${expected}: ${d.filename.slice(0, 30)}`, '#059669');
+    if (batch.length >= expected && !done) { done = true; finalize(); }
+  };
+
+  window.addEventListener('__ioc_file_captured__', onCapture);
+  timer = setTimeout(() => { if (!done) { done = true; finalize(); } }, 15000);
+
+  function finalize() {
+    clearTimeout(timer);
+    window.removeEventListener('__ioc_file_captured__', onCapture);
+    if (!batch.length) {
+      showToast('⚠️ Không bắt được file. Dùng 📂 Chọn file trên banner sau khi nhấn Gửi.', '#dc2626');
+      removeFloatingIOCBtn();
+      setTimeout(() => openPanelWithData({ ...docData, attachments: [] }), 600);
+      return;
+    }
+    // Global __ioc_file_captured__ handler đã push vào _capturedFiles rồi
+    showToast(`✅ Đã bắt ${batch.length} file — mở panel gửi IOC`, '#059669');
+    removeFloatingIOCBtn();
+    setTimeout(() => openPanelWithData({
+      ...docData,
+      attachments: batch.map(f => ({ url: '', name: f.name })),
+    }), 600);
+  }
+
+  // Click từng nút ↓ với delay để ZK xử lý
+  for (let i = 0; i < dlBtns.length; i++) {
+    await new Promise(r => setTimeout(r, i === 0 ? 150 : 800));
+    try { dlBtns[i].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); } catch (_) {}
+  }
+}
+
+// Floating IOC button container — NGOÀI DOM của ZK popup, không bị ZK CSS ảnh hưởng
+let _floatingBtnEl = null;
+let _floatingBtnPopupRef = null;
+let _floatingBtnRAF = null;
+
+function removeFloatingIOCBtn() {
+  if (_floatingBtnEl) { _floatingBtnEl.remove(); _floatingBtnEl = null; }
+  if (_floatingBtnRAF) { clearTimeout(_floatingBtnRAF); _floatingBtnRAF = null; }
+  _floatingBtnPopupRef = null;
+}
+
+function trackFloatingBtn(popup) {
+  if (!_floatingBtnEl || !popup) return;
+  const rect = popup.getBoundingClientRect();
+  if (rect.width === 0) { removeFloatingIOCBtn(); return; }
+  const scrollX = window.scrollX || window.pageXOffset;
+  const scrollY = window.scrollY || window.pageYOffset;
+  _floatingBtnEl.style.left = (rect.right - 130 + scrollX) + 'px';
+  _floatingBtnEl.style.top  = (rect.top   + scrollY + 4)   + 'px';
+  _floatingBtnRAF = setTimeout(() => trackFloatingBtn(popup), 200);
+}
+
+function injectFilePopupButton() {
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+  const found  = [];
+  let n;
+  while ((n = walker.nextNode())) {
+    const t = n.textContent.trim();
+    if (t.startsWith('Danh sách file văn bản') ||
+        t.startsWith('Danh sách tài liệu')     ||
+        t.startsWith('File đính kèm văn bản')) {
+      const el = n.parentElement;
+      if (el && !found.includes(el)) found.push(el);
+    }
+  }
+
+  // Nếu không tìm thấy popup → xóa nút floating cũ
+  if (found.length === 0) { removeFloatingIOCBtn(); return; }
+
+  for (const titleEl of found) {
+    if (!titleEl) continue;
+
+    // Đã có floating button cho titleEl này chưa?
+    if (_floatingBtnEl && _floatingBtnPopupRef === titleEl) continue;
+
+    // Leo lên tìm popup container (tối đa 12 cấp)
     let popup = titleEl;
-    for (let i = 0; i < 10; i++) {
+    let safeContainer = titleEl;
+    for (let i = 0; i < 12; i++) {
       if (!popup.parentElement) break;
       popup = popup.parentElement;
-      const s = popup.style || {};
+      if (popup === document.body || popup === document.documentElement) {
+        popup = safeContainer;
+        break;
+      }
+      const pos = window.getComputedStyle(popup).position;
       const cls = (popup.className || '').toLowerCase();
-      // Dừng khi gặp element có position fixed/absolute (đặc trưng của popup ZK)
-      const computed = window.getComputedStyle(popup).position;
-      if (computed === 'fixed' || computed === 'absolute') break;
-      if (cls.includes('window') || cls.includes('dialog') || cls.includes('popup')) break;
+      if (pos === 'fixed' || pos === 'absolute') break;
+      if (cls.includes('window') || cls.includes('dialog') || cls.includes('popup') || cls.includes('modal')) break;
+      if (popup.querySelectorAll('a,button,[class*="button"]').length > 0) safeContainer = popup;
     }
 
-    // Thêm nút IOC vào titleEl
-    const btn = document.createElement('span');
-    btn.textContent = '📥 IOC';
-    btn.style.cssText = [
-      'display:inline-block','cursor:pointer','background:#2563eb','color:white',
-      'padding:2px 10px','border-radius:5px','font-size:11px','font-weight:700',
-      'margin-left:10px','vertical-align:middle','white-space:nowrap',
-      'box-shadow:0 1px 4px rgba(37,99,235,.35)',
-    ].join(';');
-    btn.title = 'Nhập văn bản + file sang xabacha.com';
-    titleEl.appendChild(btn);
+    // Xóa floating button cũ (nếu popup mới)
+    removeFloatingIOCBtn();
 
-    btn.addEventListener('click', (e) => {
+    // Tạo floating button ở NGOÀI DOM của popup → append vào document.body
+    const btn = document.createElement('button');
+    btn.id        = 'ioc-popup-float-btn';
+    btn.className = 'ioc-popup-btn';
+    btn.textContent = '📥 Gửi IOC';
+    btn.style.cssText = [
+      'position:absolute','z-index:2147483647',
+      'background:#2563eb','color:white',
+      'border:none','border-radius:5px',
+      'padding:4px 12px','font-size:12px','font-weight:700',
+      'cursor:pointer','white-space:nowrap',
+      'box-shadow:0 2px 8px rgba(37,99,235,.6)',
+      'pointer-events:auto',
+    ].join(';');
+    btn.title = 'Tự động tải file + tạo văn bản trong xabacha.com';
+    document.body.appendChild(btn);
+
+    _floatingBtnEl      = btn;
+    _floatingBtnPopupRef = titleEl;
+
+    // Bắt đầu track vị trí theo popup
+    trackFloatingBtn(popup);
+
+    const popupRef = popup;
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       e.preventDefault();
 
-      // Thu thập file links trong popup (thử href trực tiếp)
-      const seen = new Set();
-      const files = [];
-      for (const a of popup.querySelectorAll('a[href]')) {
+      // --- Thu thập href links thực (không phải javascript:) ---
+      const seenUrl = new Set();
+      const realLinks = [];
+      for (const a of popupRef.querySelectorAll('a[href]')) {
         const href = a.href || '';
-        if (!href || href.includes('javascript') || href === '#') continue;
-        if (seen.has(href)) continue;
-        seen.add(href);
+        if (!href || href === '#' || href.startsWith('javascript')) continue;
+        if (seenUrl.has(href)) continue;
+        seenUrl.add(href);
         const name = a.textContent.trim() || href.split('/').pop().split('?')[0] || 'document';
-        if (name.length > 2) files.push({ url: href, name });
+        if (name.length > 2) realLinks.push({ url: href, name });
       }
 
-      // Lấy tên file từ text của popup (dù không có href thật)
+      // --- Lấy tên file từ text popup ---
       const fileNames = [];
-      const popupText = popup.innerText || '';
-      for (const line of popupText.split('\n')) {
-        const t = line.trim().replace(/^\d+\.\s*/, '');
-        if (t.length > 5 && /\.(pdf|doc|docx|xls|xlsx|zip|rar)/i.test(t)) {
-          fileNames.push(t);
-        }
+      const pText = popupRef.innerText || '';
+      for (const line of pText.split('\n')) {
+        const t = line.trim().replace(/^\d+[\.\)]\s*/, '');
+        if (t.length > 5 && /\.(pdf|doc|docx|xls|xlsx|zip|rar|ppt|pptx)/i.test(t)) fileNames.push(t);
       }
 
-      // Ưu tiên: interceptor-captured files
-      const captured = [..._capturedFiles];
+      const docData = getDocDataFromContext();
 
-      // Tìm doc info từ row gần nhất có số ký hiệu
-      const docRow = Array.from(document.querySelectorAll('tr')).find(r =>
-        DOC_NUM_RE.test(r.textContent) && r.querySelector('[data-ioc]')
-      ) || Array.from(document.querySelectorAll('tr')).find(r => DOC_NUM_RE.test(r.textContent));
-
-      const rowText = docRow?.textContent || '';
-      const numMatch = rowText.match(DOC_NUM_RE);
-      const dateMatch = rowText.match(/\d{1,2}\/\d{2}\/\d{4}/);
-      const titleCell = docRow ? Array.from(docRow.querySelectorAll('td')).reduce((best, td) => {
-        const len = td.textContent.trim().length;
-        return (len > 25 && len < 600 && len > (best?.textContent.trim().length || 0)) ? td : best;
-      }, null) : null;
-
-      let attachments;
-      if (files.length > 0) {
-        attachments = files;
-        showToast(`✅ Tìm thấy ${files.length} file link trực tiếp`, '#059669');
-      } else if (captured.length > 0) {
-        attachments = captured.map(f => ({ url: '', name: f.name || f.fileName }));
-        showToast(`✅ Dùng ${captured.length} file đã tải`, '#059669');
-      } else if (fileNames.length > 0) {
-        // Có tên file nhưng không có href → báo user click ↓ trước
-        attachments = [];
-        showToast(`⚠️ Nhấn ↓ trên từng file (${fileNames.length} file), rồi nhấn IOC lại`, '#f59e0b');
+      // Case 1: Có href thực → dùng ngay
+      if (realLinks.length > 0) {
+        showToast(`✅ Tìm thấy ${realLinks.length} link — mở panel`, '#059669');
+        removeFloatingIOCBtn();
+        setTimeout(() => openPanelWithData({ ...docData, attachments: realLinks }), 300);
         return;
+      }
+
+      // Case 2: Đã có file được bắt trước đó qua interceptor
+      if (_capturedFiles.length > 0) {
+        showToast(`✅ Dùng ${_capturedFiles.length} file đã bắt từ interceptor`, '#059669');
+        removeFloatingIOCBtn();
+        setTimeout(() => openPanelWithData({
+          ...docData,
+          attachments: _capturedFiles.map(f => ({ url: '', name: f.name || f.fileName })),
+        }), 300);
+        return;
+      }
+
+      // Case 3: Có tên file nhưng không có href → tìm nút ↓ và AUTO-CLICK
+      const dlBtns = findDownloadTriggers(popupRef);
+
+      if (dlBtns.length > 0) {
+        showToast(`⏳ Đang tự động tải ${dlBtns.length} file từ popup...`, '#2563eb');
+        await autoClickCapture(dlBtns, docData);
+        return;
+      }
+
+      // Case 4: Không tìm thấy gì cả → mở panel không có file
+      if (fileNames.length > 0) {
+        showToast(`⚠️ Không tự động click được. Nhấn ↓ trên từng file (${fileNames.length}) rồi nhấn IOC lại`, '#f59e0b');
       } else {
-        showToast('⚠️ Không tìm thấy file. Nhấn ↓ trên file trước rồi thử lại.', '#f59e0b');
-        return;
+        showToast('⚠️ Không tìm thấy file trong popup', '#f59e0b');
+        setTimeout(() => openPanelWithData({ ...docData, attachments: [] }), 400);
       }
-
-      const data = {
-        title:       titleCell ? titleCell.textContent.trim().replace(/^[A-ZĐÀÁẢÃẠ\s]{1,6}\n/, '').trim() : '',
-        docNumber:   numMatch ? numMatch[0] : '',
-        issueDate:   dateMatch ? dateMatch[0] : '',
-        issuer:      '',
-        attachments,
-        docType:     getDocType(),
-      };
-
-      setTimeout(() => openPanelWithData(data), 400);
     });
   }
 }
@@ -1118,9 +1284,10 @@ async function autoUploadFromDetailPage() {
       });
       const result = await chrome.runtime.sendMessage({
         action: 'IOC_UPLOAD_BASE64',
-        docId, fileName: f.name, mimeType: blob.type || 'application/octet-stream', base64, token,
+        path: `/api/v1/documents/${docId}/file`,
+        filename: f.name, mimeType: blob.type || 'application/octet-stream', base64, docId,
       });
-      if (result?.ok) {
+      if (result && !result.error) {
         uploaded++;
         _pendingUpload.count = (_pendingUpload.count || 0) + 1;
         updateCaptureModeBanner(_pendingUpload.count);
@@ -1134,6 +1301,156 @@ async function autoUploadFromDetailPage() {
   if (uploaded === 0) {
     showToast('⚠️ Không fetch được file. Dùng 📂 Chọn file trên banner.', '#f59e0b');
   }
+}
+
+/* ══════════════════════════════════════
+   AUTOMATION DASHBOARD PANEL
+   Quét tự động + state machine UI
+══════════════════════════════════════ */
+
+function buildAutomationPanel() {
+  const old = document.getElementById('ioc-auto-panel');
+  if (old) { old.remove(); return; }
+
+  const panel = document.createElement('div');
+  panel.id = 'ioc-auto-panel';
+  panel.style.cssText = [
+    'position:fixed','top:60px','right:20px','z-index:2147483646',
+    'width:320px','background:white','border-radius:14px',
+    'box-shadow:0 8px 32px rgba(0,0,0,.22)','font-family:sans-serif',
+    'border:1.5px solid #e2e8f0','overflow:hidden',
+  ].join(';');
+
+  panel.innerHTML = `
+    <div style="background:#1d4ed8;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
+      <span style="color:white;font-size:13px;font-weight:700;">⚡ Tự động hóa IOC</span>
+      <button id="ioc-ap-close" style="background:rgba(255,255,255,.2);border:none;color:white;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:17px;line-height:1;">×</button>
+    </div>
+    <div style="padding:12px 14px;">
+      <div style="font-size:11px;color:#64748b;margin-bottom:10px;line-height:1.5;">
+        Chế độ tự động: tìm văn bản → kiểm tra trùng → tạo IOC → upload PDF.
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <button id="ioc-ap-scan" style="flex:1;background:#2563eb;color:white;border:none;padding:7px 0;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">🔍 Quét trang</button>
+        <button id="ioc-ap-stop" style="flex:1;background:#e5e7eb;color:#374151;border:none;padding:7px 0;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:none;">⏹ Dừng</button>
+        <button id="ioc-ap-clear" style="background:#fee2e2;color:#b91c1c;border:none;padding:7px 10px;border-radius:8px;font-size:11px;cursor:pointer;" title="Xóa cache đã xử lý">🗑</button>
+      </div>
+      <div id="ioc-ap-status" style="font-size:11px;color:#2563eb;font-weight:600;margin-bottom:6px;min-height:16px;"></div>
+      <div id="ioc-ap-progress" style="display:none;background:#f1f5f9;border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+        <div style="font-size:11px;color:#334155;font-weight:600;" id="ioc-ap-prog-text">0 / 0</div>
+        <div style="background:#e2e8f0;border-radius:4px;height:4px;margin-top:6px;overflow:hidden;">
+          <div id="ioc-ap-prog-bar" style="background:#2563eb;height:4px;width:0%;transition:width .3s;border-radius:4px;"></div>
+        </div>
+      </div>
+      <div id="ioc-ap-log" style="max-height:160px;overflow-y:auto;font-size:10.5px;color:#374151;line-height:1.6;"></div>
+      <div id="ioc-ap-stats" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:11px;color:#166534;"></div>
+    </div>`;
+
+  document.body.appendChild(panel);
+
+  document.getElementById('ioc-ap-close').onclick = () => panel.remove();
+
+  document.getElementById('ioc-ap-clear').onclick = async () => {
+    if (typeof DedupManager !== 'undefined') {
+      await DedupManager.clearAll();
+      addAutoLog('✅ Đã xóa cache', '#059669');
+    }
+  };
+
+  document.getElementById('ioc-ap-scan').onclick = () => runAutomation();
+  document.getElementById('ioc-ap-stop').onclick = () => {
+    if (typeof AutomationStateMachine !== 'undefined') AutomationStateMachine.abort();
+    setAutoScanBtn(false);
+  };
+}
+
+function setAutoScanBtn(running) {
+  const scan = document.getElementById('ioc-ap-scan');
+  const stop = document.getElementById('ioc-ap-stop');
+  if (!scan || !stop) return;
+  scan.style.display = running ? 'none' : 'flex';
+  stop.style.display = running ? 'flex' : 'none';
+}
+
+function addAutoLog(msg, color) {
+  const log = document.getElementById('ioc-ap-log');
+  if (!log) return;
+  const line = document.createElement('div');
+  line.style.cssText = `color:${color || '#374151'};padding:1px 0;border-bottom:1px solid #f1f5f9;`;
+  line.textContent = msg;
+  log.insertBefore(line, log.firstChild);
+  // Giới hạn 50 dòng
+  while (log.children.length > 50) log.removeChild(log.lastChild);
+}
+
+async function runAutomation() {
+  if (typeof AutomationStateMachine === 'undefined') {
+    showToast('⚠️ Module tự động chưa tải. Tải lại trang.', '#f59e0b');
+    return;
+  }
+  if (AutomationStateMachine.isRunning()) {
+    showToast('⚠️ Đang chạy, vui lòng chờ', '#f59e0b');
+    return;
+  }
+
+  // Lấy tất cả rows có số VB chưa xử lý
+  const rows = Array.from(document.querySelectorAll('tr')).filter(row => {
+    if (row.querySelector('.ioc-auto-done')) return false;
+    return DOC_NUM_RE.test(row.textContent);
+  });
+
+  if (rows.length === 0) {
+    addAutoLog('ℹ️ Không tìm thấy văn bản trên trang', '#6b7280');
+    return;
+  }
+
+  const status = document.getElementById('ioc-ap-status');
+  const progress = document.getElementById('ioc-ap-progress');
+  const stats = document.getElementById('ioc-ap-stats');
+  if (status) status.textContent = `Đang xử lý ${rows.length} văn bản...`;
+  if (progress) progress.style.display = 'block';
+  if (stats) stats.style.display = 'none';
+
+  setAutoScanBtn(true);
+  addAutoLog(`▶ Bắt đầu quét ${rows.length} văn bản`, '#2563eb');
+
+  AutomationStateMachine.onLog(entry => {
+    const colorMap = { error: '#dc2626', warn: '#f59e0b', info: '#374151' };
+    addAutoLog(entry.msg, colorMap[entry.level] || '#374151');
+  });
+
+  AutomationStateMachine.onProgress(data => {
+    const progText = document.getElementById('ioc-ap-prog-text');
+    const progBar = document.getElementById('ioc-ap-prog-bar');
+    if (progText && data.total) {
+      progText.textContent = `${data.done || 0} / ${data.total}`;
+      if (progBar) progBar.style.width = `${Math.round(100 * (data.done || 0) / data.total)}%`;
+    }
+    if (data.summary && stats) {
+      stats.style.display = 'block';
+      stats.innerHTML = `
+        ✅ Thành công: <b>${data.summary.success}</b> &nbsp;
+        🔁 Trùng: <b>${data.summary.duplicate}</b> &nbsp;
+        ❌ Lỗi: <b>${data.summary.error}</b> &nbsp;
+        ⏭ Bỏ qua: <b>${data.summary.skip}</b>
+      `;
+    }
+  });
+
+  const summary = await AutomationStateMachine.run(rows);
+  setAutoScanBtn(false);
+
+  if (status) status.textContent = summary && summary.error
+    ? `❌ ${summary.error}`
+    : `Xong: ${(summary && summary.success) || 0} văn bản`;
+
+  // Đánh dấu rows đã xử lý
+  rows.forEach(r => {
+    const mark = document.createElement('span');
+    mark.className = 'ioc-auto-done';
+    mark.style.cssText = 'display:none';
+    r.appendChild(mark);
+  });
 }
 
 /* ══════════════════════════════════════
@@ -1151,6 +1468,28 @@ function createFAB() {
   </svg>`;
   fab.addEventListener('click', openPanel);
   document.body.appendChild(fab);
+}
+
+// Nút auto riêng (⚡)
+function createAutoFAB() {
+  if (document.getElementById('ioc-auto-fab')) return;
+  const btn = document.createElement('button');
+  btn.id = 'ioc-auto-fab';
+  btn.title = 'Tự động hóa IOC';
+  btn.style.cssText = [
+    'position:fixed','bottom:80px','right:20px','z-index:2147483646',
+    'width:44px','height:44px','border-radius:50%',
+    'background:#7c3aed','border:none','cursor:pointer',
+    'box-shadow:0 4px 14px rgba(124,58,237,.45)',
+    'display:flex','align-items:center','justify-content:center',
+    'font-size:18px','color:white',
+    'transition:transform .2s',
+  ].join(';');
+  btn.textContent = '⚡';
+  btn.addEventListener('mouseenter', () => btn.style.transform = 'scale(1.12)');
+  btn.addEventListener('mouseleave', () => btn.style.transform = 'scale(1)');
+  btn.addEventListener('click', buildAutomationPanel);
+  document.body.appendChild(btn);
 }
 
 /* ══════════════════════════════════════
@@ -1177,6 +1516,7 @@ function showToast(msg, color='#2563eb') {
 
 function init() {
   createFAB();
+  createAutoFAB();
   injectFilePopupButton();
 
   if (isDetailPage()) {
@@ -1206,31 +1546,39 @@ if (document.readyState === 'complete') init();
 else window.addEventListener('load', init);
 
 // ZK dùng AJAX nên theo dõi DOM thay đổi
-// Chỉ react khi có row/cell mới thực sự được thêm vào (bỏ qua style/class changes)
+// document_start → document.body chưa tồn tại → phải đợi DOMContentLoaded
 let debounceTimer = null;
-new MutationObserver((mutations) => {
-  const hasNewRows = mutations.some(m =>
-    m.addedNodes.length > 0 &&
-    Array.from(m.addedNodes).some(n => n.nodeType === 1)
-  );
-  if (!hasNewRows) return;
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    injectFilePopupButton();   // luôn chạy để bắt popup file
-    if (isDetailPage()) {
-      // Capture mode: tự động fetch + upload file từ trang chi tiết
-      if (_pendingUpload && !_pendingUpload._detailScanned) {
-        _pendingUpload._detailScanned = true;
-        setTimeout(autoUploadFromDetailPage, 1500);
+
+function _startMutationObserver() {
+  new MutationObserver((mutations) => {
+    const hasNewRows = mutations.some(m =>
+      m.addedNodes.length > 0 &&
+      Array.from(m.addedNodes).some(n => n.nodeType === 1)
+    );
+    if (!hasNewRows) return;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      injectFilePopupButton();   // luôn chạy để bắt popup file
+      if (isDetailPage()) {
+        if (_pendingUpload && !_pendingUpload._detailScanned) {
+          _pendingUpload._detailScanned = true;
+          setTimeout(autoUploadFromDetailPage, 1500);
+        }
+        if (watchForDetail) {
+          watchForDetail = false;
+          const old = document.getElementById('ioc-panel');
+          if (old) old.remove();
+          setTimeout(openPanel, 200);
+        }
+      } else {
+        injectRowButtons();
       }
-      if (watchForDetail) {
-        watchForDetail = false;
-        const old = document.getElementById('ioc-panel');
-        if (old) old.remove();
-        setTimeout(openPanel, 200);
-      }
-    } else {
-      injectRowButtons();
-    }
-  }, 600);
-}).observe(document.body, {childList:true, subtree:true});
+    }, 600);
+  }).observe(document.body, { childList: true, subtree: true });
+}
+
+if (document.body) {
+  _startMutationObserver();
+} else {
+  document.addEventListener('DOMContentLoaded', _startMutationObserver, { once: true });
+}
