@@ -45,13 +45,22 @@ async def collect_data(
     report_type: str,
 ) -> dict[str, Any]:
     """Collect all data needed for a report. Returns a summary_data dict."""
-    tasks        = await _task_stats(db, period_from, period_to)
-    kpis_cl      = await _kpi_cl_stats(db, period_from, period_to)
+    nq57     = await _nq57_stats(db)
+
+    if report_type == "nq57":
+        # NQ57 report uses NQ57Task stats, not general Task stats
+        tasks    = await _nq57_task_stats(db)
+        kpis_cl  = await _kpi_cl_stats(db, period_from, period_to)
+        kpis_cl["avg_pct"] = tasks.get("avg_progress", 0.0)
+        overdue  = await _nq57_overdue_tasks(db)
+    else:
+        tasks    = await _task_stats(db, period_from, period_to)
+        kpis_cl  = await _kpi_cl_stats(db, period_from, period_to)
+        overdue  = await _overdue_tasks(db)
+
     kpis_std     = await _kpi_standard_stats(db, period_from, period_to)
     docs         = await _document_stats(db, period_from, period_to)
-    overdue      = await _overdue_tasks(db)
     dept_bkd     = await _dept_breakdown(db, period_from, period_to)
-    nq57         = await _nq57_stats(db)
 
     return {
         "period": {
@@ -340,3 +349,72 @@ async def _nq57_stats(db: AsyncSession) -> dict:
         "completed":   row.completed or 0,
         "avg_progress": round(float(row.avg_progress or 0), 1),
     }
+
+
+async def _nq57_task_stats(db: AsyncSession) -> dict:
+    """Full task breakdown from NQ57Task model — used as main stats for NQ57 report type."""
+    try:
+        from app.models.nq57 import NQ57Task
+    except ImportError:
+        return {"total": 0, "completed": 0, "in_progress": 0, "pending": 0,
+                "cancelled": 0, "overdue": 0, "completion_rate": 0.0, "avg_progress": 0.0}
+
+    q = select(
+        func.count().label("total"),
+        func.sum(case((NQ57Task.status == "completed",   1), else_=0)).label("completed"),
+        func.sum(case((NQ57Task.status == "in_progress", 1), else_=0)).label("in_progress"),
+        func.sum(case((NQ57Task.status == "pending",     1), else_=0)).label("pending"),
+        func.sum(case((NQ57Task.status == "delayed",     1), else_=0)).label("delayed"),
+        func.avg(NQ57Task.progress).label("avg_progress"),
+    )
+    row = (await db.execute(q)).one()
+    total     = row.total or 0
+    completed = row.completed or 0
+    rate      = round(completed / total * 100, 1) if total else 0.0
+
+    return {
+        "total":        total,
+        "completed":    completed,
+        "in_progress":  row.in_progress or 0,
+        "pending":      row.pending or 0,
+        "cancelled":    0,
+        "overdue":      row.delayed or 0,
+        "completion_rate": rate,
+        "avg_progress": round(float(row.avg_progress or 0), 1),
+    }
+
+
+async def _nq57_overdue_tasks(db: AsyncSession) -> list[dict]:
+    """Overdue tasks from NQ57Task model for NQ57 report type."""
+    from datetime import date as d_type
+    try:
+        from app.models.nq57 import NQ57Task
+    except ImportError:
+        return []
+
+    today = d_type.today()
+    stmt = (
+        select(NQ57Task.id, NQ57Task.code, NQ57Task.title,
+               NQ57Task.deadline, NQ57Task.responsible_unit)
+        .where(
+            NQ57Task.status.notin_(["completed"]),
+            NQ57Task.deadline.isnot(None),
+            NQ57Task.deadline < today,
+        )
+        .order_by(NQ57Task.deadline.asc())
+        .limit(20)
+    )
+    rows = (await db.execute(stmt)).all()
+    result = []
+    for r in rows:
+        days = (today - r.deadline).days if r.deadline else 0
+        result.append({
+            "id":           r.id,
+            "title":        r.title,
+            "task_code":    r.code,
+            "due_date":     r.deadline.isoformat() if r.deadline else None,
+            "days_overdue": days,
+            "priority":     "normal",
+            "assignee_name": r.responsible_unit,
+        })
+    return result
