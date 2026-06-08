@@ -19,9 +19,11 @@ PROJECT_DIR="/opt/xa_dieu_hanh"
 BACKUP_DIR="$PROJECT_DIR/backups"
 LOG_FILE="$BACKUP_DIR/backup.log"
 
-KEEP_WEEKLY=8    # giữ 8 bản tuần (~2 tháng)
-KEEP_MONTHLY=12  # giữ 12 bản tháng (~1 năm)
+KEEP_WEEKLY=8    # giữ 8 bản DB tuần (~2 tháng)
+KEEP_MONTHLY=6   # giữ 6 bản DB tháng (~6 tháng)
 KEEP_MANUAL=5
+KEEP_UPLOADS=3   # giữ 3 bản uploads (chỉ backup monthly) → tiết kiệm disk
+# Tuần chỉ backup DB, tháng mới backup cả uploads
 
 # ── Màu log ──────────────────────────────────────────────────
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
@@ -108,49 +110,50 @@ docker exec -e PGPASSWORD="$DB_PASS" "$DB_CONTAINER" \
 DB_SIZE=$(du -sh "$DB_FILE" | cut -f1)
 log "✅ DB backup: db_${PREFIX}.sql.gz ($DB_SIZE)"
 
-# ── 2. Backup Uploads ─────────────────────────────────────────
-UPLOADS_FILE="$BACKUP_DIR/uploads_${PREFIX}.tar.gz"
-log "Đang backup uploads..."
+# ── 2. Backup Uploads (chỉ monthly & manual, không weekly) ───
+if [ "$BACKUP_TYPE" != "weekly" ]; then
+  UPLOADS_FILE="$BACKUP_DIR/uploads_${PREFIX}.tar.gz"
+  log "Đang backup uploads..."
 
-# Tìm volume uploads — thử nhiều vị trí
-UPLOAD_PATHS=()
-for p in "$PROJECT_DIR/backend/uploads" "$PROJECT_DIR/uploads"; do
-  [ -d "$p" ] && UPLOAD_PATHS+=("$p")
-done
+  UPLOAD_PATHS=()
+  for p in "$PROJECT_DIR/backend/uploads" "$PROJECT_DIR/uploads"; do
+    [ -d "$p" ] && UPLOAD_PATHS+=("$p")
+  done
 
-# Lấy từ Docker volume nếu không tìm thấy folder
-if [ ${#UPLOAD_PATHS[@]} -eq 0 ]; then
-  VOLUME_NAME=$(docker inspect "$DB_CONTAINER" --format '{{range .Mounts}}{{.Name}} {{end}}' 2>/dev/null | tr ' ' '\n' | grep -i upload | head -1 || true)
-  if [ -n "$VOLUME_NAME" ]; then
-    docker run --rm -v "${VOLUME_NAME}:/data" -v "$BACKUP_DIR:/backup" alpine \
-      tar czf "/backup/uploads_${PREFIX}.tar.gz" /data 2>/dev/null && \
-      log "✅ Uploads backup từ Docker volume: uploads_${PREFIX}.tar.gz"
+  if [ ${#UPLOAD_PATHS[@]} -eq 0 ]; then
+    # Tìm từ Docker volume (backend container)
+    BACKEND_CONTAINER=$(docker compose ps -q backend 2>/dev/null | head -1 || true)
+    if [ -n "$BACKEND_CONTAINER" ]; then
+      docker cp "${BACKEND_CONTAINER}:/app/uploads" "$BACKUP_DIR/uploads_tmp_${TIMESTAMP}" 2>/dev/null && \
+        tar czf "$UPLOADS_FILE" -C "$BACKUP_DIR" "uploads_tmp_${TIMESTAMP}" 2>/dev/null && \
+        rm -rf "$BACKUP_DIR/uploads_tmp_${TIMESTAMP}" && \
+        log "✅ Uploads backup từ container: uploads_${PREFIX}.tar.gz ($(du -sh "$UPLOADS_FILE" | cut -f1))"
+    else
+      warn "Không tìm thấy container backend — bỏ qua uploads"
+    fi
   else
-    warn "Không tìm thấy thư mục uploads — bỏ qua bước này"
+    tar czf "$UPLOADS_FILE" "${UPLOAD_PATHS[@]}" 2>/dev/null || warn "Uploads backup có lỗi nhỏ (bỏ qua)"
+    log "✅ Uploads backup: uploads_${PREFIX}.tar.gz ($(du -sh "$UPLOADS_FILE" | cut -f1))"
   fi
+
+  # Dọn uploads cũ (chỉ giữ KEEP_UPLOADS bản)
+  ls -t "$BACKUP_DIR"/uploads_*.tar.gz 2>/dev/null | tail -n +$((KEEP_UPLOADS+1)) | while read f; do
+    rm "$f" && log "  Đã xóa uploads cũ: $(basename $f)"
+  done
 else
-  tar czf "$UPLOADS_FILE" "${UPLOAD_PATHS[@]}" 2>/dev/null || warn "Uploads backup có lỗi nhỏ (bỏ qua)"
-  UP_SIZE=$(du -sh "$UPLOADS_FILE" | cut -f1)
-  log "✅ Uploads backup: uploads_${PREFIX}.tar.gz ($UP_SIZE)"
+  log "Weekly: bỏ qua backup uploads (tiết kiệm disk)"
 fi
 
-# ── 3. Dọn bản cũ ────────────────────────────────────────────
+# ── 3. Dọn DB cũ ─────────────────────────────────────────────
 case "$BACKUP_TYPE" in
   weekly)  KEEP=$KEEP_WEEKLY  ;;
   monthly) KEEP=$KEEP_MONTHLY ;;
   *)       KEEP=$KEEP_MANUAL  ;;
 esac
 
-log "Giữ lại $KEEP bản ${BACKUP_TYPE} gần nhất..."
-
-# Xóa DB cũ
+log "Giữ lại $KEEP bản DB ${BACKUP_TYPE} gần nhất..."
 ls -t "$BACKUP_DIR"/db_${BACKUP_TYPE}_*.sql.gz 2>/dev/null | tail -n +$((KEEP+1)) | while read f; do
-  rm "$f" && log "  Đã xóa cũ: $(basename $f)"
-done
-
-# Xóa uploads cũ
-ls -t "$BACKUP_DIR"/uploads_${BACKUP_TYPE}_*.tar.gz 2>/dev/null | tail -n +$((KEEP+1)) | while read f; do
-  rm "$f" && log "  Đã xóa cũ: $(basename $f)"
+  rm "$f" && log "  Đã xóa DB cũ: $(basename $f)"
 done
 
 # ── 4. Tổng kết ───────────────────────────────────────────────
