@@ -406,7 +406,7 @@ async def zalo_webhook(payload: dict, db: AsyncSession = Depends(get_db)):
         return {"ok": True}
 
     sender = payload.get("sender", {})
-    zalo_user_id = sender.get("id", "")
+    zalo_user_id = str(sender.get("id", "") or "")  # always string — Zalo IDs are 17-18 digits, exceeds JS Number precision
     text = (payload.get("message", {}).get("text", "") or "").strip()
     text_up = text.upper()
 
@@ -540,10 +540,11 @@ async def list_oa_followers(
         "offset": offset,
         "followers": [
             {
-                "zalo_user_id": f.get("user_id", ""),
+                # Zalo user_id is 17-18 digits — must return as string so JS JSON.parse doesn't lose precision
+                "zalo_user_id": str(f.get("user_id", "") or ""),
                 "display_name":  f.get("display_name", ""),
                 "avatar":        f.get("avatar", ""),
-                "linked_user_id": linked_map.get(f.get("user_id", "")),
+                "linked_user_id": linked_map.get(str(f.get("user_id", "") or "")),
             }
             for f in followers
         ],
