@@ -857,6 +857,95 @@ function showUploadWidget(docId, token) {
 }
 
 /* ══════════════════════════════════════
+   POPUP "Danh sách file văn bản" — inject nút IOC
+══════════════════════════════════════ */
+
+function injectFilePopupButton() {
+  // Tìm header popup ZK có tiêu đề "Danh sách file văn bản"
+  const headers = Array.from(document.querySelectorAll(
+    '.z-window-header, .z-caption-content, [class*="window"] [class*="header"], div, span'
+  )).filter(el => {
+    if (el.dataset.iocPopup) return false;
+    if (el.children.length > 3) return false;
+    const t = el.textContent.trim();
+    return t.startsWith('Danh sách file văn bản') || t.startsWith('Danh sách tài liệu');
+  });
+
+  for (const header of headers) {
+    header.dataset.iocPopup = '1';
+
+    // Tìm container chứa toàn bộ popup
+    const popup = header.closest('.z-window, .z-dialog, [class*="window"], [class*="dialog"]')
+                  || header.parentNode?.parentNode;
+    if (!popup) continue;
+
+    // Inject nút IOC vào header
+    const btn = document.createElement('span');
+    btn.textContent = '📥 IOC';
+    btn.style.cssText = [
+      'display:inline-block', 'cursor:pointer', 'background:#2563eb', 'color:white',
+      'padding:2px 10px', 'border-radius:5px', 'font-size:11px', 'font-weight:700',
+      'margin-left:10px', 'vertical-align:middle', 'white-space:nowrap',
+      'box-shadow:0 1px 4px rgba(37,99,235,.35)',
+    ].join(';');
+    btn.title = 'Nhập văn bản này sang xabacha.com';
+    header.appendChild(btn);
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+
+      // Thu thập file links trong popup
+      const seen = new Set();
+      const files = [];
+
+      // Thử lấy href trực tiếp (một số phiên bản dhtn có href thật)
+      for (const a of popup.querySelectorAll('a[href]')) {
+        const href = a.href || '';
+        if (!href || href.includes('javascript') || href === '#') continue;
+        if (seen.has(href)) continue;
+        seen.add(href);
+        const name = a.textContent.trim() || href.split('/').pop().split('?')[0] || 'document';
+        if (name.length > 2) files.push({ url: href, name });
+      }
+
+      // Fallback: lấy từ file đã bắt được qua interceptor
+      const captured = [..._capturedFiles];
+
+      // Tìm trích yếu từ trang (row đang hiển thị gần nhất)
+      const titleEl = Array.from(document.querySelectorAll('td:not([data-ioc])')).find(el => {
+        const t = el.textContent.trim();
+        return (t.startsWith('V/v') || t.startsWith('Về việc') || t.startsWith('Báo cáo') || t.startsWith('Tờ trình')) && t.length > 20;
+      });
+      const row = titleEl?.closest('tr');
+      const rowText = row?.textContent || '';
+      const numMatch = rowText.match(/\b\d{2,4}-[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ\-]+\/[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ]{2,15}/);
+      const dateMatch = rowText.match(/\d{1,2}\/\d{2}\/\d{4}/);
+
+      const data = {
+        title:      titleEl ? titleEl.textContent.trim() : '',
+        docNumber:  numMatch ? numMatch[0] : '',
+        issueDate:  dateMatch ? dateMatch[0] : '',
+        issuer:     '',
+        attachments: files.length > 0 ? files : captured.map(f => ({ url: '', name: f.name || f.fileName })),
+        docType:    getDocType(),
+      };
+
+      if (files.length > 0) {
+        showToast(`✅ Tìm thấy ${files.length} file — mở panel IOC`, '#059669');
+      } else if (captured.length > 0) {
+        showToast(`✅ Dùng ${captured.length} file đã tải — mở panel IOC`, '#059669');
+      } else {
+        showToast('⚠️ Nhấn nút ↓ trên từng file trước, rồi nhấn IOC lại', '#f59e0b');
+        return;
+      }
+
+      setTimeout(() => openPanelWithData(data), 400);
+    });
+  }
+}
+
+/* ══════════════════════════════════════
    FAB BUTTON
 ══════════════════════════════════════ */
 
@@ -897,6 +986,7 @@ function showToast(msg, color='#2563eb') {
 
 function init() {
   createFAB();
+  injectFilePopupButton();
 
   if (isDetailPage()) {
     if (watchForDetail) {
@@ -935,6 +1025,7 @@ new MutationObserver((mutations) => {
   if (!hasNewRows) return;
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
+    injectFilePopupButton();   // luôn chạy để bắt popup file
     if (isDetailPage()) {
       if (watchForDetail) {
         watchForDetail = false;
