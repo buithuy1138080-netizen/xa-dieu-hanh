@@ -11,6 +11,8 @@
 (function () {
   'use strict';
 
+  const FILE_MIME_RE = /\.(pdf|doc|docx|xls|xlsx|zip|rar|ppt|pptx)$/i;
+
   const FILE_MIME = [
     'application/pdf',
     'application/msword',
@@ -115,6 +117,73 @@
     };
   } catch (_) {}
 
-  // KHÔNG override XMLHttpRequest — ZK dùng XHR cho mọi thứ
+  // KHÔNG override XMLHttpRequest — ZK dùng XHR cho mọi thứ (sẽ phá vỡ ZK)
+
+  /* ══════════════════════════════
+     3. Bắt window.open cho file download
+     ZK thường gọi window.open('/download?id=xxx')
+     để trigger download — bắt URL này rồi fetch lấy blob
+  ══════════════════════════════ */
+  try {
+    const _windowOpen = window.open.bind(window);
+    window.open = function (url, name, features) {
+      try {
+        const urlStr = String(url || '');
+        if (urlStr && !urlStr.startsWith('javascript') && urlStr !== '#') {
+          const lower = urlStr.toLowerCase();
+          if (lower.includes('/download') || lower.includes('/export') ||
+              lower.includes('attachment') || FILE_MIME_RE.test(urlStr.split('?')[0])) {
+            // Fetch riêng để lấy nội dung file rồi dispatch
+            fetch(urlStr, { credentials: 'include' })
+              .then(r => {
+                if (!r.ok) return;
+                const cd = r.headers.get('content-disposition') || '';
+                const ct = r.headers.get('content-type') || '';
+                if (isBinaryMime(ct) || cd.toLowerCase().includes('attachment')) {
+                  return r.blob().then(blob => {
+                    const filename = guessFilename(urlStr, cd, ct);
+                    dispatchFile(blob, filename, urlStr);
+                  });
+                }
+              })
+              .catch(() => {});
+          }
+        }
+      } catch (_) {}
+      return _windowOpen(url, name, features);
+    };
+  } catch (_) {}
+
+  /* ══════════════════════════════
+     4. Bắt <a download> click
+     Một số ZK version tạo thẻ <a download href='...'> rồi click()
+  ══════════════════════════════ */
+  try {
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a[href]');
+      if (!a) return;
+      const href = (a.href || '').toLowerCase();
+      const hasDownload = a.hasAttribute('download');
+      const isFileUrl = FILE_MIME_RE.test(a.pathname || '') ||
+                        href.includes('/download') || href.includes('/export') ||
+                        href.includes('attachment');
+      if ((hasDownload || isFileUrl) && !href.startsWith('javascript') && href !== '#') {
+        fetch(a.href, { credentials: 'include' })
+          .then(r => {
+            if (!r.ok) return;
+            const cd = r.headers.get('content-disposition') || '';
+            const ct = r.headers.get('content-type') || '';
+            if (isBinaryMime(ct) || cd.toLowerCase().includes('attachment') || hasDownload) {
+              return r.blob().then(blob => {
+                const filename = guessFilename(a.href, cd, ct) ||
+                                 a.getAttribute('download') || a.textContent.trim() || 'document';
+                dispatchFile(blob, filename, a.href);
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    }, true); // capture phase — trước khi ZK xử lý
+  } catch (_) {}
 
 })();

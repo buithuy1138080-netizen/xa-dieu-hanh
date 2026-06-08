@@ -832,16 +832,45 @@ function showCaptureModeBanner(docId) {
     <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
       <span style="font-size:20px;flex-shrink:0;">📎</span>
       <div>
-        <div style="font-weight:700;">Văn bản #${docId} đã lưu — Nhấn <b style="background:rgba(255,255,255,.25);padding:1px 6px;border-radius:4px;">↓</b> trên từng file để tự động đính kèm</div>
+        <div style="font-weight:700;">Văn bản #${docId} đã lưu — Nhấn <b style="background:rgba(255,255,255,.25);padding:1px 6px;border-radius:4px;">↓</b> trên từng file <i>hoặc</i> chọn file từ máy</div>
         <div id="ioc-cm-status" style="font-size:11px;opacity:.85;margin-top:2px;">0 file đã đính kèm</div>
       </div>
     </div>
-    <div style="display:flex;gap:8px;flex-shrink:0;">
-      <button id="ioc-cm-done" style="background:white;color:#1d4ed8;border:none;padding:5px 14px;border-radius:7px;font-weight:700;font-size:12px;cursor:pointer;">✅ Xong — Mở văn bản</button>
+    <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;">
+      <label style="background:rgba(255,255,255,.2);color:white;border:none;padding:5px 12px;border-radius:7px;font-size:12px;cursor:pointer;white-space:nowrap;">
+        📂 Chọn file
+        <input type="file" id="ioc-cm-file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.ppt,.pptx" style="display:none">
+      </label>
+      <button id="ioc-cm-done" style="background:white;color:#1d4ed8;border:none;padding:5px 14px;border-radius:7px;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap;">✅ Xong</button>
       <button id="ioc-cm-cancel" style="background:rgba(255,255,255,.15);color:white;border:none;padding:5px 10px;border-radius:7px;font-size:12px;cursor:pointer;">✕</button>
     </div>`;
 
   document.body.appendChild(banner);
+
+  // Chọn file thủ công → upload ngay
+  document.getElementById('ioc-cm-file').onchange = async (e) => {
+    const { docId: did, token } = _pendingUpload || {};
+    if (!did || !token) return;
+    for (const file of e.target.files) {
+      try {
+        const base64 = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result.split(',')[1]);
+          r.onerror = rej;
+          r.readAsDataURL(file);
+        });
+        const result = await chrome.runtime.sendMessage({
+          action: 'IOC_UPLOAD_BASE64',
+          docId: did, fileName: file.name, mimeType: file.type, base64, token,
+        });
+        if (result?.ok) {
+          _pendingUpload.count = (_pendingUpload.count || 0) + 1;
+          updateCaptureModeBanner(_pendingUpload.count);
+          showToast(`✅ Đính kèm: ${file.name.slice(0,35)}`, '#059669');
+        }
+      } catch (_) {}
+    }
+  };
 
   document.getElementById('ioc-cm-done').onclick = () => {
     banner.remove();
@@ -1056,6 +1085,58 @@ function injectFilePopupButton() {
 }
 
 /* ══════════════════════════════════════
+   AUTO UPLOAD TỪ TRANG CHI TIẾT
+   Khi capture mode active + đang ở trang chi tiết,
+   tự động tìm link file và fetch+upload
+══════════════════════════════════════ */
+
+async function autoUploadFromDetailPage() {
+  if (!_pendingUpload) return;
+  const { docId, token } = _pendingUpload;
+
+  // Tìm link file trực tiếp trên trang (ưu tiên section "File đính kèm")
+  const files = findAttachments();
+  if (files.length === 0) {
+    showToast('ℹ️ Không tìm thấy link trực tiếp. Nhấn ↓ hoặc dùng 📂 Chọn file trên banner.', '#6b7280');
+    return;
+  }
+
+  showToast(`📎 Tự động đính kèm ${files.length} file vào văn bản #${docId}...`, '#2563eb');
+
+  let uploaded = 0;
+  for (const f of files) {
+    if (!f.url || f.url.includes('javascript')) continue;
+    try {
+      const resp = await fetch(f.url, { credentials: 'include' });
+      if (!resp.ok) continue;
+      const blob = await resp.blob();
+      const base64 = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result.split(',')[1]);
+        r.onerror = rej;
+        r.readAsDataURL(blob);
+      });
+      const result = await chrome.runtime.sendMessage({
+        action: 'IOC_UPLOAD_BASE64',
+        docId, fileName: f.name, mimeType: blob.type || 'application/octet-stream', base64, token,
+      });
+      if (result?.ok) {
+        uploaded++;
+        _pendingUpload.count = (_pendingUpload.count || 0) + 1;
+        updateCaptureModeBanner(_pendingUpload.count);
+        showToast(`✅ Đã đính kèm: ${f.name.slice(0, 35)}`, '#059669');
+      }
+    } catch (e) {
+      console.warn('[IOC] auto-upload error:', e.message);
+    }
+  }
+
+  if (uploaded === 0) {
+    showToast('⚠️ Không fetch được file. Dùng 📂 Chọn file trên banner.', '#f59e0b');
+  }
+}
+
+/* ══════════════════════════════════════
    FAB BUTTON
 ══════════════════════════════════════ */
 
@@ -1137,6 +1218,11 @@ new MutationObserver((mutations) => {
   debounceTimer = setTimeout(() => {
     injectFilePopupButton();   // luôn chạy để bắt popup file
     if (isDetailPage()) {
+      // Capture mode: tự động fetch + upload file từ trang chi tiết
+      if (_pendingUpload && !_pendingUpload._detailScanned) {
+        _pendingUpload._detailScanned = true;
+        setTimeout(autoUploadFromDetailPage, 1500);
+      }
       if (watchForDetail) {
         watchForDetail = false;
         const old = document.getElementById('ioc-panel');
