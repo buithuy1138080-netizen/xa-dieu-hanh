@@ -93,6 +93,11 @@ async function handleIocApi(msg) {
   const text = await resp.text();
   let data;
   try { data = JSON.parse(text); } catch (_) { data = text; }
+  // 409 duplicate — return special object instead of throwing
+  if (resp.status === 409) {
+    const detail = (typeof data === 'object' && data?.detail) ? data.detail : data;
+    if (detail?.code === 'DUPLICATE_DOC_NUMBER') return { _duplicate: true, ...detail };
+  }
   if (!resp.ok) throw new Error(`API ${resp.status}: ${text.slice(0, 200)}`);
   return data;
 }

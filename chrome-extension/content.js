@@ -728,6 +728,19 @@ async function sendToIOC(panel) {
       throw new Error(err);
     }
 
+    // Văn bản trùng ký hiệu
+    if (createResult && createResult._duplicate) {
+      const existId = createResult.existing_doc_id;
+      const docNum = get('ioc_doc_number').trim() || createResult.existing_doc_title || '';
+      showToast(`⚠️ Văn bản "${docNum}" đã tồn tại trong IOC (#${existId}). Đang mở...`, '#f59e0b');
+      setTimeout(() => {
+        chrome.runtime.sendMessage({ action: 'IOC_OPEN_TAB', url: `${IOC_URL}/documents/${existId}` });
+      }, 1200);
+      panel.classList.remove('visible');
+      if (sendBtn) { sendBtn.textContent = '🚀 Gửi sang xabacha.com'; sendBtn.disabled = false; }
+      return;
+    }
+
     const docId = (createResult && (createResult.doc_id || createResult.id)) || null;
     if (!docId) throw new Error('API không trả về doc_id');
     showToast(`✅ Văn bản #${docId} đã tạo${checkedFiles.length ? ' — đang tải file...' : ''}`, '#059669');

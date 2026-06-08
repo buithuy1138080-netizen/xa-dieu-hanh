@@ -837,6 +837,20 @@ async def capture_from_dhtn(
     from datetime import date as dt_date
     import re
 
+    # Check for duplicate doc_number before creating
+    if body.doc_number and body.doc_number.strip():
+        existing = (await db.execute(
+            select(Document.id, Document.title)
+            .where(Document.doc_number == body.doc_number.strip(), Document.deleted_at.is_(None))
+        )).first()
+        if existing:
+            raise HTTPException(409, detail={
+                "code": "DUPLICATE_DOC_NUMBER",
+                "message": f"Văn bản ký hiệu '{body.doc_number}' đã tồn tại trong hệ thống.",
+                "existing_doc_id": existing.id,
+                "existing_doc_title": existing.title or body.doc_number,
+            })
+
     # Parse issue_date (dd/mm/yyyy)
     issue_date = None
     if body.issue_date:
