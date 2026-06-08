@@ -9,6 +9,8 @@ export interface Filters {
   lead_dept_id: string
   program_id: string
   overdue_only: boolean
+  date_from: string
+  date_to: string
 }
 
 interface Props {
@@ -21,7 +23,7 @@ interface Props {
 
 export default function TaskFilters({ filters, onChange, onReset, departments = [], programs = [] }: Props) {
   const set = <K extends keyof Filters>(key: K, val: Filters[K]) => onChange({ ...filters, [key]: val })
-  const hasFilter = filters.search || filters.status || filters.priority || filters.assignee_id || filters.lead_dept_id || filters.program_id
+  const hasFilter = filters.search || filters.status || filters.priority || filters.assignee_id || filters.lead_dept_id || filters.program_id || filters.date_from || filters.date_to
 
   return (
     <div className="flex flex-wrap gap-2 items-center">
@@ -81,6 +83,24 @@ export default function TaskFilters({ filters, onChange, onReset, departments = 
           ))}
         </select>
       )}
+
+      <input
+        type="date"
+        value={filters.date_from}
+        max={filters.date_to || undefined}
+        onChange={(e) => set('date_from', e.target.value)}
+        title="Hạn từ ngày"
+        className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+      />
+      <span className="text-slate-300 text-xs select-none">—</span>
+      <input
+        type="date"
+        value={filters.date_to}
+        min={filters.date_from || undefined}
+        onChange={(e) => set('date_to', e.target.value)}
+        title="Hạn đến ngày"
+        className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+      />
 
       {hasFilter && (
         <button onClick={onReset} className="text-sm text-slate-500 hover:text-slate-700 underline">

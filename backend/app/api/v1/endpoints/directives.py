@@ -1,5 +1,5 @@
 import shutil
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from math import ceil
 from pathlib import Path
 
@@ -163,6 +163,8 @@ async def list_directives(
     priority: str | None = Query(None),
     issuer_id: int | None = Query(None),
     overdue_only: bool = Query(False),
+    from_date: str | None = Query(None),
+    to_date: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -183,6 +185,16 @@ async def list_directives(
         conditions.append(Directive.deadline.isnot(None))
         conditions.append(Directive.deadline < now)
         conditions.append(Directive.status == "active")
+    if from_date:
+        try:
+            conditions.append(Directive.issued_date >= date.fromisoformat(from_date))
+        except ValueError:
+            pass
+    if to_date:
+        try:
+            conditions.append(Directive.issued_date <= date.fromisoformat(to_date))
+        except ValueError:
+            pass
 
     count_stmt = select(func.count(Directive.id)).where(*conditions)
     total = (await db.execute(count_stmt)).scalar_one()

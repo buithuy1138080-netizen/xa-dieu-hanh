@@ -20,6 +20,8 @@ export interface DirectiveListParams {
   priority?: string
   issuer_id?: number
   overdue_only?: boolean
+  from_date?: string
+  to_date?: string
 }
 
 export const directivesApi = {

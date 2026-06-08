@@ -64,11 +64,13 @@ export default function DocumentListPage() {
   const [search, setSearch] = useState('')
   const [typeTab, setTypeTab] = useState<DocType | ''>('')
   const [statusFilter, setStatusFilter] = useState<DocStatus | ''>('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const SIZE = 20
 
-  const load = useCallback(async (p = 1, q = search, t = typeTab, s = statusFilter) => {
+  const load = useCallback(async (p = 1, q = search, t = typeTab, s = statusFilter, df = dateFrom, dt = dateTo) => {
     setLoading(true)
     setFetchError(null)
     try {
@@ -77,6 +79,8 @@ export default function DocumentListPage() {
         search: q || undefined,
         doc_type: t || undefined,
         status: s || undefined,
+        from_date: df || undefined,
+        to_date: dt || undefined,
       })
       setDocs(data.items)
       setTotal(data.total)
@@ -86,9 +90,9 @@ export default function DocumentListPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, typeTab, statusFilter])
+  }, [search, typeTab, statusFilter, dateFrom, dateTo])
 
-  useEffect(() => { load(1) }, [typeTab, statusFilter])
+  useEffect(() => { load(1) }, [typeTab, statusFilter, dateFrom, dateTo])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -231,7 +235,7 @@ export default function DocumentListPage() {
         </div>
 
         {/* Search + filter bar */}
-        <div className="flex gap-2 md:gap-3 items-center">
+        <div className="flex flex-wrap gap-2 md:gap-3 items-center">
           <div className="relative flex-1 min-w-0">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
             <input
@@ -248,6 +252,32 @@ export default function DocumentListPage() {
           >
             {STATUS_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
+          <input
+            type="date"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={(e) => setDateFrom(e.target.value)}
+            title="Từ ngày ban hành"
+            className="border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+          />
+          <span className="text-slate-300 text-xs select-none">—</span>
+          <input
+            type="date"
+            value={dateTo}
+            min={dateFrom || undefined}
+            onChange={(e) => setDateTo(e.target.value)}
+            title="Đến ngày ban hành"
+            className="border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              onClick={() => { setDateFrom(''); setDateTo('') }}
+              className="text-xs text-slate-400 hover:text-slate-600"
+              title="Xóa lọc ngày"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
         {/* Error banner */}

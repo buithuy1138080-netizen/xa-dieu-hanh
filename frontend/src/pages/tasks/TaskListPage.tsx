@@ -26,6 +26,7 @@ type View = 'list' | 'kanban' | 'overdue'
 const EMPTY_FILTERS: Filters = {
   search: '', status: '', priority: '', assignee_id: '',
   lead_dept_id: '', program_id: '', overdue_only: false,
+  date_from: '', date_to: '',
 }
 
 const KANBAN_COLS: {
@@ -179,6 +180,8 @@ export default function TaskListPage() {
         program_id:    f.program_id   ? parseInt(f.program_id)   : undefined,
         search:        f.search       || undefined,
         overdue_only:  f.overdue_only || undefined,
+        due_after:     f.date_from    || undefined,
+        due_before:    f.date_to      || undefined,
       })
       setTasks(data.items)
       setTotal(data.total)
