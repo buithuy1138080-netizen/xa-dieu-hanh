@@ -305,45 +305,54 @@ function getDocumentsFromPage() {
   return docs;
 }
 
+const DOC_NUM_RE = /\b\d{2,4}[-–][A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ\-]+\/[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ]{2,15}/;
+
 function injectRowButtons() {
-  // Chỉ quét td (không quét div — ZK có hàng nghìn div không liên quan)
-  // Dùng data-ioc để tránh quét lại cell đã xử lý
   let added = 0;
 
-  const candidates = Array.from(document.querySelectorAll('td:not([data-ioc])')).filter(el => {
-    if (el.children.length > 2) return false;
-    const text = el.textContent;
-    if (text.length < 20) return false;
-    const t = text.trimStart();
-    return t.startsWith('V/v') || t.startsWith('Về việc') ||
-           t.startsWith('Báo cáo') || t.startsWith('Tờ trình');
+  // Chiến lược: tìm row có số ký hiệu văn bản (VD: 582-TB/TU)
+  // rồi trong row đó chọn cell có TEXT DÀI NHẤT → đó là cột Trích yếu
+  // Cách này không phụ thuộc keyword bắt đầu → không bị vỡ bởi badge "CT"
+  const rows = Array.from(document.querySelectorAll('tr')).filter(row => {
+    if (row.querySelector('.ioc-row-btn')) return false; // đã inject
+    return DOC_NUM_RE.test(row.textContent);
   });
 
-  candidates.forEach(el => {
-    // Tìm row cha để lấy thêm thông tin
-    const row = el.closest('tr');
-    const rowText = row ? row.textContent : el.parentNode?.textContent || '';
+  for (const row of rows) {
+    const cells = Array.from(row.querySelectorAll('td'));
+    let bestCell = null, maxLen = 0;
 
-    // Số ký hiệu
-    const numMatch = rowText.match(/\b\d{2,4}-[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ\-]+\/[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ]{2,15}/);
-    // Ngày
+    for (const cell of cells) {
+      if (cell.dataset.ioc) continue;
+      if (cell.querySelector('input,select,.ioc-row-btn')) continue;
+      if (cell.children.length > 5) continue; // bỏ qua cell phức tạp
+      const len = cell.textContent.trim().length;
+      if (len >= 25 && len <= 600 && len > maxLen) {
+        maxLen = len;
+        bestCell = cell;
+      }
+    }
+
+    if (!bestCell) continue;
+
+    const rowText = row.textContent;
+    const numMatch = rowText.match(DOC_NUM_RE);
     const dateMatch = rowText.match(/\d{1,2}\/\d{2}\/\d{4}/);
-    // Đơn vị ban hành — lấy từ cell "Đơn vị ban hành" riêng biệt thay vì dùng regex trên rowText
-    const unitCell = row ? Array.from(row.querySelectorAll('td')).find(td => {
+    const unitCell = cells.find(td => {
       const t = td.textContent.trim();
       return (t.includes('Tỉnh ủy') || t.includes('Đảng ủy') || t.includes('UBND') || t.includes('Văn phòng'))
         && t.length < 120 && !td.querySelector('a,button,.ioc-row-btn');
-    }) : null;
-    const unitMatch = unitCell ? [unitCell.textContent.trim()] : rowText.match(/(Văn phòng[^\n\r]{5,40}|Tỉnh ủy[^\n\r]{5,40}|Đảng ủy[^\n\r]{5,40}|UBND[^\n\r]{5,40})/);
-    const title = el.textContent.trim();
+    });
+
+    // Trích yếu: bỏ badge ngắn (ví dụ "CT") ở đầu nếu có
+    const rawTitle = bestCell.textContent.trim();
+    const title = rawTitle.replace(/^[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ\s]{1,6}\n/, '').trim() || rawTitle;
     const docNumber = numMatch ? numMatch[0] : '';
     const date = dateMatch ? dateMatch[0] : '';
-    const issuer = unitMatch ? unitMatch[0].trim() : '';
+    const issuer = unitCell ? unitCell.textContent.trim() : '';
 
-    // File: tìm tất cả link trong row, kiểm tra cả href VÀ text
-    const attachments = findFileLinks(row || el);
+    const attachments = findFileLinks(row, docNumber);
 
-    // Tạo nút →IOC
     const btn = document.createElement('span');
     btn.className = 'ioc-row-btn';
     btn.innerHTML = '📥 IOC';
@@ -353,8 +362,7 @@ function injectRowButtons() {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // Tìm file: match số ký hiệu → index → vị trí → fallback tất cả
-      const files = findFileLinks(el, docNumber);
+      const files = findFileLinks(bestCell, docNumber);
       const data = { title, docNumber, issueDate: date, issuer, attachments: files, docType: getDocType() };
       if (files.length > 0) {
         showToast(`✅ Tìm thấy ${files.length} file: ${files[0].name.slice(0,35)}`, '#059669');
@@ -364,10 +372,10 @@ function injectRowButtons() {
       setTimeout(() => openPanelWithData(data), 600);
     });
 
-    el.dataset.ioc = '1';
-    el.appendChild(btn);
+    bestCell.dataset.ioc = '1';
+    bestCell.appendChild(btn);
     added++;
-  });
+  }
 
   return added;
 }
@@ -861,45 +869,54 @@ function showUploadWidget(docId, token) {
 ══════════════════════════════════════ */
 
 function injectFilePopupButton() {
-  // Tìm header popup ZK có tiêu đề "Danh sách file văn bản"
-  const headers = Array.from(document.querySelectorAll(
-    '.z-window-header, .z-caption-content, [class*="window"] [class*="header"], div, span'
-  )).filter(el => {
-    if (el.dataset.iocPopup) return false;
-    if (el.children.length > 3) return false;
-    const t = el.textContent.trim();
-    return t.startsWith('Danh sách file văn bản') || t.startsWith('Danh sách tài liệu');
-  });
+  // Dùng TreeWalker quét text node — không phụ thuộc CSS class ZK
+  // Tìm node text "Danh sách file văn bản..." rồi leo lên tìm container popup
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+  const found = [];
+  let n;
+  while ((n = walker.nextNode())) {
+    const t = n.textContent.trim();
+    if (t.startsWith('Danh sách file văn bản') || t.startsWith('Danh sách tài liệu')) {
+      found.push(n.parentElement);
+    }
+  }
 
-  for (const header of headers) {
-    header.dataset.iocPopup = '1';
+  for (const titleEl of found) {
+    if (!titleEl || titleEl.dataset.iocPopup) continue;
+    titleEl.dataset.iocPopup = '1';
 
-    // Tìm container chứa toàn bộ popup
-    const popup = header.closest('.z-window, .z-dialog, [class*="window"], [class*="dialog"]')
-                  || header.parentNode?.parentNode;
-    if (!popup) continue;
+    // Leo lên tìm popup container (tối đa 10 cấp)
+    let popup = titleEl;
+    for (let i = 0; i < 10; i++) {
+      if (!popup.parentElement) break;
+      popup = popup.parentElement;
+      const s = popup.style || {};
+      const cls = (popup.className || '').toLowerCase();
+      // Dừng khi gặp element có position fixed/absolute (đặc trưng của popup ZK)
+      const computed = window.getComputedStyle(popup).position;
+      if (computed === 'fixed' || computed === 'absolute') break;
+      if (cls.includes('window') || cls.includes('dialog') || cls.includes('popup')) break;
+    }
 
-    // Inject nút IOC vào header
+    // Thêm nút IOC vào titleEl
     const btn = document.createElement('span');
     btn.textContent = '📥 IOC';
     btn.style.cssText = [
-      'display:inline-block', 'cursor:pointer', 'background:#2563eb', 'color:white',
-      'padding:2px 10px', 'border-radius:5px', 'font-size:11px', 'font-weight:700',
-      'margin-left:10px', 'vertical-align:middle', 'white-space:nowrap',
+      'display:inline-block','cursor:pointer','background:#2563eb','color:white',
+      'padding:2px 10px','border-radius:5px','font-size:11px','font-weight:700',
+      'margin-left:10px','vertical-align:middle','white-space:nowrap',
       'box-shadow:0 1px 4px rgba(37,99,235,.35)',
     ].join(';');
-    btn.title = 'Nhập văn bản này sang xabacha.com';
-    header.appendChild(btn);
+    btn.title = 'Nhập văn bản + file sang xabacha.com';
+    titleEl.appendChild(btn);
 
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
 
-      // Thu thập file links trong popup
+      // Thu thập file links trong popup (thử href trực tiếp)
       const seen = new Set();
       const files = [];
-
-      // Thử lấy href trực tiếp (một số phiên bản dhtn có href thật)
       for (const a of popup.querySelectorAll('a[href]')) {
         const href = a.href || '';
         if (!href || href.includes('javascript') || href === '#') continue;
@@ -909,36 +926,57 @@ function injectFilePopupButton() {
         if (name.length > 2) files.push({ url: href, name });
       }
 
-      // Fallback: lấy từ file đã bắt được qua interceptor
+      // Lấy tên file từ text của popup (dù không có href thật)
+      const fileNames = [];
+      const popupText = popup.innerText || '';
+      for (const line of popupText.split('\n')) {
+        const t = line.trim().replace(/^\d+\.\s*/, '');
+        if (t.length > 5 && /\.(pdf|doc|docx|xls|xlsx|zip|rar)/i.test(t)) {
+          fileNames.push(t);
+        }
+      }
+
+      // Ưu tiên: interceptor-captured files
       const captured = [..._capturedFiles];
 
-      // Tìm trích yếu từ trang (row đang hiển thị gần nhất)
-      const titleEl = Array.from(document.querySelectorAll('td:not([data-ioc])')).find(el => {
-        const t = el.textContent.trim();
-        return (t.startsWith('V/v') || t.startsWith('Về việc') || t.startsWith('Báo cáo') || t.startsWith('Tờ trình')) && t.length > 20;
-      });
-      const row = titleEl?.closest('tr');
-      const rowText = row?.textContent || '';
-      const numMatch = rowText.match(/\b\d{2,4}-[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ\-]+\/[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦ]{2,15}/);
+      // Tìm doc info từ row gần nhất có số ký hiệu
+      const docRow = Array.from(document.querySelectorAll('tr')).find(r =>
+        DOC_NUM_RE.test(r.textContent) && r.querySelector('[data-ioc]')
+      ) || Array.from(document.querySelectorAll('tr')).find(r => DOC_NUM_RE.test(r.textContent));
+
+      const rowText = docRow?.textContent || '';
+      const numMatch = rowText.match(DOC_NUM_RE);
       const dateMatch = rowText.match(/\d{1,2}\/\d{2}\/\d{4}/);
+      const titleCell = docRow ? Array.from(docRow.querySelectorAll('td')).reduce((best, td) => {
+        const len = td.textContent.trim().length;
+        return (len > 25 && len < 600 && len > (best?.textContent.trim().length || 0)) ? td : best;
+      }, null) : null;
 
-      const data = {
-        title:      titleEl ? titleEl.textContent.trim() : '',
-        docNumber:  numMatch ? numMatch[0] : '',
-        issueDate:  dateMatch ? dateMatch[0] : '',
-        issuer:     '',
-        attachments: files.length > 0 ? files : captured.map(f => ({ url: '', name: f.name || f.fileName })),
-        docType:    getDocType(),
-      };
-
+      let attachments;
       if (files.length > 0) {
-        showToast(`✅ Tìm thấy ${files.length} file — mở panel IOC`, '#059669');
+        attachments = files;
+        showToast(`✅ Tìm thấy ${files.length} file link trực tiếp`, '#059669');
       } else if (captured.length > 0) {
-        showToast(`✅ Dùng ${captured.length} file đã tải — mở panel IOC`, '#059669');
+        attachments = captured.map(f => ({ url: '', name: f.name || f.fileName }));
+        showToast(`✅ Dùng ${captured.length} file đã tải`, '#059669');
+      } else if (fileNames.length > 0) {
+        // Có tên file nhưng không có href → báo user click ↓ trước
+        attachments = [];
+        showToast(`⚠️ Nhấn ↓ trên từng file (${fileNames.length} file), rồi nhấn IOC lại`, '#f59e0b');
+        return;
       } else {
-        showToast('⚠️ Nhấn nút ↓ trên từng file trước, rồi nhấn IOC lại', '#f59e0b');
+        showToast('⚠️ Không tìm thấy file. Nhấn ↓ trên file trước rồi thử lại.', '#f59e0b');
         return;
       }
+
+      const data = {
+        title:       titleCell ? titleCell.textContent.trim().replace(/^[A-ZĐÀÁẢÃẠ\s]{1,6}\n/, '').trim() : '',
+        docNumber:   numMatch ? numMatch[0] : '',
+        issueDate:   dateMatch ? dateMatch[0] : '',
+        issuer:      '',
+        attachments,
+        docType:     getDocType(),
+      };
 
       setTimeout(() => openPanelWithData(data), 400);
     });
