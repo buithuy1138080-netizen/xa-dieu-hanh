@@ -25,7 +25,10 @@ const API_URL = `${IOC_URL}/api/v1`;
 // Lưu file đã bắt được (tối đa 5 file gần nhất)
 const _capturedFiles = [];
 
-window.addEventListener('__ioc_file_captured__', (e) => {
+// Capture mode: sau khi tạo văn bản thành công, auto-upload file khi user nhấn ↓
+let _pendingUpload = null; // { docId, token, count }
+
+window.addEventListener('__ioc_file_captured__', async (e) => {
   const { base64, filename, mimeType, sourceUrl, size } = e.detail || {};
   if (!base64 || !filename) return;
 
@@ -36,7 +39,24 @@ window.addEventListener('__ioc_file_captured__', (e) => {
   _capturedFiles.unshift({ base64, name: filename, mimeType, sourceUrl, _key: key });
   if (_capturedFiles.length > 5) _capturedFiles.pop();
 
-  // Hiện indicator xanh nhỏ góc dưới
+  // AUTO-UPLOAD: nếu đang ở capture mode → upload ngay lên văn bản chờ
+  if (_pendingUpload) {
+    const { docId, token } = _pendingUpload;
+    try {
+      const result = await chrome.runtime.sendMessage({
+        action: 'IOC_UPLOAD_BASE64',
+        docId, fileName: filename, mimeType: mimeType || 'application/octet-stream', base64, token,
+      });
+      if (result?.ok) {
+        _pendingUpload.count = (_pendingUpload.count || 0) + 1;
+        updateCaptureModeBanner(_pendingUpload.count);
+        showToast(`✅ Đính kèm tự động: ${filename.slice(0, 35)}`, '#059669');
+        return; // không hiện indicator bình thường
+      }
+    } catch (_) {}
+  }
+
+  // Hiện indicator xanh nhỏ góc dưới (chế độ thường)
   showFileIndicator(filename, size);
 });
 
@@ -771,9 +791,10 @@ async function sendToIOC(panel) {
     showToast(finalMsg, '#059669');
     panel.classList.remove('visible');
 
-    // Nếu chưa có file → hiện widget upload nhanh
     if (uploaded === 0) {
-      showUploadWidget(docId, token);
+      // Không có file → bật capture mode: banner hướng dẫn click ↓ để tự động đính kèm
+      _pendingUpload = { docId, token, count: 0 };
+      showCaptureModeBanner(docId);
     } else {
       setTimeout(() => {
         chrome.runtime.sendMessage({ action: 'IOC_OPEN_TAB', url: `${IOC_URL}/documents/${docId}` });
@@ -785,6 +806,57 @@ async function sendToIOC(panel) {
   } finally {
     if (sendBtn) { sendBtn.textContent = '🚀 Gửi sang xabacha.com'; sendBtn.disabled = false; }
   }
+}
+
+/* ══════════════════════════════════════
+   CAPTURE MODE BANNER
+   Hiện sau khi tạo VB thành công nhưng chưa có file.
+   User chỉ cần nhấn ↓ trên từng file → auto-upload.
+══════════════════════════════════════ */
+
+function showCaptureModeBanner(docId) {
+  const old = document.getElementById('ioc-capture-banner');
+  if (old) old.remove();
+
+  const banner = document.createElement('div');
+  banner.id = 'ioc-capture-banner';
+  banner.style.cssText = [
+    'position:fixed','bottom:0','left:0','right:0','z-index:2147483647',
+    'background:#1d4ed8','color:white','padding:10px 18px',
+    'font-family:sans-serif','font-size:13px','font-weight:500',
+    'display:flex','align-items:center','justify-content:space-between',
+    'gap:12px','box-shadow:0 -2px 12px rgba(0,0,0,0.25)',
+  ].join(';');
+
+  banner.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+      <span style="font-size:20px;flex-shrink:0;">📎</span>
+      <div>
+        <div style="font-weight:700;">Văn bản #${docId} đã lưu — Nhấn <b style="background:rgba(255,255,255,.25);padding:1px 6px;border-radius:4px;">↓</b> trên từng file để tự động đính kèm</div>
+        <div id="ioc-cm-status" style="font-size:11px;opacity:.85;margin-top:2px;">0 file đã đính kèm</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+      <button id="ioc-cm-done" style="background:white;color:#1d4ed8;border:none;padding:5px 14px;border-radius:7px;font-weight:700;font-size:12px;cursor:pointer;">✅ Xong — Mở văn bản</button>
+      <button id="ioc-cm-cancel" style="background:rgba(255,255,255,.15);color:white;border:none;padding:5px 10px;border-radius:7px;font-size:12px;cursor:pointer;">✕</button>
+    </div>`;
+
+  document.body.appendChild(banner);
+
+  document.getElementById('ioc-cm-done').onclick = () => {
+    banner.remove();
+    _pendingUpload = null;
+    chrome.runtime.sendMessage({ action: 'IOC_OPEN_TAB', url: `${IOC_URL}/documents/${docId}` });
+  };
+  document.getElementById('ioc-cm-cancel').onclick = () => {
+    banner.remove();
+    _pendingUpload = null;
+  };
+}
+
+function updateCaptureModeBanner(count) {
+  const status = document.getElementById('ioc-cm-status');
+  if (status) status.textContent = `${count} file đã đính kèm tự động ✅`;
 }
 
 /* ══════════════════════════════════════
