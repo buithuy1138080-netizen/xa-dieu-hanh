@@ -95,13 +95,18 @@ export const dashboardApi = {
   summary: () => apiClient.get<DashboardSummary>('/dashboard/summary'),
   // Individual calls kept for backwards compatibility / granular refresh
   stats: () => apiClient.get<DashboardStats>('/dashboard/stats'),
-  timeline: (days = 30) =>
-    apiClient.get<TimelinePoint[]>('/dashboard/chart/timeline', { params: { days } }),
+  timeline: (days = 30, dateFrom?: string, dateTo?: string) =>
+    apiClient.get<TimelinePoint[]>('/dashboard/chart/timeline', {
+      params: { days, date_from: dateFrom || undefined, date_to: dateTo || undefined },
+    }),
   overdue: (limit = 8) =>
     apiClient.get<OverdueTask[]>('/dashboard/overdue', { params: { limit } }),
   upcoming: (days = 7) =>
     apiClient.get<UpcomingTask[]>('/dashboard/upcoming', { params: { days } }),
-  unitPerformance: () => apiClient.get<UnitPerformance[]>('/dashboard/unit-performance'),
+  unitPerformance: (dateFrom?: string, dateTo?: string) =>
+    apiClient.get<UnitPerformance[]>('/dashboard/unit-performance', {
+      params: { date_from: dateFrom || undefined, date_to: dateTo || undefined },
+    }),
   directiveStats: () => apiClient.get<DirectiveStats>('/dashboard/directive-stats'),
   kpiStats: () => apiClient.get<KPIStatsDash>('/dashboard/kpi-stats'),
   nq57Stats: () => apiClient.get<NQ57StatsDash>('/dashboard/nq57-stats'),

@@ -1,7 +1,8 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import date as DateType, datetime, timedelta, timezone
+from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import and_, case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -113,15 +114,24 @@ async def get_stats(
 @router.get("/chart/timeline", response_model=list[TimelinePoint])
 async def chart_timeline(
     days: int = 30,
+    date_from: Optional[DateType] = Query(None),
+    date_to:   Optional[DateType] = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     now = _now()
-    since = now - timedelta(days=days)
+    if date_from and date_to:
+        since = datetime(date_from.year, date_from.month, date_from.day, tzinfo=timezone.utc)
+        until = datetime(date_to.year,   date_to.month,   date_to.day,   23, 59, 59, tzinfo=timezone.utc)
+        span  = (date_to - date_from).days + 1
+    else:
+        since = now - timedelta(days=days)
+        until = now
+        span  = days
 
     created_rows = (await db.execute(
         select(cast(Task.created_at, Date).label("day"), func.count().label("cnt"))
-        .where(Task.created_at >= since, Task.deleted_at.is_(None))
+        .where(Task.created_at >= since, Task.created_at <= until, Task.deleted_at.is_(None))
         .group_by(cast(Task.created_at, Date))
     )).all()
     created_map = {str(r.day): int(r.cnt) for r in created_rows}
@@ -132,6 +142,7 @@ async def chart_timeline(
             Task.status == "completed",
             Task.completed_at.isnot(None),
             Task.completed_at >= since,
+            Task.completed_at <= until,
             Task.deleted_at.is_(None),
         )
         .group_by(cast(Task.completed_at, Date))
@@ -139,8 +150,9 @@ async def chart_timeline(
     completed_map = {str(r.day): int(r.cnt) for r in completed_rows}
 
     result = []
-    for i in range(days):
-        d = (since + timedelta(days=i + 1)).date()
+    start_date = since.date() if date_from else (now - timedelta(days=days)).date()
+    for i in range(span):
+        d = start_date + timedelta(days=i + (0 if date_from else 1))
         result.append(TimelinePoint(
             date=d.strftime("%d/%m"),
             created=created_map.get(str(d), 0),
@@ -223,10 +235,18 @@ async def get_upcoming(
 
 @router.get("/unit-performance", response_model=list[UnitPerformanceOut])
 async def get_unit_performance(
+    date_from: Optional[DateType] = Query(None),
+    date_to:   Optional[DateType] = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     now = _now()
+    date_filters = []
+    if date_from:
+        date_filters.append(Task.created_at >= datetime(date_from.year, date_from.month, date_from.day, tzinfo=timezone.utc))
+    if date_to:
+        date_filters.append(Task.created_at <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59, tzinfo=timezone.utc))
+
     rows = (await db.execute(
         select(
             User.id,
@@ -241,7 +261,7 @@ async def get_unit_performance(
             )).label("overdue"),
         )
         .join(Task, Task.assignee_id == User.id)
-        .where(User.is_active.is_(True), Task.deleted_at.is_(None))
+        .where(User.is_active.is_(True), Task.deleted_at.is_(None), *date_filters)
         .group_by(User.id, User.full_name, User.username)
         .order_by(func.count(Task.id).desc())
     )).all()

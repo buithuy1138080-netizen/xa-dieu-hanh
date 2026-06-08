@@ -2,9 +2,9 @@ import { motion } from 'framer-motion'
 import {
   AlertTriangle, BarChart3, Bell, CheckCircle2,
   FileText, ClipboardList, TrendingUp, Building2,
-  ArrowRight, Activity, Target, Zap,
+  ArrowRight, Activity, Target, Zap, CalendarRange,
 } from 'lucide-react'
-import { memo, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell,
@@ -111,6 +111,14 @@ function DashboardSkeleton() {
   )
 }
 
+// Helpers
+function toISODate(d: Date) { return d.toISOString().slice(0, 10) }
+function defaultRange() {
+  const to = new Date()
+  const from = new Date(); from.setDate(from.getDate() - 29)
+  return { from: toISODate(from), to: toISODate(to) }
+}
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [timeline, setTimeline] = useState<TimelinePoint[]>([])
@@ -124,14 +132,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [apiErrors, setApiErrors] = useState<string[]>([])
 
-  useEffect(() => {
+  const [dateFrom, setDateFrom] = useState(defaultRange().from)
+  const [dateTo,   setDateTo]   = useState(defaultRange().to)
+
+  const fetchData = useCallback((from: string, to: string) => {
     setLoading(true)
     const errors: string[] = []
-    // 2 calls instead of 8: summary + timeline + unit-performance
     Promise.allSettled([
       dashboardApi.summary(),
-      dashboardApi.timeline(30),
-      dashboardApi.unitPerformance(),
+      dashboardApi.timeline(30, from, to),
+      dashboardApi.unitPerformance(from, to),
     ]).then(([s, t, u]) => {
       if (s.status === 'fulfilled') {
         const d = s.value.data
@@ -150,6 +160,10 @@ export default function DashboardPage() {
       if (errors.length) setApiErrors(errors)
     }).finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => { fetchData(dateFrom, dateTo) }, [])   // eslint-disable-line
+
+  const handleApply = () => { if (dateFrom && dateTo) fetchData(dateFrom, dateTo) }
 
   const taskPieData = useMemo(() => stats ? [
     { name: 'Chờ xử lý',     value: stats.pending,      color: '#94a3b8' },
@@ -182,14 +196,35 @@ export default function DashboardPage() {
         )}
 
         {/* Page header */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-slate-800 tracking-tight">Tổng quan IOC</h1>
             <p className="text-xs text-slate-400 mt-0.5 capitalize">
               {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Date range filter */}
+            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+              <CalendarRange size={14} className="text-blue-500 shrink-0" />
+              <input
+                type="date" value={dateFrom} max={dateTo}
+                onChange={e => setDateFrom(e.target.value)}
+                className="text-xs text-slate-700 bg-transparent border-none outline-none w-32 cursor-pointer"
+              />
+              <span className="text-slate-300 text-xs">—</span>
+              <input
+                type="date" value={dateTo} min={dateFrom} max={toISODate(new Date())}
+                onChange={e => setDateTo(e.target.value)}
+                className="text-xs text-slate-700 bg-transparent border-none outline-none w-32 cursor-pointer"
+              />
+              <button
+                onClick={handleApply}
+                className="text-xs font-semibold text-white bg-blue-500 hover:bg-blue-600 px-2.5 py-1 rounded-lg transition-colors"
+              >
+                Lọc
+              </button>
+            </div>
             <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-full shadow-sm">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-xs font-semibold text-emerald-700">Hệ thống hoạt động</span>
