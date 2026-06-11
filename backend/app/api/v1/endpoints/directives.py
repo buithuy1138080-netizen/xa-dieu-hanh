@@ -196,6 +196,22 @@ async def list_directives(
         except ValueError:
             pass
 
+    # Lọc theo đơn vị: manager/staff chỉ thấy chỉ đạo của đơn vị mình (chủ trì + phối hợp)
+    if current_user.role not in ("admin", "leader"):
+        staff = (await db.execute(
+            select(Staff).where(Staff.user_id == current_user.id)
+        )).scalar_one_or_none()
+        dept_id = staff.department_id if staff else None
+        if dept_id:
+            conditions.append(or_(
+                Directive.responsible_department_id == dept_id,
+                Directive.id.in_(
+                    select(DirectiveUnit.directive_id).where(
+                        DirectiveUnit.department_id == dept_id
+                    )
+                ),
+            ))
+
     count_stmt = select(func.count(Directive.id)).where(*conditions)
     total = (await db.execute(count_stmt)).scalar_one()
 
