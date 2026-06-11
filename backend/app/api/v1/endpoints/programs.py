@@ -264,6 +264,8 @@ async def update_program(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role not in ("admin", "leader", "manager"):
+        raise HTTPException(403, "Không có quyền sửa chương trình")
     prog = (await db.execute(
         select(Program).where(Program.id == program_id, Program.deleted_at.is_(None))
     )).scalar_one_or_none()

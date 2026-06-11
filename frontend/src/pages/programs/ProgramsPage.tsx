@@ -6,6 +6,7 @@ import { programsApi, tagsApi } from '../../api/programs'
 import type { Program, Tag } from '../../api/programs'
 import TagBadge from '../../components/common/TagBadge'
 import AppLayout from '../../components/layout/AppLayout'
+import { useAuthStore } from '../../store/authStore'
 
 const TYPE_LABELS: Record<string, string> = {
   nghi_quyet: 'Nghị quyết',
@@ -27,6 +28,9 @@ const EMPTY_FORM = {
 
 export default function ProgramsPage() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canEdit = ['admin', 'leader', 'manager'].includes(user?.role ?? '')
+  const canDelete = ['admin', 'leader'].includes(user?.role ?? '')
   const [programs, setPrograms] = useState<Program[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
@@ -114,12 +118,14 @@ export default function ProgramsPage() {
             </h1>
             <p className="text-sm text-slate-400 mt-0.5">Quản lý các chương trình, nghị quyết, đề án đang triển khai</p>
           </div>
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition"
-          >
-            <Plus size={15} /> Thêm mới
-          </button>
+          {canEdit && (
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition"
+            >
+              <Plus size={15} /> Thêm mới
+            </button>
+          )}
         </div>
 
         {/* List */}
@@ -168,20 +174,24 @@ export default function ProgramsPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={() => openEdit(p)}
-                        className="p-1.5 hover:bg-blue-50 rounded-lg"
-                        title="Sửa chương trình"
-                      >
-                        <Edit2 size={14} className="text-blue-500" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(p)}
-                        className="p-1.5 hover:bg-red-50 rounded-lg"
-                        title="Xóa chương trình"
-                      >
-                        <Trash2 size={14} className="text-red-500" />
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => openEdit(p)}
+                          className="p-1.5 hover:bg-blue-50 rounded-lg"
+                          title="Sửa chương trình"
+                        >
+                          <Edit2 size={14} className="text-blue-500" />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDelete(p)}
+                          className="p-1.5 hover:bg-red-50 rounded-lg"
+                          title="Xóa chương trình"
+                        >
+                          <Trash2 size={14} className="text-red-500" />
+                        </button>
+                      )}
                       <Link
                         to={`/nq57?program=${p.id}`}
                         className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 font-semibold px-3 py-1.5 rounded-lg hover:bg-violet-50 transition"
