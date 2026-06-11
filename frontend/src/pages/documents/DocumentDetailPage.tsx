@@ -1,3 +1,4 @@
+import { ArrowLeft } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { departmentsApi } from '../../api/departments'
@@ -236,7 +237,12 @@ export default function DocumentDetailPage() {
         {/* ── Top bar ── */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/documents')} className="text-slate-400 hover:text-slate-700 text-sm">← Danh sách</button>
+            <button
+              onClick={() => navigate(-1)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition"
+            >
+              <ArrowLeft size={15} /> Quay lại
+            </button>
             <span className="text-slate-300">|</span>
             <DocTypeBadge type={doc.doc_type} />
             <DocStatusBadge status={doc.status} />
