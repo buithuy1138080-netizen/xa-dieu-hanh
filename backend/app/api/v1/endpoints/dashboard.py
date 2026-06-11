@@ -285,6 +285,7 @@ async def get_unit_performance(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
+    from app.models.department import Department
     now = _now()
     date_filters = []
     if date_from:
@@ -294,9 +295,9 @@ async def get_unit_performance(
 
     rows = (await db.execute(
         select(
-            User.id,
-            User.full_name,
-            User.username,
+            Department.id,
+            Department.name,
+            Department.short_name,
             func.count(Task.id).label("total"),
             func.sum(case((Task.status == "completed", 1), else_=0)).label("done"),
             func.sum(case(
@@ -305,9 +306,9 @@ async def get_unit_performance(
                 else_=0,
             )).label("overdue"),
         )
-        .join(Task, Task.assignee_id == User.id)
-        .where(User.is_active.is_(True), Task.deleted_at.is_(None), *date_filters)
-        .group_by(User.id, User.full_name, User.username)
+        .join(Task, Task.lead_department_id == Department.id)
+        .where(Task.deleted_at.is_(None), *date_filters)
+        .group_by(Department.id, Department.name, Department.short_name)
         .order_by(func.count(Task.id).desc())
     )).all()
 
@@ -316,7 +317,7 @@ async def get_unit_performance(
         total = int(r.total or 0)
         done = int(r.done or 0)
         result.append(UnitPerformanceOut(
-            name=r.full_name or r.username,
+            name=r.short_name or r.name,
             total=total,
             done=done,
             overdue=int(r.overdue or 0),
