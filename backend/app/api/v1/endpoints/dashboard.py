@@ -309,6 +309,7 @@ async def get_unit_performance(
         .join(Task, Task.lead_department_id == Department.id)
         .where(Task.deleted_at.is_(None), *date_filters)
         .group_by(Department.id, Department.name, Department.short_name)
+        .having(func.count(Task.id) > 0)
         .order_by(func.count(Task.id).desc())
     )).all()
 
