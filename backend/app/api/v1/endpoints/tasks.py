@@ -38,8 +38,8 @@ async def _check_task_write_permission(
     """Enforce role-based write permissions.
 
     admin / leader : full access
-    manager        : create/view/edit for own dept (lead or coordinating); NO delete
-    staff          : view only; NO create/edit/delete
+    manager        : create/edit for own dept (lead or coordinating); NO delete
+    staff          : create own tasks; edit own tasks (creator/assignee); NO delete
     """
     if current_user.role in ("admin", "leader"):
         return
@@ -47,8 +47,29 @@ async def _check_task_write_permission(
     user_dept = await _get_user_dept_id(db, current_user.id)
 
     if current_user.role == "staff":
-        if action in ("update", "delete", "create"):
-            raise HTTPException(403, "Nhân viên không có quyền thêm, sửa hoặc xóa nhiệm vụ")
+        # Xóa: không cho phép
+        if action == "delete":
+            raise HTTPException(403, "Nhân viên không có quyền xóa nhiệm vụ")
+        # Tạo mới: cho phép (nhân viên tạo nhiệm vụ cho chính mình)
+        if action == "create":
+            return
+        # Cập nhật: chỉ được sửa nhiệm vụ do mình tạo hoặc được giao cho mình
+        if action == "update" and task_id:
+            t = (await db.execute(
+                select(Task).where(Task.id == task_id, Task.deleted_at.is_(None))
+            )).scalar_one_or_none()
+            if t is None:
+                raise HTTPException(404, "Không tìm thấy nhiệm vụ")
+            is_creator  = t.created_by == current_user.id
+            is_assignee = t.assignee_id == current_user.id
+            # Kiểm tra giao qua bảng Staff
+            if not is_creator and not is_assignee and t.assignee_staff_id:
+                staff_rec = (await db.execute(
+                    select(Staff).where(Staff.user_id == current_user.id)
+                )).scalar_one_or_none()
+                is_assignee = staff_rec is not None and t.assignee_staff_id == staff_rec.id
+            if not is_creator and not is_assignee:
+                raise HTTPException(403, "Nhân viên chỉ được cập nhật nhiệm vụ do mình tạo hoặc được giao cho mình")
         return
 
     if current_user.role == "manager":

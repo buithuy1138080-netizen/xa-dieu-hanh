@@ -121,10 +121,11 @@ export default function TaskListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuthStore()
   const canDelete = user?.role === 'admin' || user?.role === 'leader'
-  // Manager/staff chỉ sửa nhiệm vụ do chính mình tạo
   function canEditTask(task: Task): boolean {
     if (user?.role === 'admin' || user?.role === 'leader') return true
-    if (user?.role === 'staff') return false
+    // Nhân viên được sửa nhiệm vụ do mình tạo hoặc được giao cho mình
+    if (user?.role === 'staff') return task.created_by === user?.id || task.assignee_id === user?.id
+    // Manager: nhiệm vụ của đơn vị mình (backend kiểm tra thêm)
     return task.created_by === user?.id
   }
 
