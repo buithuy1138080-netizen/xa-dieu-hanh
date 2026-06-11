@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.models.program import Program
 from app.models.task import Task, TaskDepartment
 from app.models.user import User
 from app.schemas.kpi import (
@@ -267,7 +268,6 @@ async def get_nq57_stats(
     _: User = Depends(get_current_user),
 ):
     today = datetime.now(timezone.utc)
-    base_cond = and_(Task.deleted_at.is_(None), Task.task_type == "nq57")
     row = (await db.execute(
         select(
             func.count().label("total"),
@@ -283,7 +283,11 @@ async def get_nq57_stats(
                 else_=0,
             )).label("delayed"),
             func.avg(Task.progress_percent).label("avg_progress"),
-        ).where(base_cond)
+        ).select_from(Task).join(Program, Task.program_id == Program.id).where(
+            Program.code.ilike("%NQ57%"),
+            Task.deleted_at.is_(None),
+            Program.deleted_at.is_(None),
+        )
     )).one()
     return NQ57Stats(
         total=row.total or 0,

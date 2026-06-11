@@ -12,6 +12,7 @@ from sqlalchemy.types import Date
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.document import Document
+from app.models.program import Program
 from app.models.task import Task
 from app.models.user import User
 
@@ -403,7 +404,7 @@ async def get_kpi_stats(
                 (and_(KPI.deadline.isnot(None), KPI.deadline < now, KPI.status != "completed"), 1),
                 else_=0,
             )).label("overdue"),
-        )
+        ).where(KPI.deleted_at.is_(None))
     )).one()
 
     return KPIStatsOut(
@@ -477,7 +478,11 @@ async def get_nq57_stats(
                 else_=0,
             )).label("delayed"),
             func.avg(Task.progress_percent).label("avg_progress"),
-        ).where(Task.task_type == "nq57", Task.deleted_at.is_(None))
+        ).select_from(Task).join(Program, Task.program_id == Program.id).where(
+            Program.code.ilike("%NQ57%"),
+            Task.deleted_at.is_(None),
+            Program.deleted_at.is_(None),
+        )
     )).one()
 
     return NQ57StatsOut(
