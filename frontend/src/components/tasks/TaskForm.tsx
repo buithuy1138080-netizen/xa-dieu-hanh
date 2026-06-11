@@ -1,4 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { getApiErrorMessage } from '../../utils/apiError'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { BookOpen, Building2, Check, ChevronDown, ClipboardList, FileText, Search, User as UserIcon, X } from 'lucide-react'
 import apiClient from '../../api/client'
@@ -334,8 +335,8 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
         await tasksApi.create(payload)
       }
       onSuccess()
-    } catch {
-      setError('Có lỗi xảy ra. Vui lòng thử lại.')
+    } catch (err) {
+      setError(getApiErrorMessage(err))
     } finally {
       setLoading(false)
     }

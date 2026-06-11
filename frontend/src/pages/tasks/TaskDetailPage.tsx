@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { tasksApi } from '../../api/tasks'
+import { getApiErrorMessage } from '../../utils/apiError'
 import AppLayout from '../../components/layout/AppLayout'
 import PriorityBadge from '../../components/tasks/PriorityBadge'
 import StatusBadge from '../../components/tasks/StatusBadge'
@@ -135,8 +136,8 @@ export default function TaskDetailPage() {
       await tasksApi.updateStatus(task.id, newStatus)
       showToast('Đã cập nhật trạng thái')
       fetchTask()
-    } catch {
-      showToast('Cập nhật trạng thái thất bại', 'error')
+    } catch (err) {
+      showToast(getApiErrorMessage(err, 'Cập nhật trạng thái thất bại'), 'error')
     } finally {
       setActionLoading(false)
     }
@@ -149,8 +150,8 @@ export default function TaskDetailPage() {
       await tasksApi.updateProgress(task.id, progress)
       showToast('Đã cập nhật tiến độ')
       fetchTask()
-    } catch {
-      showToast('Cập nhật tiến độ thất bại', 'error')
+    } catch (err) {
+      showToast(getApiErrorMessage(err, 'Cập nhật tiến độ thất bại'), 'error')
     } finally {
       setActionLoading(false)
     }
@@ -164,8 +165,8 @@ export default function TaskDetailPage() {
       await tasksApi.addComment(task.id, comment.trim())
       setComment('')
       fetchTask()
-    } catch {
-      showToast('Không thể gửi bình luận', 'error')
+    } catch (err) {
+      showToast(getApiErrorMessage(err, 'Không thể gửi bình luận'), 'error')
     } finally {
       setCommenting(false)
     }
@@ -176,8 +177,8 @@ export default function TaskDetailPage() {
     try {
       await tasksApi.deleteComment(task.id, commentId)
       fetchTask()
-    } catch {
-      showToast('Xóa bình luận thất bại', 'error')
+    } catch (err) {
+      showToast(getApiErrorMessage(err, 'Xóa bình luận thất bại'), 'error')
     }
   }
 
@@ -188,8 +189,8 @@ export default function TaskDetailPage() {
       await tasksApi.uploadAttachment(task.id, file)
       showToast('Đã đính kèm file')
       fetchTask()
-    } catch {
-      showToast('Đính kèm file thất bại', 'error')
+    } catch (err) {
+      showToast(getApiErrorMessage(err, 'Đính kèm file thất bại'), 'error')
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -221,8 +222,8 @@ export default function TaskDetailPage() {
     try {
       await tasksApi.deleteAttachment(task.id, attId)
       fetchTask()
-    } catch {
-      showToast('Xóa file thất bại', 'error')
+    } catch (err) {
+      showToast(getApiErrorMessage(err, 'Xóa file thất bại'), 'error')
     }
   }
 
@@ -231,8 +232,8 @@ export default function TaskDetailPage() {
     try {
       await tasksApi.delete(task.id)
       navigate('/tasks')
-    } catch {
-      showToast('Xóa nhiệm vụ thất bại', 'error')
+    } catch (err) {
+      showToast(getApiErrorMessage(err, 'Xóa nhiệm vụ thất bại'), 'error')
     }
   }
 

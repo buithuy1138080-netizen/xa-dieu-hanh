@@ -11,6 +11,7 @@ import type { DeptRead } from '../../api/departments'
 import { programsApi } from '../../api/programs'
 import type { Program } from '../../api/programs'
 import { tasksApi } from '../../api/tasks'
+import { getApiErrorMessage } from '../../utils/apiError'
 import ExcelImportModal from '../../components/common/ExcelImportModal'
 import AppLayout from '../../components/layout/AppLayout'
 import PriorityBadge from '../../components/tasks/PriorityBadge'
@@ -263,9 +264,13 @@ export default function TaskListPage() {
 
   async function handleDelete(id: number) {
     if (!confirm('Xóa nhiệm vụ này?')) return
-    await tasksApi.delete(id)
-    fetchList(filters, page)
-    refreshStats()
+    try {
+      await tasksApi.delete(id)
+      fetchList(filters, page)
+      refreshStats()
+    } catch (err) {
+      showToast(getApiErrorMessage(err))
+    }
   }
 
   function closeForm() { setShowForm(false); setEditTask(null) }
