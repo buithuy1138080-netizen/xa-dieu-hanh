@@ -12,7 +12,7 @@ import type { Program, ProgramDashboard, ProgramDocument, ProgramKpi, ProgramTas
 import AppLayout from '../../components/layout/AppLayout'
 import TaskForm from '../../components/tasks/TaskForm'
 import { useAuthStore } from '../../store/authStore'
-import { isAdminOrLeader } from '../../types'
+import { isAdminOrLeader, isManagerOrAbove } from '../../types'
 
 // ── Hằng số ───────────────────────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ function ProgressBar({ value, max = 100, color = 'bg-emerald-500', thin = false 
 export default function NQ57DashboardPage() {
   const navigate = useNavigate()
   const currentUser = useAuthStore(s => s.user)
-  const canManage = isAdminOrLeader(currentUser)
+  const canManage = isManagerOrAbove(currentUser)
   const [searchParams] = useSearchParams()
 
   const [programs, setPrograms] = useState<Program[]>([])

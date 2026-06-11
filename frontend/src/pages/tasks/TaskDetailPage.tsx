@@ -84,8 +84,13 @@ export default function TaskDetailPage() {
   )
   // Nhân viên tự tạo nhiệm vụ
   const isCreator = !!task && user?.id != null && task.created_by === user.id
-  // View-only: nhân viên không phải người được giao (không thể đổi trạng thái/đính kèm)
-  const isViewOnly = isStaff && !isAssignee
+  // Nhân viên thuộc đơn vị chủ trì hoặc phối hợp
+  const isOwnDept = !!task && user?.department_id != null && (
+    task.lead_department_id === user.department_id ||
+    task.departments.some(d => d.department_id === user.department_id)
+  )
+  // View-only: nhân viên không phải người được giao VÀ không thuộc đơn vị phụ trách
+  const isViewOnly = isStaff && !isAssignee && !isOwnDept
 
   // Nhân viên (creator hoặc assignee) được chuyển sang "đang thực hiện" hoặc "hoàn thành"
   function canClickStatus(statusId: string): boolean {
