@@ -204,6 +204,94 @@ async def list_staff(
     )
 
 
+@router.get("/export/excel")
+async def export_staff_excel(
+    search: str | None = Query(None),
+    department_id: int | None = Query(None),
+    role: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    import io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from fastapi.responses import StreamingResponse
+    from datetime import datetime as _dt
+
+    conditions = []
+    if search:
+        conditions.append(or_(
+            Staff.full_name.ilike(f"%{search}%"),
+            Staff.position.ilike(f"%{search}%"),
+            Staff.employee_code.ilike(f"%{search}%"),
+            Staff.phone.ilike(f"%{search}%"),
+            Staff.email.ilike(f"%{search}%"),
+        ))
+    if department_id:
+        conditions.append(Staff.department_id == department_id)
+    if role:
+        conditions.append(Staff.role == role)
+
+    base_q = select(Staff).where(*conditions) if conditions else select(Staff)
+    stmt = base_q.options(selectinload(Staff.department), selectinload(Staff.user)).order_by(Staff.full_name)
+    items = (await db.execute(stmt)).scalars().all()
+
+    ROLE_MAP = {"admin": "Admin", "leader": "Lãnh đạo", "manager": "Quản lý", "staff": "Nhân viên"}
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Nhân sự"
+
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill(fill_type="solid", fgColor="1D4ED8")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    headers = ["STT", "Mã NV", "Họ và tên", "Chức vụ", "Đơn vị", "Phân quyền",
+               "Email", "Điện thoại", "Tên đăng nhập", "Trạng thái"]
+    col_widths = [6, 10, 25, 22, 22, 14, 28, 15, 18, 12]
+
+    for col, (h, w) in enumerate(zip(headers, col_widths), 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        ws.column_dimensions[cell.column_letter].width = w
+    ws.row_dimensions[1].height = 28
+
+    alt_fill = PatternFill(fill_type="solid", fgColor="EFF6FF")
+    center = Alignment(horizontal="center", vertical="center")
+    left = Alignment(horizontal="left", vertical="center")
+
+    for i, s in enumerate(items, 1):
+        row = i + 1
+        fill = alt_fill if i % 2 == 0 else None
+        def c(col, val, align=left):
+            cell = ws.cell(row=row, column=col, value=val)
+            cell.alignment = align
+            if fill: cell.fill = fill
+        c(1, i, center)
+        c(2, s.employee_code or "")
+        c(3, s.full_name)
+        c(4, s.position or "")
+        c(5, (s.department.short_name or s.department.name) if s.department else "")
+        c(6, ROLE_MAP.get(s.role, s.role), center)
+        c(7, s.email or "")
+        c(8, s.phone or "")
+        c(9, s.user.username if s.user else "")
+        c(10, "Hoạt động" if s.is_active else "Ngừng hoạt động", center)
+
+    ws.freeze_panes = "A2"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = f"nhan-su-{_dt.now().strftime('%Y%m%d-%H%M')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 @router.get("/dropdown")
 async def staff_dropdown(
     search: str | None = Query(None),

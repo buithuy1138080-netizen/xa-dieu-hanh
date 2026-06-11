@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Edit2, Eye, EyeOff, KeyRound, Lock, Plus, Search, Shield, Trash2, Users, X,
+  Download, Edit2, Eye, EyeOff, KeyRound, Lock, Plus, Search, Shield, Trash2, Users, X,
 } from 'lucide-react'
 import apiClient from '../../api/client'
 import AppLayout from '../../components/layout/AppLayout'
@@ -282,6 +282,7 @@ export default function StaffPage() {
   const [roleFilter, setRoleFilter] = useState('')
   const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<StaffRecord | null>(null)
   const [pwdModal, setPwdModal] = useState<StaffRecord | null>(null)
@@ -313,6 +314,23 @@ export default function StaffPage() {
       const { data } = await apiClient.get<{ items: StaffRecord[]; total: number }>(`/staff?${params}`)
       setItems(data.items); setTotal(data.total)
     } finally { setLoading(false) }
+  }
+
+  async function handleExport() {
+    setExporting(true)
+    try {
+      const params = new URLSearchParams()
+      if (search) params.set('search', search)
+      if (deptFilter) params.set('department_id', deptFilter)
+      if (roleFilter) params.set('role', roleFilter)
+      const res = await apiClient.get(`/staff/export/excel?${params}`, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data as Blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `nhan-su-${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally { setExporting(false) }
   }
 
   async function handleToggleActive(s: StaffRecord) {
@@ -348,12 +366,22 @@ export default function StaffPage() {
             }
           </p>
         </div>
-        {canAdd && (
-          <button onClick={() => { setEditing(null); setModalOpen(true) }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition shadow-sm">
-            <Plus size={16} /> {isManager ? 'Thêm nhân sự đơn vị' : 'Thêm nhân sự'}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50 transition shadow-sm disabled:opacity-60"
+          >
+            <Download size={15} className="text-emerald-600" />
+            {exporting ? 'Đang xuất...' : 'Xuất Excel'}
           </button>
-        )}
+          {canAdd && (
+            <button onClick={() => { setEditing(null); setModalOpen(true) }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition shadow-sm">
+              <Plus size={16} /> {isManager ? 'Thêm nhân sự đơn vị' : 'Thêm nhân sự'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
