@@ -19,3 +19,4 @@ from app.models.program import Tag, DocumentTag, Program, DocumentProgram  # noq
 from app.models.evidence import Evidence  # noqa: F401
 from app.models.ai_chat import AiChatSession, AiChatMessage  # noqa: F401
 from app.models.meeting import Meeting, MeetingFile, MeetingParticipant  # noqa: F401
+from app.models.audit_log import AuditLog  # noqa: F401

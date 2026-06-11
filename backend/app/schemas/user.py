@@ -26,6 +26,18 @@ class UserRead(UserBase):
     model_config = {"from_attributes": True}
 
 
+class UserPublic(BaseModel):
+    """Minimal user info for dropdowns — no sensitive fields like email/role."""
+    id: int
+    username: str
+    full_name: str | None = None
+    is_active: bool
+    staff_id: int | None = None
+    department_id: int | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class Token(BaseModel):
     access_token: str
     refresh_token: str

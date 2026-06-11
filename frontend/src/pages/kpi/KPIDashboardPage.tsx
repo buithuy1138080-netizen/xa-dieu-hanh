@@ -513,8 +513,16 @@ export default function KPIDashboardPage() {
             <form onSubmit={handleCreate} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={lbl}>Mã KPI</label>
-                  <input className={inp} value={form.code ?? ''} onChange={e => setForm(p => ({ ...p, code: e.target.value }))} placeholder="KPI-001" />
+                  <label className={lbl}>
+                    Mã KPI
+                    <span className="ml-1 text-xs text-slate-400 font-normal">(để trống để tự sinh)</span>
+                  </label>
+                  <input
+                    className={inp}
+                    value={form.code ?? ''}
+                    onChange={e => setForm(p => ({ ...p, code: e.target.value || undefined }))}
+                    placeholder={`KPI-${form.year ?? new Date().getFullYear()}-001 (tự động)`}
+                  />
                 </div>
                 <div>
                   <label className={lbl}>Nhóm</label>

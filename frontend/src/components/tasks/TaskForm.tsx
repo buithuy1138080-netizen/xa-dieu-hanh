@@ -148,7 +148,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
       apiClient.get<{ items: StaffItem[] }>('/staff?active_only=true&size=200')
         .then((r) => setStaffList(r.data.items)).catch(() => {})
     })
-    usersApi.list().then((r) => setUsers(r.data)).catch(() => {})
+    usersApi.names().then((r) => setUsers(r.data as any)).catch(() => {})
     apiClient.get<ProgramMin[]>('/programs?status=active')
       .then((r) => setPrograms(r.data)).catch(() => {})
   }, [])

@@ -19,6 +19,7 @@ from app.models.staff import Staff
 from app.models.user import User
 from app.schemas.user import Token, UserRead
 from app.core.limiter import limiter
+from app.services.audit import write_audit
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -48,6 +49,8 @@ async def login(
 
     if staff and staff.password_hash and verify_password(form_data.password, staff.password_hash):
         if not staff.is_active:
+            await write_audit(db, "login_blocked", username=login_input, resource_type="auth", details={"reason": "account_locked"}, request=request)
+            await db.commit()
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Tài khoản đã bị khóa")
         # Auto-create linked User if missing (handles legacy staff records)
         if not staff.user_id:
@@ -63,6 +66,8 @@ async def login(
             await db.flush()
             staff.user_id = user.id
             await db.commit()
+        await write_audit(db, "login", user_id=staff.user_id, username=login_input, resource_type="auth", request=request)
+        await db.commit()
         return Token(
             access_token=create_access_token(subject=staff.user_id),
             refresh_token=create_refresh_token(subject=staff.user_id),
@@ -76,12 +81,18 @@ async def login(
 
     if user and verify_password(form_data.password, user.hashed_password):
         if not user.is_active:
+            await write_audit(db, "login_blocked", user_id=user.id, username=login_input, resource_type="auth", details={"reason": "account_locked"}, request=request)
+            await db.commit()
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Tài khoản đã bị khóa")
+        await write_audit(db, "login", user_id=user.id, username=login_input, resource_type="auth", request=request)
+        await db.commit()
         return Token(
             access_token=create_access_token(subject=user.id),
             refresh_token=create_refresh_token(subject=user.id),
         )
 
+    await write_audit(db, "login_failed", username=login_input, resource_type="auth", details={"reason": "wrong_credentials"}, request=request)
+    await db.commit()
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Sai thông tin đăng nhập",

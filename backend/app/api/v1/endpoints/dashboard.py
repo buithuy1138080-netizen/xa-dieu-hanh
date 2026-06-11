@@ -13,7 +13,8 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.document import Document
 from app.models.program import Program
-from app.models.task import Task
+from app.models.staff import Staff
+from app.models.task import Task, TaskDepartment
 from app.models.user import User
 
 router = APIRouter()
@@ -75,14 +76,49 @@ def _aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
+# ─── Helpers ─────────────────────────────────────────────────────────────────
+
+async def _dept_filter(current_user: User, db: AsyncSession):
+    """Trả về filter SQLAlchemy theo phân quyền:
+    - admin/leader: xem tất cả (None)
+    - manager/staff: chỉ xem nhiệm vụ của đơn vị mình (chủ trì + phối hợp) hoặc được giao trực tiếp
+    """
+    from sqlalchemy import or_
+    if current_user.role in ("admin", "leader"):
+        return None
+    staff = (await db.execute(
+        select(Staff).where(Staff.user_id == current_user.id)
+    )).scalar_one_or_none()
+    dept_id = staff.department_id if staff else None
+
+    conditions = [Task.assignee_id == current_user.id]
+    if dept_id:
+        # Đơn vị chủ trì
+        conditions.append(Task.lead_department_id == dept_id)
+        # Đơn vị phối hợp (trong bảng task_departments)
+        conditions.append(
+            Task.id.in_(
+                select(TaskDepartment.task_id).where(
+                    TaskDepartment.department_id == dept_id
+                )
+            )
+        )
+    return or_(*conditions)
+
+
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
 @router.get("/stats", response_model=DashboardStats)
 async def get_stats(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     now = _now()
+    dept_cond = await _dept_filter(current_user, db)
+    base_where = [Task.deleted_at.is_(None)]
+    if dept_cond is not None:
+        base_where.append(dept_cond)
+
     row = (await db.execute(
         select(
             func.count(Task.id).label("total"),
@@ -96,7 +132,7 @@ async def get_stats(
                       Task.deleted_at.is_(None)), 1),
                 else_=0,
             )).label("overdue"),
-        ).where(Task.deleted_at.is_(None))
+        ).where(*base_where)
     )).one()
 
     total = int(row.total or 0)
@@ -166,18 +202,22 @@ async def chart_timeline(
 async def get_overdue(
     limit: int = 10,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     now = _now()
+    dept_cond = await _dept_filter(current_user, db)
+    where = [
+        Task.due_date.isnot(None),
+        Task.due_date < now,
+        Task.status.notin_(["completed", "cancelled"]),
+        Task.deleted_at.is_(None),
+    ]
+    if dept_cond is not None:
+        where.append(dept_cond)
     tasks = (await db.execute(
         select(Task)
         .options(selectinload(Task.assignee))
-        .where(
-            Task.due_date.isnot(None),
-            Task.due_date < now,
-            Task.status.notin_(["completed", "cancelled"]),
-            Task.deleted_at.is_(None),
-        )
+        .where(*where)
         .order_by(Task.due_date.asc())
         .limit(limit)
     )).scalars().all()
@@ -201,20 +241,24 @@ async def get_overdue(
 async def get_upcoming(
     days: int = 7,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     now = _now()
     until = now + timedelta(days=days)
+    dept_cond = await _dept_filter(current_user, db)
+    where = [
+        Task.due_date.isnot(None),
+        Task.due_date >= now,
+        Task.due_date <= until,
+        Task.status.notin_(["completed", "cancelled"]),
+        Task.deleted_at.is_(None),
+    ]
+    if dept_cond is not None:
+        where.append(dept_cond)
     tasks = (await db.execute(
         select(Task)
         .options(selectinload(Task.assignee))
-        .where(
-            Task.due_date.isnot(None),
-            Task.due_date >= now,
-            Task.due_date <= until,
-            Task.status.notin_(["completed", "cancelled"]),
-            Task.deleted_at.is_(None),
-        )
+        .where(*where)
         .order_by(Task.due_date.asc())
         .limit(10)
     )).scalars().all()
@@ -437,13 +481,13 @@ async def get_dashboard_summary(
 ):
     """Single endpoint replacing 8 separate calls from the frontend dashboard."""
     tasks, docs, directives, kpi, nq57, overdue, upcoming = await asyncio.gather(
-        get_stats(db=db, _=current_user),
+        get_stats(db=db, current_user=current_user),
         get_document_stats(db=db, _=current_user),
         get_directive_stats(db=db, _=current_user),
         get_kpi_stats(db=db, _=current_user),
         get_nq57_stats(db=db, _=current_user),
-        get_overdue(limit=5, db=db, _=current_user),
-        get_upcoming(days=7, db=db, _=current_user),
+        get_overdue(limit=5, db=db, current_user=current_user),
+        get_upcoming(days=7, db=db, current_user=current_user),
     )
     return DashboardSummary(
         tasks=tasks,

@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, timezone
 from math import ceil
 
@@ -32,6 +33,23 @@ VALID_PERIODS = {"monthly", "quarterly", "yearly", "five_year"}
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
+async def _generate_kpi_code(db: AsyncSession, year: int) -> str:
+    result = await db.execute(
+        select(KPI.code).where(
+            KPI.code.like(f"KPI-{year}-%"),
+            KPI.deleted_at.is_(None),
+        )
+    )
+    codes = result.scalars().all()
+    pat = re.compile(rf"KPI-{year}-(\d+)")
+    max_seq = 0
+    for c in codes:
+        m = pat.fullmatch(c) if c else None
+        if m:
+            max_seq = max(max_seq, int(m.group(1)))
+    return f"KPI-{year}-{max_seq + 1:03d}"
+
 
 def _calc_progress(current: float, target: float) -> float:
     if target <= 0:
@@ -199,6 +217,10 @@ async def create_kpi(
             body = body.model_copy(update={"responsible_department_id": user_dept_id})
         elif body.responsible_department_id != user_dept_id:
             raise HTTPException(403, "Quản lý chỉ được thêm KPI cho đơn vị của mình")
+
+    if not body.code or not body.code.strip():
+        auto_code = await _generate_kpi_code(db, body.year)
+        body = body.model_copy(update={"code": auto_code})
 
     progress = _calc_progress(body.current_value, body.target_value)
     k = KPI(**body.model_dump(), created_by=current_user.id, progress=progress)
