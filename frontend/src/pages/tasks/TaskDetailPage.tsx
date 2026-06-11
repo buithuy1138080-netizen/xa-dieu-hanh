@@ -84,8 +84,8 @@ export default function TaskDetailPage() {
   )
   // Nhân viên tự tạo nhiệm vụ
   const isCreator = !!task && user?.id != null && task.created_by === user.id
-  // View-only: nhân viên không phải người tạo cũng không phải người được giao
-  const isViewOnly = isStaff && !isAssignee && !isCreator
+  // View-only: nhân viên không phải người được giao (không thể đổi trạng thái/đính kèm)
+  const isViewOnly = isStaff && !isAssignee
 
   // Nhân viên (creator hoặc assignee) được chuyển sang "đang thực hiện" hoặc "hoàn thành"
   function canClickStatus(statusId: string): boolean {
@@ -98,8 +98,8 @@ export default function TaskDetailPage() {
     if (!t) return false
     if (user?.role === 'admin' || user?.role === 'leader') return true
     if (isViewOnly) return false
-    // Nhân viên: được sửa nếu là người tạo hoặc được giao
-    if (isStaff) return isCreator || isAssignee
+    // Nhân viên: chỉ được sửa nhiệm vụ do mình tạo
+    if (isStaff) return isCreator
     // Manager: được sửa nếu là người tạo (hoặc đơn vị mình — backend kiểm tra)
     return t.created_by === user?.id
   }

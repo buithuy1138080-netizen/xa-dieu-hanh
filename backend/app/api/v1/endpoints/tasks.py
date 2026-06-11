@@ -68,8 +68,8 @@ async def _check_task_write_permission(
                     select(Staff).where(Staff.user_id == current_user.id)
                 )).scalar_one_or_none()
                 is_assignee = staff_rec is not None and t.assignee_staff_id == staff_rec.id
-            if not is_creator and not is_assignee:
-                raise HTTPException(403, "Nhân viên chỉ được cập nhật nhiệm vụ do mình tạo hoặc được giao cho mình")
+            if not is_creator:
+                raise HTTPException(403, "Nhân viên chỉ được cập nhật nhiệm vụ do chính mình tạo ra")
         return
 
     if current_user.role == "manager":

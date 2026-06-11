@@ -123,8 +123,8 @@ export default function TaskListPage() {
   const canDelete = user?.role === 'admin' || user?.role === 'leader'
   function canEditTask(task: Task): boolean {
     if (user?.role === 'admin' || user?.role === 'leader') return true
-    // Nhân viên được sửa nhiệm vụ do mình tạo hoặc được giao cho mình
-    if (user?.role === 'staff') return task.created_by === user?.id || task.assignee_id === user?.id
+    // Nhân viên chỉ được sửa nhiệm vụ do chính mình tạo ra
+    if (user?.role === 'staff') return task.created_by === user?.id
     // Manager: nhiệm vụ của đơn vị mình (backend kiểm tra thêm)
     return task.created_by === user?.id
   }
