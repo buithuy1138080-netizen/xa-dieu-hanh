@@ -78,6 +78,16 @@ def _aware(dt: datetime) -> datetime:
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
+async def _get_user_dept_id(current_user: User, db: AsyncSession) -> int | None:
+    """Lấy department_id của user (None nếu không có staff record)."""
+    if current_user.role in ("admin", "leader"):
+        return None
+    staff = (await db.execute(
+        select(Staff).where(Staff.user_id == current_user.id)
+    )).scalar_one_or_none()
+    return staff.department_id if staff else None
+
+
 async def _dept_filter(current_user: User, db: AsyncSession):
     """Trả về filter SQLAlchemy theo phân quyền:
     - admin/leader: xem tất cả (None)
@@ -86,10 +96,7 @@ async def _dept_filter(current_user: User, db: AsyncSession):
     from sqlalchemy import or_
     if current_user.role in ("admin", "leader"):
         return None
-    staff = (await db.execute(
-        select(Staff).where(Staff.user_id == current_user.id)
-    )).scalar_one_or_none()
-    dept_id = staff.department_id if staff else None
+    dept_id = await _get_user_dept_id(current_user, db)
 
     conditions = [Task.assignee_id == current_user.id]
     if dept_id:
@@ -432,11 +439,17 @@ class NQ57StatsOut(BaseModel):
 @router.get("/kpi-stats", response_model=KPIStatsOut)
 async def get_kpi_stats(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     from app.models.kpi import KPI
     from datetime import date as dt_date
     now = dt_date.today()
+
+    kpi_where = [KPI.deleted_at.is_(None)]
+    if current_user.role not in ("admin", "leader"):
+        dept_id = await _get_user_dept_id(current_user, db)
+        if dept_id:
+            kpi_where.append(KPI.responsible_department_id == dept_id)
 
     row = (await db.execute(
         select(
@@ -450,7 +463,7 @@ async def get_kpi_stats(
                 (and_(KPI.deadline.isnot(None), KPI.deadline < now, KPI.status != "completed"), 1),
                 else_=0,
             )).label("overdue"),
-        ).where(KPI.deleted_at.is_(None))
+        ).where(*kpi_where)
     )).one()
 
     return KPIStatsOut(
@@ -486,8 +499,8 @@ async def get_dashboard_summary(
         get_stats(db=db, current_user=current_user),
         get_document_stats(db=db, _=current_user),
         get_directive_stats(db=db, _=current_user),
-        get_kpi_stats(db=db, _=current_user),
-        get_nq57_stats(db=db, _=current_user),
+        get_kpi_stats(db=db, current_user=current_user),
+        get_nq57_stats(db=db, current_user=current_user),
         get_overdue(limit=5, db=db, current_user=current_user),
         get_upcoming(days=7, db=db, current_user=current_user),
     )
@@ -505,9 +518,18 @@ async def get_dashboard_summary(
 @router.get("/nq57-stats", response_model=NQ57StatsOut)
 async def get_nq57_stats(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     now = _now()
+    dept_cond = await _dept_filter(current_user, db)
+
+    nq57_where = [
+        Program.code.ilike("%NQ57%"),
+        Task.deleted_at.is_(None),
+        Program.deleted_at.is_(None),
+    ]
+    if dept_cond is not None:
+        nq57_where.append(dept_cond)
 
     row = (await db.execute(
         select(
@@ -524,11 +546,7 @@ async def get_nq57_stats(
                 else_=0,
             )).label("delayed"),
             func.avg(Task.progress_percent).label("avg_progress"),
-        ).select_from(Task).join(Program, Task.program_id == Program.id).where(
-            Program.code.ilike("%NQ57%"),
-            Task.deleted_at.is_(None),
-            Program.deleted_at.is_(None),
-        )
+        ).select_from(Task).join(Program, Task.program_id == Program.id).where(*nq57_where)
     )).one()
 
     return NQ57StatsOut(
