@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle, BookOpen, CheckSquare, ChevronDown, ChevronRight,
-  ExternalLink, FileText, Filter, Link2, Plus, RefreshCw, Target, Trash2, TrendingUp, X,
+  Download, ExternalLink, FileText, Filter, Link2, Plus, RefreshCw, Target, Trash2, TrendingUp, X,
 } from 'lucide-react'
 import { documentsApi } from '../../api/documents'
+import { tasksApi } from '../../api/tasks'
 import type { DocumentRead } from '../../types/document'
 import { documentProgramsApi, programsApi } from '../../api/programs'
 import type { Program, ProgramDashboard, ProgramDocument, ProgramKpi, ProgramTask } from '../../api/programs'
@@ -89,6 +90,7 @@ export default function NQ57DashboardPage() {
   const [taskDept, setTaskDept] = useState<number | ''>('')
   const [depts, setDepts] = useState<{ id: number; name: string; short_name: string | null }[]>([])
   const [loadingTasks, setLoadingTasks] = useState(false)
+  const [exportingTasks, setExportingTasks] = useState(false)
 
   // Tab KPIs
   const [kpis, setKpis] = useState<ProgramKpi[]>([])
@@ -157,6 +159,22 @@ export default function NQ57DashboardPage() {
       setTaskPage(page)
     } finally {
       setLoadingTasks(false)
+    }
+  }, [selectedId, taskStatus, taskSearch, taskOverdue, taskDept])
+
+  const handleExportTasks = useCallback(async () => {
+    if (!selectedId) return
+    setExportingTasks(true)
+    try {
+      await tasksApi.exportExcel({
+        program_id:   selectedId,
+        status:       taskStatus   || undefined,
+        search:       taskSearch   || undefined,
+        overdue_only: taskOverdue  || undefined,
+        lead_dept_id: taskDept     ? Number(taskDept) : undefined,
+      })
+    } finally {
+      setExportingTasks(false)
     }
   }, [selectedId, taskStatus, taskSearch, taskOverdue, taskDept])
 
@@ -644,6 +662,14 @@ export default function NQ57DashboardPage() {
                 Quá hạn
               </label>
               <span className="text-xs text-slate-400 ml-auto">{taskTotal} nhiệm vụ</span>
+              <button
+                onClick={handleExportTasks}
+                disabled={exportingTasks}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition-all disabled:opacity-60"
+              >
+                <Download size={13} className="text-blue-500" />
+                {exportingTasks ? 'Đang xuất...' : 'Xuất Excel'}
+              </button>
               {canManage && (
                 <button
                   onClick={() => setShowTaskCreate(true)}

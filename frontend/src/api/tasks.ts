@@ -72,4 +72,20 @@ export const tasksApi = {
 
   removeDepartment: (taskId: number, deptId: number) =>
     apiClient.delete(`/tasks/${taskId}/departments/${deptId}`),
+
+  exportExcel: async (params: Omit<TaskFilters, 'page' | 'page_size' | 'sort_by' | 'sort_dir'> = {}) => {
+    const res = await apiClient.get('/tasks/export/excel', {
+      params,
+      responseType: 'blob',
+    })
+    const url = window.URL.createObjectURL(res.data as Blob)
+    const a = document.createElement('a')
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    a.href = url
+    a.download = `nhiem-vu-${today}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  },
 }

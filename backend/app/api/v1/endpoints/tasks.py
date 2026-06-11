@@ -533,6 +533,144 @@ def _calc_stats(rows: list[Task]) -> TaskStats:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+@router.get("/export/excel")
+async def export_tasks_excel(
+    status: str | None = None,
+    priority: str | None = None,
+    lead_dept_id: int | None = None,
+    assignee_id: int | None = None,
+    program_id: int | None = None,
+    overdue_only: bool = False,
+    due_before: datetime | None = None,
+    due_after: datetime | None = None,
+    search: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    import io as _io
+    from fastapi.responses import StreamingResponse
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    q = select(Task).where(Task.deleted_at.is_(None))
+
+    if current_user.role not in ("admin", "leader"):
+        user_dept_id = await _get_user_dept_id(db, current_user.id)
+        dept_task_ids = select(TaskDepartment.task_id).where(
+            TaskDepartment.department_id == user_dept_id,
+        ) if user_dept_id else select(TaskDepartment.task_id).where(False)
+        q = q.where(
+            or_(
+                Task.lead_department_id == user_dept_id,
+                Task.id.in_(dept_task_ids),
+                Task.assignee_id == current_user.id,
+                Task.created_by == current_user.id,
+            )
+        )
+
+    if status == "overdue":
+        _now = datetime.now(timezone.utc)
+        q = q.where(Task.due_date.isnot(None), Task.due_date < _now, Task.status.notin_(["completed", "cancelled"]))
+    elif status:
+        q = q.where(Task.status == status)
+    if priority:
+        q = q.where(Task.priority == priority)
+    if lead_dept_id:
+        q = q.where(Task.lead_department_id == lead_dept_id)
+    if assignee_id:
+        q = q.where(Task.assignee_id == assignee_id)
+    if program_id:
+        q = q.where(Task.program_id == program_id)
+    if due_before:
+        q = q.where(Task.due_date <= due_before)
+    if due_after:
+        q = q.where(Task.due_date >= due_after)
+    if search:
+        term = f"%{search}%"
+        q = q.where(or_(Task.title.ilike(term), Task.task_code.ilike(term)))
+    if overdue_only:
+        now = datetime.now(timezone.utc)
+        q = q.where(Task.due_date < now, Task.status.notin_(["completed", "cancelled"]))
+
+    q = q.order_by(Task.created_at.desc()).limit(5000)
+    for ld in _LIST_LOADS:
+        q = q.options(ld)
+    rows = (await db.execute(q)).scalars().all()
+
+    from app.models.program import Program as _Program
+    prog_ids = {t.program_id for t in rows if t.program_id}
+    prog_map: dict[int, str] = {}
+    if prog_ids:
+        progs = (await db.execute(select(_Program).where(_Program.id.in_(prog_ids)))).scalars().all()
+        prog_map = {p.id: p.name or p.code or "" for p in progs}
+
+    STATUS_LBL  = {"pending": "Chờ xử lý", "in_progress": "Đang thực hiện", "completed": "Hoàn thành", "cancelled": "Đã huỷ"}
+    PRIORITY_LBL = {"low": "Thấp", "medium": "TB", "high": "Cao", "urgent": "Khẩn"}
+
+    def fmt_dt(v):
+        if not v: return ""
+        try: return v.strftime("%d/%m/%Y")
+        except: return str(v)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Danh sách nhiệm vụ"
+
+    hdr_fill = PatternFill("solid", fgColor="1565C0")
+    hdr_font = Font(bold=True, color="FFFFFF", size=11)
+    alt_fill = PatternFill("solid", fgColor="E3F2FD")
+
+    COLS = ["Mã NV", "Tiêu đề", "Trạng thái", "Ưu tiên", "Tiến độ (%)", "Hạn xử lý", "Đơn vị CT", "Người thực hiện", "Chương trình", "Ngày tạo"]
+    WIDTHS = [14, 48, 16, 10, 12, 14, 20, 22, 22, 14]
+
+    for ci, (col, w) in enumerate(zip(COLS, WIDTHS), 1):
+        cell = ws.cell(1, ci, col)
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        ws.column_dimensions[cell.column_letter].width = w
+    ws.row_dimensions[1].height = 22
+    ws.freeze_panes = "A2"
+
+    for ri, t in enumerate(rows, 2):
+        fill = alt_fill if ri % 2 == 0 else None
+        assignee_name = ""
+        if t.assignee_staff:
+            assignee_name = t.assignee_staff.full_name or ""
+        elif t.assignee:
+            assignee_name = t.assignee.full_name or t.assignee.username or ""
+
+        prog_name = prog_map.get(t.program_id, "") if t.program_id else ""
+
+        vals = [
+            t.task_code or "",
+            t.title or "",
+            STATUS_LBL.get(t.status, t.status or ""),
+            PRIORITY_LBL.get(t.priority, t.priority or ""),
+            t.progress_percent or 0,
+            fmt_dt(t.due_date),
+            t.lead_department.name if t.lead_department else "",
+            assignee_name,
+            prog_name,
+            fmt_dt(t.created_at),
+        ]
+        for ci, v in enumerate(vals, 1):
+            cell = ws.cell(ri, ci, v)
+            if fill: cell.fill = fill
+            cell.alignment = Alignment(vertical="center")
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    from datetime import datetime as _dt
+    fname = f"nhiem-vu-{_dt.now().strftime('%Y%m%d-%H%M')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 @router.get("", response_model=PaginatedTasks)
 async def list_tasks(
     page: int = Query(1, ge=1),

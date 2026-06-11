@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import {
   AlertTriangle, Calendar, CheckCircle2, CheckSquare, CircleDashed,
-  Clock, Columns3, FileSpreadsheet, Filter, ListChecks,
+  Clock, Columns3, Download, FileSpreadsheet, Filter, ListChecks,
   Plus, TrendingUp, XCircle,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -154,6 +154,7 @@ export default function TaskListPage() {
   })
   const [listLoading, setListLoading] = useState(false)
   const [fetchError, setFetchError]   = useState<string | null>(null)
+  const [exporting, setExporting]     = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Kanban view ──
@@ -192,6 +193,25 @@ export default function TaskListPage() {
       setListLoading(false)
     }
   }, [])
+
+  const handleExport = useCallback(async () => {
+    setExporting(true)
+    try {
+      await tasksApi.exportExcel({
+        status:       filters.status       || undefined,
+        priority:     filters.priority     || undefined,
+        assignee_id:  filters.assignee_id  ? parseInt(filters.assignee_id)  : undefined,
+        lead_dept_id: filters.lead_dept_id ? parseInt(filters.lead_dept_id) : undefined,
+        program_id:   filters.program_id   ? parseInt(filters.program_id)   : undefined,
+        search:       filters.search       || undefined,
+        overdue_only: filters.overdue_only || undefined,
+        due_after:    filters.date_from    || undefined,
+        due_before:   filters.date_to      || undefined,
+      })
+    } finally {
+      setExporting(false)
+    }
+  }, [filters])
 
   const fetchKanban = useCallback(async () => {
     setKanbanLoading(true)
@@ -322,13 +342,23 @@ export default function TaskListPage() {
             </div>
 
             {view === 'list' && (
-              <button
-                onClick={() => setShowImport(true)}
-                className="hidden sm:flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-50 transition-all"
-              >
-                <FileSpreadsheet size={15} className="text-emerald-600" />
-                Import
-              </button>
+              <>
+                <button
+                  onClick={handleExport}
+                  disabled={exporting}
+                  className="hidden sm:flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-50 transition-all disabled:opacity-60"
+                >
+                  <Download size={15} className="text-blue-500" />
+                  {exporting ? 'Đang xuất...' : 'Xuất Excel'}
+                </button>
+                <button
+                  onClick={() => setShowImport(true)}
+                  className="hidden sm:flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-50 transition-all"
+                >
+                  <FileSpreadsheet size={15} className="text-emerald-600" />
+                  Import
+                </button>
+              </>
             )}
             <button
               onClick={() => setShowForm(true)}
