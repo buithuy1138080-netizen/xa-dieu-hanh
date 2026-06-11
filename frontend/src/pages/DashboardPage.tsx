@@ -16,6 +16,7 @@ import type {
   OverdueTask, TimelinePoint, UpcomingTask, UnitPerformance,
 } from '../api/dashboard'
 import AppLayout from '../components/layout/AppLayout'
+import { useAuthStore } from '../store/authStore'
 
 const fadeUp = {
   initial: { opacity: 0, y: 10 },
@@ -120,6 +121,9 @@ function defaultRange() {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuthStore()
+  const isAdminOrLeader = ['admin', 'leader'].includes(user?.role ?? '')
+
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [timeline, setTimeline] = useState<TimelinePoint[]>([])
   const [overdue, setOverdue] = useState<OverdueTask[]>([])
@@ -141,7 +145,7 @@ export default function DashboardPage() {
     Promise.allSettled([
       dashboardApi.summary(),
       dashboardApi.timeline(30, from, to),
-      dashboardApi.unitPerformance(from, to),
+      isAdminOrLeader ? dashboardApi.unitPerformance(from, to) : Promise.resolve(null),
     ]).then(([s, t, u]) => {
       if (s.status === 'fulfilled') {
         const d = s.value.data
@@ -345,10 +349,10 @@ export default function DashboardPage() {
         </div>
 
         {/* ── Row 3: Timeline + Unit performance ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className={`grid grid-cols-1 gap-4 ${isAdminOrLeader ? 'lg:grid-cols-3' : ''}`}>
 
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-            className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+            className={`${isAdminOrLeader ? 'lg:col-span-2' : ''} bg-white rounded-2xl border border-slate-100 shadow-sm p-5`}>
             <SectionHeader title="Hoạt động 30 ngày" icon={Activity} />
             {timeline.length > 0 ? (
               <ResponsiveContainer width="100%" height={180}>
@@ -378,31 +382,33 @@ export default function DashboardPage() {
             )}
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-            className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 hover:shadow-md transition-shadow">
-            <SectionHeader title="Hiệu suất đơn vị" icon={Target} />
-            {units.length > 0 ? (
-              <div className="space-y-3">
-                {units.slice(0, 7).map(u => (
-                  <div key={u.name}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-slate-600 font-medium truncate" style={{ maxWidth: 130 }}>{u.name}</span>
-                      <span className="text-slate-400 shrink-0 ml-1">{u.done}/{u.total}</span>
+          {isAdminOrLeader && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+              className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 hover:shadow-md transition-shadow">
+              <SectionHeader title="Hiệu suất đơn vị" icon={Target} />
+              {units.length > 0 ? (
+                <div className="space-y-3">
+                  {units.slice(0, 7).map(u => (
+                    <div key={u.name}>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-slate-600 font-medium truncate" style={{ maxWidth: 130 }}>{u.name}</span>
+                        <span className="text-slate-400 shrink-0 ml-1">{u.done}/{u.total}</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }} animate={{ width: `${u.completion_rate}%` }}
+                          transition={{ duration: 0.4 }}
+                          className={`h-full rounded-full ${u.completion_rate >= 80 ? 'bg-emerald-400' : u.completion_rate >= 50 ? 'bg-blue-400' : 'bg-red-400'}`}
+                        />
+                      </div>
                     </div>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }} animate={{ width: `${u.completion_rate}%` }}
-                        transition={{ duration: 0.4 }}
-                        className={`h-full rounded-full ${u.completion_rate >= 80 ? 'bg-emerald-400' : u.completion_rate >= 50 ? 'bg-blue-400' : 'bg-red-400'}`}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-44 text-slate-300 text-sm">Chưa có dữ liệu</div>
-            )}
-          </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-44 text-slate-300 text-sm">Chưa có dữ liệu</div>
+              )}
+            </motion.div>
+          )}
         </div>
 
         {/* ── Row 4: Hôm nay cần làm ── */}
