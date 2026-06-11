@@ -382,11 +382,26 @@ class DirectiveStatsOut(BaseModel):
 @router.get("/directive-stats", response_model=DirectiveStatsOut)
 async def get_directive_stats(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     from app.models.directive import Directive
     now = _now()
     soon = now + timedelta(days=7)
+
+    from sqlalchemy import or_
+    dir_where = [Directive.deleted_at.is_(None)]
+    if current_user.role not in ("admin", "leader"):
+        from app.models.directive import DirectiveUnit
+        dept_id = await _get_user_dept_id(current_user, db)
+        if dept_id:
+            dir_where.append(or_(
+                Directive.responsible_department_id == dept_id,
+                Directive.id.in_(
+                    select(DirectiveUnit.directive_id).where(
+                        DirectiveUnit.department_id == dept_id
+                    )
+                ),
+            ))
 
     row = (await db.execute(
         select(
@@ -402,7 +417,7 @@ async def get_directive_stats(
                       Directive.deadline <= soon, Directive.status == "active"), 1), else_=0,
             )).label("near_deadline"),
             func.avg(Directive.progress).label("avg_progress"),
-        ).where(Directive.deleted_at.is_(None))
+        ).where(*dir_where)
     )).one()
 
     return DirectiveStatsOut(
@@ -498,7 +513,7 @@ async def get_dashboard_summary(
     tasks, docs, directives, kpi, nq57, overdue, upcoming = await asyncio.gather(
         get_stats(db=db, current_user=current_user),
         get_document_stats(db=db, _=current_user),
-        get_directive_stats(db=db, _=current_user),
+        get_directive_stats(db=db, current_user=current_user),
         get_kpi_stats(db=db, current_user=current_user),
         get_nq57_stats(db=db, current_user=current_user),
         get_overdue(limit=5, db=db, current_user=current_user),
