@@ -336,8 +336,10 @@ async def update_status(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role not in ("admin", "leader", "manager"):
-        raise HTTPException(403, "Cần quyền admin, leader hoặc manager để thay đổi trạng thái chỉ đạo")
+    if current_user.role not in ("admin", "leader", "manager", "staff"):
+        raise HTTPException(403, "Không có quyền thay đổi trạng thái chỉ đạo")
+    if current_user.role in ("manager", "staff") and body.status != "completed":
+        raise HTTPException(403, "Quản lý/nhân viên chỉ được đánh dấu Hoàn thành")
     if body.status not in VALID_STATUSES:
         raise HTTPException(422, f"Trạng thái không hợp lệ: {body.status}")
     d = await _get_or_404(db, directive_id)
@@ -357,7 +359,7 @@ async def add_unit(
     directive_id: int,
     body: DirectiveUnitCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_or_leader),
 ):
     d = await _get_or_404(db, directive_id)
     unit = DirectiveUnit(directive_id=directive_id, **body.model_dump())
@@ -380,7 +382,7 @@ async def update_unit_progress(
     unit_id: int,
     body: DirectiveUnitUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_or_leader),
 ):
     unit = (await db.execute(
         select(DirectiveUnit).where(
@@ -417,7 +419,7 @@ async def remove_unit(
     directive_id: int,
     unit_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin_or_leader),
 ):
     unit = (await db.execute(
         select(DirectiveUnit).where(

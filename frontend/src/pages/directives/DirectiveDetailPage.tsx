@@ -58,7 +58,8 @@ export default function DirectiveDetailPage() {
   const directiveId = Number(id)
   const navigate = useNavigate()
   const { user: me } = useAuthStore()
-  const canDelete = me?.role === 'admin' || me?.role === 'leader'
+  const canEdit = me?.role === 'admin' || me?.role === 'leader'
+  const canDelete = canEdit
 
   const [directive, setDirective] = useState<DirectiveReadDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -254,7 +255,9 @@ export default function DirectiveDetailPage() {
     )
   }
 
-  const statusActions = STATUS_ACTIONS[directive.status] ?? []
+  const statusActions = (STATUS_ACTIONS[directive.status] ?? []).filter(
+    action => canEdit || action.next === 'completed'
+  )
   const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500'
   const lbl = 'block text-xs font-medium text-slate-600 mb-1'
 
@@ -270,16 +273,16 @@ export default function DirectiveDetailPage() {
             <DirectiveStatusBadge status={directive.status} />
             <DirectivePriorityBadge priority={directive.priority} />
           </div>
-          <div className="flex gap-2 shrink-0">
-            <button onClick={() => setEditOpen(true)} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition text-slate-600">
-              ✏ Sửa
-            </button>
-            {canDelete && (
+          {canEdit && (
+            <div className="flex gap-2 shrink-0">
+              <button onClick={() => setEditOpen(true)} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition text-slate-600">
+                ✏ Sửa
+              </button>
               <button onClick={handleDelete} className="px-3 py-1.5 text-sm border border-red-200 rounded-lg hover:bg-red-50 transition text-red-600">
                 🗑 Xóa
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Title */}
@@ -339,12 +342,14 @@ export default function DirectiveDetailPage() {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
                 <h2 className="text-sm font-semibold text-slate-700">Đơn vị thực hiện ({directive.units.length})</h2>
-                <button
-                  onClick={() => setUnitFormOpen(true)}
-                  className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold"
-                >
-                  + Thêm đơn vị
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => setUnitFormOpen(true)}
+                    className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold"
+                  >
+                    + Thêm đơn vị
+                  </button>
+                )}
               </div>
               {directive.units.length === 0 ? (
                 <p className="text-sm text-slate-400 text-center py-8">Chưa có đơn vị thực hiện nào</p>
@@ -390,19 +395,23 @@ export default function DirectiveDetailPage() {
                               <div className="h-1.5 rounded-full bg-indigo-500" style={{ width: `${unit.progress}%` }} />
                             </div>
                             <span className="text-xs text-slate-500 w-8 text-right">{unit.progress}%</span>
-                            <button
-                              onClick={() => { setEditingUnitId(unit.id); setEditingProgress(unit.progress) }}
-                              className="text-xs text-slate-400 hover:text-indigo-600 ml-1"
-                              title="Cập nhật tiến độ"
-                            >✏</button>
+                            {canEdit && (
+                              <button
+                                onClick={() => { setEditingUnitId(unit.id); setEditingProgress(unit.progress) }}
+                                className="text-xs text-slate-400 hover:text-indigo-600 ml-1"
+                                title="Cập nhật tiến độ"
+                              >✏</button>
+                            )}
                           </>
                         )}
                       </div>
-                      <button
-                        onClick={() => handleRemoveUnit(unit.id)}
-                        className="text-slate-300 hover:text-red-400 text-sm ml-1"
-                        title="Xóa đơn vị"
-                      >✕</button>
+                      {canEdit && (
+                        <button
+                          onClick={() => handleRemoveUnit(unit.id)}
+                          className="text-slate-300 hover:text-red-400 text-sm ml-1"
+                          title="Xóa đơn vị"
+                        >✕</button>
+                      )}
                     </div>
                   ))}
                 </div>
