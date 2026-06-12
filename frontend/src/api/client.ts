@@ -4,18 +4,12 @@ import { useAuthStore } from '../store/authStore'
 const apiClient = axios.create({
   baseURL: '/api/v1',
   headers: { 'Content-Type': 'application/json' },
-})
-
-// Attach Bearer token to every request
-apiClient.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
-  if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
+  withCredentials: true,  // send HttpOnly cookies automatically
 })
 
 // Auto-refresh on 401
 let _refreshing = false
-let _waitQueue: Array<(token: string) => void> = []
+let _waitQueue: Array<(success: boolean) => void> = []
 
 apiClient.interceptors.response.use(
   (res) => res,
@@ -25,18 +19,17 @@ apiClient.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    const { refreshToken, setToken, logout } = useAuthStore.getState()
-    if (!refreshToken) {
+    const { user, logout } = useAuthStore.getState()
+    if (!user) {
       logout()
       return Promise.reject(error)
     }
 
     if (_refreshing) {
-      // Queue requests while a refresh is in flight
-      return new Promise((resolve) => {
-        _waitQueue.push((newToken: string) => {
-          original.headers.Authorization = `Bearer ${newToken}`
-          resolve(apiClient(original))
+      return new Promise((resolve, reject) => {
+        _waitQueue.push((success) => {
+          if (success) resolve(apiClient(original))
+          else reject(error)
         })
       })
     }
@@ -45,18 +38,16 @@ apiClient.interceptors.response.use(
     _refreshing = true
 
     try {
-      const { data } = await axios.post('/api/v1/auth/refresh', {
-        refresh_token: refreshToken,
-      })
-      setToken(data.access_token)
-      // Also update refresh_token if rotated
-      useAuthStore.setState({ refreshToken: data.refresh_token })
-
-      original.headers.Authorization = `Bearer ${data.access_token}`
-      _waitQueue.forEach((cb) => cb(data.access_token))
+      // Refresh cookie is sent automatically via withCredentials
+      const { data } = await axios.post('/api/v1/auth/refresh', {}, { withCredentials: true })
+      // Update in-memory token for WebSocket
+      useAuthStore.getState().setToken(data.access_token)
+      _waitQueue.forEach((cb) => cb(true))
       _waitQueue = []
       return apiClient(original)
     } catch {
+      _waitQueue.forEach((cb) => cb(false))
+      _waitQueue = []
       logout()
       return Promise.reject(error)
     } finally {

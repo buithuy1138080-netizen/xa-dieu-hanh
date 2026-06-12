@@ -1,155 +1,185 @@
 /**
- * Bookmarklet cho dhtn.dcs.vn → xabacha.com
+ * Bookmarklet dhtn.dcs.vn → xabacha.com  (v2 — ZK Framework compatible)
  *
- * Cách dùng:
- * 1. Tạo bookmark mới trong trình duyệt
- * 2. URL = toàn bộ nội dung file này (từ javascript: đến hết)
- * 3. Khi đang ở trang dhtn.dcs.vn, click bookmark → nút "→IOC" xuất hiện trên mỗi dòng
- * 4. Click "→IOC" trên văn bản muốn nhập → form xabacha.com mở ra đã điền sẵn
+ * Chiến lược mới: Quét toàn bộ text node trong trang để tìm
+ * số hiệu, ngày tháng, trích yếu — không phụ thuộc CSS class của ZK.
+ *
+ * URL để dùng làm bookmark:
+ *   Sao chép toàn bộ nội dung file này và dán vào URL của bookmark.
  */
 
 javascript:(function(){
-  var IOC_URL='https://xabacha.com';
-  var MARKER='__dhtn_ioc__';
+var IOC='https://xabacha.com';
+var PANEL_ID='__ioc_panel__';
 
-  if(window[MARKER]){
-    // Đã inject rồi — chạy lại để cập nhật các dòng mới
-    if(typeof window[MARKER+'_inject']==='function') window[MARKER+'_inject']();
-    return;
+/* ── Nếu đã mở rồi thì toggle hiện/ẩn ── */
+var existing=document.getElementById(PANEL_ID);
+if(existing){existing.style.display=existing.style.display==='none'?'flex':'none';return;}
+
+/* ══════════════════════════════════════
+   BƯỚC 1: Quét text toàn trang
+══════════════════════════════════════ */
+var rxNum  = /\b\d{2,4}-[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦÊẾ\-]+\/[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦÊẾ]{2,15}/g;
+var rxDate = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g;
+var rxVv   = /V\/v\s.{10,200}/g;
+
+function getAllText(){
+  var texts=[];
+  var walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null);
+  var n;
+  while((n=walker.nextNode())){
+    var t=(n.textContent||'').replace(/\s+/g,' ').trim();
+    if(t.length>2) texts.push(t);
   }
-  window[MARKER]=true;
+  return texts.join('\n');
+}
 
-  /* ── Thêm style cho nút IOC ── */
-  var style=document.createElement('style');
-  style.textContent='.ioc-capture-btn{display:inline-flex;align-items:center;gap:4px;background:#2563eb;color:#fff;border:none;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;margin:1px;transition:background .15s;}.ioc-capture-btn:hover{background:#1d4ed8;}.ioc-capture-btn svg{width:11px;height:11px;}';
-  document.head.appendChild(style);
+var pageText = getAllText();
 
-  /* ── Trích xuất text sạch từ cell ── */
-  function cellText(el){return(el?el.textContent||'':'').replace(/\s+/g,' ').trim();}
+/* Tìm số hiệu văn bản */
+var nums = (pageText.match(rxNum)||[]).filter(function(v,i,a){return a.indexOf(v)===i;});
+/* Tìm ngày tháng */
+var dates= (pageText.match(/\d{1,2}\/\d{1,2}\/\d{4}/g)||[]).filter(function(v,i,a){return a.indexOf(v)===i;});
+/* Tìm trích yếu V/v */
+var vvs  = (pageText.match(rxVv)||[]).map(function(s){return s.trim();}).filter(function(v,i,a){return a.indexOf(v)===i;});
 
-  /* ── Nhận diện kiểu trang ── */
-  function pageType(){
-    var url=window.location.href.toLowerCase();
-    var title=(document.title||'').toLowerCase();
-    if(url.includes('van-ban-den')||url.includes('vanbanden')||title.includes('văn bản đến')) return 'incoming';
-    if(url.includes('van-ban-di')||url.includes('vanban-ban-hanh')||title.includes('văn bản đi')||title.includes('ban hành')) return 'outgoing';
-    return 'unknown';
-  }
+/* Nhận diện loại trang */
+var pageUrl = window.location.href.toLowerCase();
+var docType = pageUrl.includes('van-ban-den') ? 'incoming'
+            : pageUrl.includes('ban-hanh') || pageUrl.includes('van-ban-di') ? 'outgoing'
+            : 'incoming';
 
-  /* ── Tìm dòng văn bản trong bảng ZK ── */
-  function getDocRows(){
-    // ZK Framework dùng z-listitem hoặc z-row
-    var sel=['tr.z-listitem','tr.z-row','tbody tr','table tr'];
-    for(var s=0;s<sel.length;s++){
-      var rows=document.querySelectorAll(sel[s]);
-      if(rows.length>0) return rows;
-    }
-    return [];
-  }
+/* Trích xuất đơn vị ban hành (tìm tên cơ quan phổ biến) */
+var issuerMatch = pageText.match(/(Tỉnh ủy[^,\n]+|Đảng ủy[^,\n]+|UBND[^,\n]+|Ban[^,\n]{3,40})/);
+var issuer = issuerMatch ? issuerMatch[0].trim().slice(0,80) : '';
 
-  /* ── Phát hiện cột dựa trên nội dung header ── */
-  function detectColumns(){
-    var headers=document.querySelectorAll('th,td.z-listheader-content,.z-listheader td');
-    var map={};
-    headers.forEach(function(h,i){
-      var t=cellText(h).toLowerCase();
-      if(t.includes('số')||t.includes('ký hiệu')||t.includes('kỳ hiệu')) map.doc_number=i;
-      if(t.includes('trích yếu')||t.includes('nội dung')) map.title=i;
-      if(t.includes('đơn vị ban hành')||t.includes('nơi gửi')) map.issuer=i;
-      if(t.includes('thời gian nhận')||t.includes('ngày văn bản')||t.includes('ngày vb')) map.date=i;
-      if(t.includes('độ mật')) map.do_mat=i;
-    });
-    return map;
-  }
+/* ══════════════════════════════════════
+   BƯỚC 2: Tạo panel giao diện
+══════════════════════════════════════ */
+var panel=document.createElement('div');
+panel.id=PANEL_ID;
+panel.style.cssText=[
+  'position:fixed','top:60px','right:16px','z-index:2147483647',
+  'width:340px','max-height:90vh','overflow-y:auto',
+  'background:#fff','border-radius:16px',
+  'box-shadow:0 8px 40px rgba(0,0,0,0.25)',
+  'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif',
+  'font-size:13px','display:flex','flex-direction:column',
+].join(';');
 
-  /* ── Regex nhận diện nhanh ── */
-  var rxDocNum=/^\d{2,4}-[A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦÊ-]+[\/\-][A-ZĐÀÁẢÃẠĂẮẶẲẴẰÂẤẬẨẪẦÊ]{2,10}$/i;
-  var rxDate=/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/;
+function inp(id,val,ph){
+  return '<input id="ioc_'+id+'" value="'+esc(val)+'" placeholder="'+ph+'"'
+    +' style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:8px;'
+    +'padding:6px 10px;font-size:12px;outline:none;margin-top:4px;">';
+}
+function sel(id,opts,cur){
+  var o=opts.map(function(v){return '<option value="'+v[0]+'"'+(v[0]===cur?' selected':'')+'>'+v[1]+'</option>';}).join('');
+  return '<select id="ioc_'+id+'" style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:12px;outline:none;margin-top:4px;">'+o+'</select>';
+}
+function lbl(text){return '<label style="font-weight:600;color:#475569;font-size:11px;display:block;margin-top:10px;">'+text+'</label>';}
+function esc(s){return (s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
 
-  function extractFromRow(row,colMap,type){
-    var cells=row.querySelectorAll('td,div.z-listcell-cnt,span.z-label');
-    if(!cells.length) return null;
+/* Danh sách gợi ý số hiệu */
+var numOpts = nums.slice(0,5).map(function(v){return '<option value="'+esc(v)+'">'+esc(v)+'</option>';}).join('');
+var numSel = nums.length>0
+  ? '<select id="ioc_num_sel" style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:12px;outline:none;margin-top:4px;" onchange="document.getElementById(\'ioc_doc_number\').value=this.value"><option value="">-- Chọn số hiệu --</option>'+numOpts+'</select>'
+  : '';
 
-    var doc={doc_type:type,cells:[]};
-    cells.forEach(function(c){doc.cells.push(cellText(c));});
+/* Danh sách gợi ý trích yếu */
+var titleOpts = vvs.slice(0,5).map(function(v){return '<option value="'+esc(v)+'">'+esc(v.slice(0,60))+'...</option>';}).join('');
+var titleSel = vvs.length>0
+  ? '<select id="ioc_title_sel" style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:12px;outline:none;margin-top:4px;" onchange="document.getElementById(\'ioc_title\').value=this.value"><option value="">-- Chọn trích yếu --</option>'+titleOpts+'</select>'
+  : '';
 
-    // 1. Dùng map nếu có
-    if(colMap.doc_number!==undefined) doc.doc_number=doc.cells[colMap.doc_number]||'';
-    if(colMap.title!==undefined)      doc.title=doc.cells[colMap.title]||'';
-    if(colMap.issuer!==undefined)     doc.issuer=doc.cells[colMap.issuer]||'';
-    if(colMap.date!==undefined)       doc.date=doc.cells[colMap.date]||'';
-    if(colMap.do_mat!==undefined)     doc.do_mat=doc.cells[colMap.do_mat]||'';
+panel.innerHTML=[
+  /* Header */
+  '<div style="background:linear-gradient(135deg,#2563eb,#4f46e5);padding:12px 16px;border-radius:16px 16px 0 0;display:flex;align-items:center;justify-content:space-between;">',
+    '<div style="color:white;font-weight:700;font-size:14px;">📥 Nhập sang IOC</div>',
+    '<button onclick="document.getElementById(\''+PANEL_ID+'\').style.display=\'none\'" style="background:rgba(255,255,255,0.2);border:none;color:white;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:16px;line-height:1;">×</button>',
+  '</div>',
 
-    // 2. Fallback: scan qua từng cell bằng regex
-    doc.cells.forEach(function(t){
-      if(!doc.doc_number&&rxDocNum.test(t)) doc.doc_number=t;
-      if(!doc.date&&rxDate.test(t)) doc.date=t;
-      if(!doc.title&&t.length>20&&(t.startsWith('V/v')||t.startsWith('Về việc')||t.startsWith('v/v'))) doc.title=t;
-      if(!doc.issuer&&(t.includes('ủy')&&t.length>5)) doc.issuer=t;
-    });
+  /* Body */
+  '<div style="padding:14px 16px;">',
 
-    // 3. Nếu không có title thì lấy cell dài nhất
-    if(!doc.title){
-      var longest='';
-      doc.cells.forEach(function(t){if(t.length>longest.length&&t.length>10) longest=t;});
-      doc.title=longest;
-    }
+  /* Loại văn bản */
+  lbl('Loại văn bản'),
+  sel('doc_type',[['incoming','📥 Văn bản đến'],['outgoing','📤 Văn bản đi']],docType),
 
-    if(!doc.title) return null;
-    return doc;
-  }
+  /* Số hiệu */
+  lbl('Số/Ký hiệu'),
+  numSel,
+  inp('doc_number', nums[0]||'', 'VD: 811-CV/ĐU'),
 
-  /* ── Inject nút IOC vào mỗi dòng ── */
-  function inject(){
-    var type=pageType();
-    var colMap=detectColumns();
-    var rows=getDocRows();
-    var count=0;
+  /* Trích yếu */
+  lbl('Trích yếu nội dung '+(vvs.length>0?'('+vvs.length+' gợi ý tìm thấy)':'')),
+  titleSel,
+  '<textarea id="ioc_title" rows="3" placeholder="Nhập hoặc chọn trích yếu..." style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:12px;outline:none;margin-top:4px;resize:vertical;">'+esc(vvs[0]||'')+'</textarea>',
 
-    rows.forEach(function(row){
-      if(row.querySelector('.ioc-capture-btn')) return; // đã có rồi
-      var doc=extractFromRow(row,colMap,type==='unknown'?'incoming':type);
-      if(!doc) return;
+  /* Đơn vị ban hành */
+  lbl('Đơn vị ban hành / Nơi gửi'),
+  inp('issuer', issuer, 'VD: Đảng ủy xã Bắc Hà - Tỉnh ủy Lào Cai'),
 
-      var btn=document.createElement('button');
-      btn.className='ioc-capture-btn';
-      btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>IOC';
-      btn.title='Gửi văn bản sang xabacha.com';
+  /* Ngày ban hành */
+  lbl('Ngày ban hành '+(dates.length>0?'(tìm thấy '+dates.length+' ngày)':'')),
+  dates.length>0
+    ? '<select id="ioc_date_sel" style="width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:12px;outline:none;margin-top:4px;" onchange="document.getElementById(\'ioc_date\').value=this.value"><option value="">-- Chọn ngày --</option>'+dates.slice(0,5).map(function(d){return '<option value="'+d+'">'+d+'</option>';}).join('')+'</select>'
+    : '',
+  inp('date', dates[0]||'', 'dd/mm/yyyy'),
 
-      btn.addEventListener('click',function(e){
-        e.preventDefault();e.stopPropagation();
-        var p=new URLSearchParams({
-          title:       doc.title||'',
-          doc_number:  doc.doc_number||'',
-          doc_type:    doc.doc_type||'incoming',
-          issuer:      doc.issuer||'',
-          issue_date:  doc.date||'',
-          source_url:  window.location.href,
-          do_mat:      doc.do_mat||''
-        });
-        window.open(IOC_URL+'/capture?'+p.toString(),'_blank','width=520,height=700,left=200,top=50');
-      });
+  /* Tạo nhiệm vụ */
+  '<div style="margin-top:12px;padding:10px;background:#eff6ff;border-radius:10px;border:1px solid #bfdbfe;">',
+    '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;color:#1e40af;font-size:12px;">',
+      '<input type="checkbox" id="ioc_create_task" style="width:14px;height:14px;">',
+      'Tạo nhiệm vụ từ văn bản này',
+    '</label>',
+  '</div>',
 
-      // Thêm vào cột đầu tiên (Thao tác)
-      var firstCell=row.querySelector('td');
-      if(firstCell){firstCell.style.minWidth='80px';firstCell.insertBefore(btn,firstCell.firstChild);}
-      count++;
-    });
+  '</div>',
 
-    if(count>0) console.log('[IOC] Đã thêm '+count+' nút →IOC');
-  }
+  /* Footer */
+  '<div style="padding:12px 16px;border-top:1px solid #f1f5f9;display:flex;gap:8px;">',
+    '<button id="ioc_send_btn" style="flex:1;background:#2563eb;color:white;border:none;padding:9px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;" onclick="__iocSend()">',
+      '🚀 Gửi sang IOC',
+    '</button>',
+    '<button onclick="document.getElementById(\''+PANEL_ID+'\').style.display=\'none\'" style="padding:9px 14px;background:#f1f5f9;color:#64748b;border:none;border-radius:10px;font-size:13px;cursor:pointer;">',
+      'Đóng',
+    '</button>',
+  '</div>',
+].join('');
 
-  window[MARKER+'_inject']=inject;
-  inject();
+document.body.appendChild(panel);
 
-  /* ── Theo dõi thay đổi DOM (ZK dùng AJAX để load thêm) ── */
-  var obs=new MutationObserver(function(){setTimeout(inject,600);});
-  obs.observe(document.body,{childList:true,subtree:true});
+/* ══════════════════════════════════════
+   BƯỚC 3: Hàm gửi sang IOC
+══════════════════════════════════════ */
+window.__iocSend = function(){
+  var docNumber = (document.getElementById('ioc_doc_number')||{}).value||'';
+  var title     = (document.getElementById('ioc_title')||{}).value||'';
+  var docType2  = (document.getElementById('ioc_doc_type')||{}).value||docType;
+  var issuer2   = (document.getElementById('ioc_issuer')||{}).value||'';
+  var date2     = (document.getElementById('ioc_date')||{}).value||'';
+  var createTask= (document.getElementById('ioc_create_task')||{}).checked||false;
 
-  /* ── Thông báo ── */
-  var toast=document.createElement('div');
-  toast.style.cssText='position:fixed;top:16px;right:16px;z-index:99999;background:#2563eb;color:white;padding:10px 18px;border-radius:12px;font-size:13px;font-family:sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.25);';
-  toast.textContent='✅ IOC Capture đã bật — nhấn nút →IOC trên mỗi văn bản';
-  document.body.appendChild(toast);
-  setTimeout(function(){toast.remove();},4000);
+  if(!title.trim()){alert('Vui lòng nhập trích yếu nội dung văn bản!');return;}
+
+  var p=new URLSearchParams({
+    title:      title.trim(),
+    doc_number: docNumber.trim(),
+    doc_type:   docType2,
+    issuer:     issuer2.trim(),
+    issue_date: date2.trim(),
+    source_url: window.location.href,
+    create_task: createTask?'1':'0',
+  });
+
+  window.open(IOC+'/capture?'+p.toString(),'ioc_capture',
+    'width=540,height=720,left='+(screen.width-560)+',top=50');
+};
+
+/* ── Thông báo nhỏ ── */
+var toast=document.createElement('div');
+toast.style.cssText='position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#2563eb;color:white;padding:8px 20px;border-radius:999px;font-family:sans-serif;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.2);white-space:nowrap;';
+toast.textContent='✅ IOC Capture: tìm thấy '+nums.length+' số hiệu, '+vvs.length+' trích yếu, '+dates.length+' ngày';
+document.body.appendChild(toast);
+setTimeout(function(){toast.remove();},4000);
 })();

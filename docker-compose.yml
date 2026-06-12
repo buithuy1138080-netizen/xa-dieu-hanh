@@ -10,8 +10,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -24,8 +22,6 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-    ports:
-      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -36,6 +32,8 @@ services:
     build: ./frontend
     restart: unless-stopped
     env_file: .env
+    environment:
+      VITE_API_URL: http://backend:8000
     ports:
       - "3000:3000"
     depends_on:
@@ -43,6 +41,28 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./backups:/backups
+      - ./docker/backup-entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
 
   nginx:
     image: nginx:alpine
@@ -59,3 +79,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

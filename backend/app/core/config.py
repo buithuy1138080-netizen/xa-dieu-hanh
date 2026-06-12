@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     # DeepSeek API — optional alternative LLM
     DEEPSEEK_API_KEY: str = ""
 
+    REDIS_URL: str = "redis://redis:6379/0"
+
     # Field-level encryption for sensitive columns (credentials_json, etc.)
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     FERNET_KEY: str = ""  # empty = no encryption (dev only)

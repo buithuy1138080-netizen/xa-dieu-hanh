@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "IOC Capture — dhtn.dcs.vn → xabacha.com",
-  "version": "2.1.0",
-  "description": "Chuyển văn bản + file đính kèm từ dhtn.dcs.vn sang IOC xabacha.com tự động",
+  "version": "3.0.0",
+  "description": "Chuyển văn bản + file đính kèm từ dhtn.dcs.vn sang IOC xabacha.com",
   "icons": {
     "16":  "icons/icon16.png",
     "48":  "icons/icon48.png",
@@ -19,7 +19,14 @@
   "content_scripts": [
     {
       "matches": ["*://dhtn.dcs.vn/*"],
-      "js": ["content.js"],
+      "js": [
+        "config.js",
+        "modules/dedup-manager.js",
+        "modules/attachment-finder.js",
+        "modules/pdf-downloader.js",
+        "modules/state-machine.js",
+        "content.js"
+      ],
       "css": ["content.css"],
       "run_at": "document_start"
     },
@@ -38,7 +45,7 @@
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["activeTab", "storage", "scripting"],
+  "permissions": ["activeTab", "storage", "scripting", "tabs"],
   "host_permissions": [
     "*://dhtn.dcs.vn/*",
     "*://xabacha.com/*"

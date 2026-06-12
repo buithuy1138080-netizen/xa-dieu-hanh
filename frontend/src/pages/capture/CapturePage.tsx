@@ -29,7 +29,7 @@ interface CaptureRequest {
 export default function CapturePage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
-  const { token } = useAuthStore()
+  const { user: authUser } = useAuthStore()
 
   // Form state from URL params
   const [title, setTitle] = useState(params.get('title') ?? '')
@@ -53,14 +53,13 @@ export default function CapturePage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!token) {
-      // Save current URL and redirect to login
+    if (!authUser) {
       sessionStorage.setItem('capture_redirect', window.location.href)
       navigate('/login')
       return
     }
     departmentsApi.list().then(r => setDepartments(r.data)).catch(() => {})
-  }, [token, navigate])
+  }, [authUser, navigate])
 
   // Auto-fill task title from doc title
   useEffect(() => {

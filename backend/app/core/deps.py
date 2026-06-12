@@ -1,5 +1,6 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from typing import Optional
+
+from fastapi import Cookie, Depends, HTTPException, Request, status
 from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,13 +9,24 @@ from app.core.database import get_db
 from app.core.security import decode_token
 from app.models.user import User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
-
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
     db: AsyncSession = Depends(get_db),
+    access_token: Optional[str] = Cookie(default=None),
 ) -> User:
+    """Extract JWT from HttpOnly cookie first, fall back to Authorization header."""
+    token = access_token
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Chưa đăng nhập",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     try:
         payload = decode_token(token)
         user_id = int(payload["sub"])

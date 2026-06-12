@@ -19,6 +19,15 @@ from app.models.user import User
 
 router = APIRouter()
 
+# Cache TTL constants (seconds)
+_TTL_SUMMARY  = 90   # /summary  — most expensive (7 queries)
+_TTL_STATS    = 60   # individual stat blocks
+_TTL_LISTS    = 30   # overdue / upcoming task lists (fresher)
+
+
+def _cache_key(prefix: str, role: str, dept_id: int | None) -> str:
+    return f"dashboard:{prefix}:{role}:{dept_id}"
+
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -120,6 +129,13 @@ async def get_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.core.redis_client import cache_get, cache_set
+    dept_id = await _get_user_dept_id(current_user, db)
+    ck = _cache_key("stats", current_user.role, dept_id)
+    cached = await cache_get(ck)
+    if cached:
+        return DashboardStats(**cached)
+
     now = _now()
     dept_cond = await _dept_filter(current_user, db)
     base_where = [Task.deleted_at.is_(None)]
@@ -144,7 +160,7 @@ async def get_stats(
 
     total = int(row.total or 0)
     completed = int(row.completed or 0)
-    return DashboardStats(
+    result = DashboardStats(
         total=total,
         pending=int(row.pending or 0),
         in_progress=int(row.in_progress or 0),
@@ -153,6 +169,8 @@ async def get_stats(
         overdue=int(row.overdue or 0),
         completion_rate=round(completed / total * 100, 1) if total > 0 else 0.0,
     )
+    await cache_set(ck, result.model_dump(), ttl=_TTL_STATS)
+    return result
 
 
 @router.get("/chart/timeline", response_model=list[TimelinePoint])
@@ -349,6 +367,12 @@ async def get_document_stats(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
+    from app.core.redis_client import cache_get, cache_set
+    ck = "dashboard:doc-stats"
+    cached = await cache_get(ck)
+    if cached:
+        return DocumentStatsOut(**cached)
+
     row = (await db.execute(
         select(
             func.count(Document.id).label("total"),
@@ -359,13 +383,15 @@ async def get_document_stats(
         ).where(Document.deleted_at.is_(None))
     )).one()
 
-    return DocumentStatsOut(
+    result = DocumentStatsOut(
         total=int(row.total or 0),
         incoming=int(row.incoming or 0),
         outgoing=int(row.outgoing or 0),
         pending=int(row.pending or 0),
         processed=int(row.processed or 0),
     )
+    await cache_set(ck, result.model_dump(), ttl=_TTL_STATS)
+    return result
 
 
 # ─── Directive Stats ──────────────────────────────────────────────────────────
@@ -384,7 +410,14 @@ async def get_directive_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.core.redis_client import cache_get, cache_set
     from app.models.directive import Directive
+    dept_id = await _get_user_dept_id(current_user, db)
+    ck = _cache_key("directive-stats", current_user.role, dept_id)
+    cached = await cache_get(ck)
+    if cached:
+        return DirectiveStatsOut(**cached)
+
     now = _now()
     soon = now + timedelta(days=7)
 
@@ -392,7 +425,6 @@ async def get_directive_stats(
     dir_where = [Directive.deleted_at.is_(None)]
     if current_user.role not in ("admin", "leader"):
         from app.models.directive import DirectiveUnit
-        dept_id = await _get_user_dept_id(current_user, db)
         if dept_id:
             dir_where.append(or_(
                 Directive.responsible_department_id == dept_id,
@@ -420,7 +452,7 @@ async def get_directive_stats(
         ).where(*dir_where)
     )).one()
 
-    return DirectiveStatsOut(
+    result = DirectiveStatsOut(
         total=int(row.total or 0),
         active=int(row.active or 0),
         completed=int(row.completed or 0),
@@ -428,6 +460,8 @@ async def get_directive_stats(
         near_deadline=int(row.near_deadline or 0),
         avg_progress=round(float(row.avg_progress or 0), 1),
     )
+    await cache_set(ck, result.model_dump(), ttl=_TTL_STATS)
+    return result
 
 
 # ─── KPI + NQ57 Stats ────────────────────────────────────────────────────────
@@ -456,13 +490,18 @@ async def get_kpi_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.core.redis_client import cache_get, cache_set
     from app.models.kpi import KPI
     from datetime import date as dt_date
-    now = dt_date.today()
+    dept_id = await _get_user_dept_id(current_user, db)
+    ck = _cache_key("kpi-stats", current_user.role, dept_id)
+    cached = await cache_get(ck)
+    if cached:
+        return KPIStatsOut(**cached)
 
+    now = dt_date.today()
     kpi_where = [KPI.deleted_at.is_(None)]
     if current_user.role not in ("admin", "leader"):
-        dept_id = await _get_user_dept_id(current_user, db)
         if dept_id:
             kpi_where.append(KPI.responsible_department_id == dept_id)
 
@@ -481,7 +520,7 @@ async def get_kpi_stats(
         ).where(*kpi_where)
     )).one()
 
-    return KPIStatsOut(
+    result = KPIStatsOut(
         total=int(row.total or 0),
         on_track=int(row.on_track or 0),
         at_risk=int(row.at_risk or 0),
@@ -490,6 +529,8 @@ async def get_kpi_stats(
         avg_progress=round(float(row.avg_progress or 0), 1),
         overdue=int(row.overdue or 0),
     )
+    await cache_set(ck, result.model_dump(), ttl=_TTL_STATS)
+    return result
 
 
 # ─── Summary (all stats in 1 call) ───────────────────────────────────────────
@@ -509,7 +550,17 @@ async def get_dashboard_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Single endpoint replacing 8 separate calls from the frontend dashboard."""
+    """Single endpoint replacing 8 separate calls from the frontend dashboard.
+    Results cached in Redis for _TTL_SUMMARY seconds per role/department.
+    """
+    from app.core.redis_client import cache_get, cache_set
+    dept_id = await _get_user_dept_id(current_user, db)
+    ck = _cache_key("summary", current_user.role, dept_id)
+
+    cached = await cache_get(ck)
+    if cached:
+        return DashboardSummary.model_validate(cached)
+
     tasks, docs, directives, kpi, nq57, overdue, upcoming = await asyncio.gather(
         get_stats(db=db, current_user=current_user),
         get_document_stats(db=db, _=current_user),
@@ -519,7 +570,7 @@ async def get_dashboard_summary(
         get_overdue(limit=5, db=db, current_user=current_user),
         get_upcoming(days=7, db=db, current_user=current_user),
     )
-    return DashboardSummary(
+    summary = DashboardSummary(
         tasks=tasks,
         documents=docs,
         directives=directives,
@@ -528,6 +579,8 @@ async def get_dashboard_summary(
         overdue_tasks=overdue,
         upcoming_tasks=upcoming,
     )
+    await cache_set(ck, summary.model_dump(mode="json"), ttl=_TTL_SUMMARY)
+    return summary
 
 
 @router.get("/nq57-stats", response_model=NQ57StatsOut)
@@ -535,6 +588,13 @@ async def get_nq57_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.core.redis_client import cache_get, cache_set
+    dept_id = await _get_user_dept_id(current_user, db)
+    ck = _cache_key("nq57-stats", current_user.role, dept_id)
+    cached = await cache_get(ck)
+    if cached:
+        return NQ57StatsOut(**cached)
+
     now = _now()
     dept_cond = await _dept_filter(current_user, db)
 
@@ -564,7 +624,7 @@ async def get_nq57_stats(
         ).select_from(Task).join(Program, Task.program_id == Program.id).where(*nq57_where)
     )).one()
 
-    return NQ57StatsOut(
+    result = NQ57StatsOut(
         total=int(row.total or 0),
         pending=int(row.pending or 0),
         in_progress=int(row.in_progress or 0),
@@ -572,3 +632,5 @@ async def get_nq57_stats(
         delayed=int(row.delayed or 0),
         avg_progress=round(float(row.avg_progress or 0), 1),
     )
+    await cache_set(ck, result.model_dump(), ttl=_TTL_STATS)
+    return result

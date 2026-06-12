@@ -559,30 +559,32 @@ async def upload_attachment(
     current_user: User = Depends(get_current_user),
 ):
     await _get_or_404(db, directive_id)
-    safe_name = Path(file.filename or "file").name
-    ext = Path(safe_name).suffix.lower()
+    original_name = Path(file.filename or "file").name
+    ext = Path(original_name).suffix.lower()
     if ext not in ALLOWED_UPLOAD_EXTS:
         raise HTTPException(
             400,
             f"Định dạng file không được phép: '{ext or 'không rõ'}'. "
             f"Chấp nhận: {', '.join(sorted(ALLOWED_UPLOAD_EXTS))}"
         )
+    import uuid as _uuid
     d_dir = DIR_UPLOAD / str(directive_id)
     d_dir.mkdir(exist_ok=True)
-    file_path = d_dir / safe_name
+    stored_name = f"{_uuid.uuid4().hex}{ext}"
+    file_path = d_dir / stored_name
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
     att = DirectiveAttachment(
         directive_id=directive_id,
         user_id=current_user.id,
-        filename=safe_name,
-        file_path=str(file_path),
+        filename=original_name,    # original name shown to user
+        file_path=str(file_path),  # UUID-based path on disk
         file_size=file_path.stat().st_size,
         file_mime=file.content_type or "application/octet-stream",
     )
     db.add(att)
-    _add_history(db, directive_id, current_user.id, "attachment_added", note=safe_name)
+    _add_history(db, directive_id, current_user.id, "attachment_added", note=original_name)
     await db.flush()
     await db.commit()
 

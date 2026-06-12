@@ -259,12 +259,14 @@ async def upload_and_analyze(
     await db.commit()
 
     # Persist file to permanent storage
+    import uuid as _uuid_mod
     dest_dir = DOC_UPLOAD_DIR / str(doc.id)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / (file.filename or f"upload{ext}")
+    stored_name = f"{_uuid_mod.uuid4().hex}{ext}"
+    dest = dest_dir / stored_name
     try:
         _shutil.copy2(str(tmp_path), str(dest))
-        doc.file_name = file.filename or dest.name
+        doc.file_name = file.filename or stored_name  # original name shown to user
         doc.file_path = str(dest.relative_to(DOC_UPLOAD_DIR.parent))
         doc.file_size = len(content)
         doc.file_mime = file.content_type or "application/octet-stream"
@@ -662,12 +664,14 @@ async def upload_file(
         old = Path(doc.file_path)
         if old.exists():
             old.unlink()
-    file_path = doc_dir / safe_name
+    import uuid as _uuid
+    stored_name = f"{_uuid.uuid4().hex}{ext}"
+    file_path = doc_dir / stored_name
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    doc.file_name = safe_name
-    doc.file_path = str(file_path)
+    doc.file_name = safe_name          # original name shown to user
+    doc.file_path = str(file_path)     # UUID-based path on disk
     doc.file_size = file_path.stat().st_size
     doc.file_mime = file.content_type or "application/octet-stream"
 

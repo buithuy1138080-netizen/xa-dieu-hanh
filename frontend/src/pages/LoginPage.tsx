@@ -13,7 +13,7 @@ interface TokenResponse {
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const { setAuth, setUser } = useAuthStore()
+  const { setToken, setUser } = useAuthStore()
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -33,7 +33,8 @@ export default function LoginPage() {
         }),
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
       )
-      setAuth(tokenData.access_token, tokenData.refresh_token)
+      // Cookies set by backend — store access_token in-memory for WebSocket
+      setToken(tokenData.access_token)
       const { data: userData } = await apiClient.get<User>('/auth/me')
       setUser(userData)
       navigate('/dashboard')

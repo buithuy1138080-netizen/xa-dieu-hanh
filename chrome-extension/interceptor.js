@@ -121,32 +121,43 @@
 
   /* ══════════════════════════════
      3. Bắt window.open cho file download
-     ZK thường gọi window.open('/download?id=xxx')
-     để trigger download — bắt URL này rồi fetch lấy blob
+     ZK có thể gọi window.open với nhiều URL khác nhau:
+       /download?id=xxx, /export?..., /zkdl?uuid=xxx, /media?id=xxx ...
+     → KHÔNG lọc theo URL pattern, chỉ kiểm tra content-type response
   ══════════════════════════════ */
   try {
     const _windowOpen = window.open.bind(window);
     window.open = function (url, name, features) {
       try {
         const urlStr = String(url || '');
-        if (urlStr && !urlStr.startsWith('javascript') && urlStr !== '#') {
+        if (urlStr && urlStr !== '#' && urlStr !== 'about:blank' &&
+            !urlStr.startsWith('javascript') && !urlStr.startsWith('data:')) {
+
+          // Bỏ qua URL rõ ràng là trang (có .html, /login, /dashboard...)
           const lower = urlStr.toLowerCase();
-          if (lower.includes('/download') || lower.includes('/export') ||
-              lower.includes('attachment') || FILE_MIME_RE.test(urlStr.split('?')[0])) {
-            // Fetch riêng để lấy nội dung file rồi dispatch
+          const isPage = lower.includes('.html') || lower.includes('.htm') ||
+                         lower.includes('/login') || lower.includes('/logout') ||
+                         lower.includes('/dashboard') || lower.includes('/home') ||
+                         lower.includes('/profile') || lower.includes('/settings');
+
+          if (!isPage) {
+            // Fetch để kiểm tra content-type — không lọc URL trước
             fetch(urlStr, { credentials: 'include' })
               .then(r => {
                 if (!r.ok) return;
                 const cd = r.headers.get('content-disposition') || '';
                 const ct = r.headers.get('content-type') || '';
+                // Chỉ capture nếu server trả về binary file
                 if (isBinaryMime(ct) || cd.toLowerCase().includes('attachment')) {
                   return r.blob().then(blob => {
+                    if (!blob || blob.size < 100) return;
                     const filename = guessFilename(urlStr, cd, ct);
                     dispatchFile(blob, filename, urlStr);
                   });
                 }
+                // Nếu không phải binary → bỏ qua (đây là trang web bình thường)
               })
-              .catch(() => {});
+              .catch(() => {}); // Lỗi mạng, CORS, ... → bỏ qua
           }
         }
       } catch (_) {}

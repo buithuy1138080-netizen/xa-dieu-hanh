@@ -127,7 +127,11 @@ export default function Sidebar({ onClose }: Props) {
   const { ripples, trigger } = useRipple()
 
   const [showChangePwd, setShowChangePwd] = useState(false)
-  const handleLogout = useCallback(() => { logout(); navigate('/login') }, [logout, navigate])
+  const handleLogout = useCallback(async () => {
+    try { await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }) } catch {}
+    logout()
+    navigate('/login')
+  }, [logout, navigate])
   const handleNavClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
     trigger(e)
     onClose?.()

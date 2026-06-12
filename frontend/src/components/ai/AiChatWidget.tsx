@@ -302,7 +302,7 @@ export default function AiChatWidget() {
       {/* Floating toggle button */}
       <motion.button
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-24 right-4 md:bottom-8 md:right-6 z-50 w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
+        className="fixed bottom-24 right-4 md:bottom-20 md:right-6 z-50 w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
         whileTap={{ scale: 0.92 }}
         title="Trợ lý AI IOC"
       >
@@ -329,7 +329,7 @@ export default function AiChatWidget() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.97 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            className="fixed bottom-40 right-4 md:bottom-24 md:right-6 z-50 w-[calc(100vw-32px)] md:w-[680px] h-[70vh] md:h-[600px] bg-white rounded-2xl shadow-2xl shadow-slate-400/20 border border-slate-200/80 flex flex-col overflow-hidden"
+            className="fixed bottom-40 right-4 md:bottom-36 md:right-6 z-50 w-[calc(100vw-32px)] md:w-[680px] h-[70vh] md:h-[600px] bg-white rounded-2xl shadow-2xl shadow-slate-400/20 border border-slate-200/80 flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-indigo-600 to-purple-600 shrink-0">

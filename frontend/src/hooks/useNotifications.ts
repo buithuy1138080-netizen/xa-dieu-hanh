@@ -1,3 +1,4 @@
+import axios from 'axios'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { notificationsApi } from '../api/notifications'
 import { useAuthStore } from '../store/authStore'
@@ -12,6 +13,8 @@ export interface Toast {
 
 export function useNotifications() {
   const token = useAuthStore((s) => s.token)
+  const user  = useAuthStore((s) => s.user)
+  const setToken = useAuthStore((s) => s.setToken)
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -51,6 +54,16 @@ export function useNotifications() {
       setUnreadCount(0)
     } catch {}
   }, [])
+
+  // On page refresh: user is persisted but token is in-memory only.
+  // Restore in-memory token from cookie session so WebSocket can connect.
+  useEffect(() => {
+    if (user && !token) {
+      axios.post('/api/v1/auth/refresh', {}, { withCredentials: true })
+        .then(r => setToken(r.data.access_token))
+        .catch(() => {})
+    }
+  }, [user, token, setToken])
 
   useEffect(() => {
     if (!token) return
