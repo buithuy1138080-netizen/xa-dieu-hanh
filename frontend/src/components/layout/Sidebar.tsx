@@ -5,7 +5,7 @@ import {
   CheckSquare, ChevronRight, ClipboardList, FileText,
   KeyRound, LayoutDashboard, LogOut,
   CalendarDays, PanelLeftClose, PanelLeftOpen,
-  Shield, Target, Users, X,
+  RefreshCw, Shield, Target, Users, X,
 } from 'lucide-react'
 import ChangePasswordModal from '../common/ChangePasswordModal'
 import { NavLink, useNavigate } from 'react-router-dom'
@@ -48,8 +48,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: 'CHỈ TIÊU KPI',
     items: [
-      { to: '/kpi', label: 'KPI & Chỉ tiêu', icon: Target },
-      // /kpi-cl (KPI Chiến lược) accessible via URL for admin/leader
+      { to: '/kpi-tong-hop', label: 'KPI & Chỉ tiêu', icon: Target },
     ],
   },
   {
@@ -62,10 +61,10 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: 'BÁO CÁO & CÔNG CỤ',
     items: [
-      { to: '/bao-cao',     label: 'Báo cáo tự động', icon: BarChart3 },
-      { to: '/mau-bao-cao', label: 'Mẫu báo cáo',     icon: BookTemplate },
-      // /dong-bo accessible via URL for admin
-      { to: '/zalo',        label: 'Zalo Thông báo',   icon: Bell,     allowedRoles: ['admin'] },
+      { to: '/bao-cao',     label: 'Báo cáo tự động',  icon: BarChart3 },
+      { to: '/mau-bao-cao', label: 'Mẫu báo cáo',      icon: BookTemplate },
+      { to: '/dong-bo',     label: 'Đồng bộ GSheet',   icon: RefreshCw, allowedRoles: ['admin'] },
+      { to: '/zalo',        label: 'Zalo Thông báo',    icon: Bell,      allowedRoles: ['admin'] },
     ],
   },
   {

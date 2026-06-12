@@ -510,6 +510,36 @@ async def _sync_program_progress(db: AsyncSession, program_id: int) -> None:
     program.progress_percent = new_prog
 
 
+async def _sync_project_progress(db: AsyncSession, task_id: int) -> None:
+    """Recalculate progress_percent for all strategic projects linked to this task."""
+    from app.models.strategic import ProjectTaskLink, StrategicProject
+
+    project_ids = (await db.execute(
+        select(ProjectTaskLink.project_id).where(ProjectTaskLink.task_id == task_id)
+    )).scalars().all()
+
+    for project_id in project_ids:
+        project = await db.get(StrategicProject, project_id)
+        if not project:
+            continue
+
+        progresses = (await db.execute(
+            select(Task.progress_percent).join(
+                ProjectTaskLink, ProjectTaskLink.task_id == Task.id
+            ).where(
+                ProjectTaskLink.project_id == project_id,
+                Task.deleted_at.is_(None),
+            )
+        )).scalars().all()
+
+        if not progresses:
+            continue
+
+        new_prog = int(sum(progresses) / len(progresses))
+        if new_prog != project.progress_percent:
+            project.progress_percent = new_prog
+
+
 async def _set_departments(
     db: AsyncSession, task: Task,
     lead_dept_id: int | None,
@@ -1094,6 +1124,7 @@ async def update_status(
         await _sync_directive_progress(db, t.directive_id)
     if t.program_id:
         await _sync_program_progress(db, t.program_id)
+    await _sync_project_progress(db, t.id)
 
     await db.commit()
 
@@ -1130,6 +1161,7 @@ async def update_progress(
         await _sync_directive_progress(db, t.directive_id)
     if t.program_id:
         await _sync_program_progress(db, t.program_id)
+    await _sync_project_progress(db, t.id)
 
     await db.commit()
 

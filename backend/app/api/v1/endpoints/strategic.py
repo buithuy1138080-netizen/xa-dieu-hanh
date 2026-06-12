@@ -64,6 +64,31 @@ async def _get_project_detail(db: AsyncSession, project_id: int) -> StrategicPro
     return row
 
 
+async def _recalc_project_progress(db: AsyncSession, project_id: int) -> None:
+    """Recalculate strategic project progress from average of linked task progress."""
+    from app.models.task import Task
+
+    project = await db.get(StrategicProject, project_id)
+    if not project:
+        return
+
+    progresses = (await db.execute(
+        select(Task.progress_percent).join(
+            ProjectTaskLink, ProjectTaskLink.task_id == Task.id
+        ).where(
+            ProjectTaskLink.project_id == project_id,
+            Task.deleted_at.is_(None),
+        )
+    )).scalars().all()
+
+    if not progresses:
+        return
+
+    new_prog = int(sum(progresses) / len(progresses))
+    if new_prog != project.progress_percent:
+        project.progress_percent = new_prog
+
+
 async def _get_budget_or_404(db: AsyncSession, budget_id: int) -> BudgetPlan:
     row = (await db.execute(select(BudgetPlan).where(BudgetPlan.id == budget_id))).scalar_one_or_none()
     if not row:
@@ -642,6 +667,8 @@ async def link_task_to_project(
         return existing
     link = ProjectTaskLink(project_id=project_id, task_id=task_id)
     db.add(link)
+    await db.flush()
+    await _recalc_project_progress(db, project_id)
     await db.commit()
     await db.refresh(link)
     return link
@@ -663,4 +690,6 @@ async def unlink_task_from_project(
     ).scalar_one_or_none()
     if link:
         await db.delete(link)
+        await db.flush()
+        await _recalc_project_progress(db, project_id)
         await db.commit()

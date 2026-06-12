@@ -143,13 +143,13 @@ function AnimatedRoutes() {
         <Route path="/documents/:id"      element={<P><DocumentDetailPage /></P>} />
         <Route path="/directives"         element={<P><DirectiveListPage /></P>} />
         <Route path="/directives/:id"     element={<P><DirectiveDetailPage /></P>} />
-        <Route path="/kpi"                element={<P><KPIDashboardPage /></P>} />
+        <Route path="/kpi"                element={<Navigate to="/kpi-tong-hop" replace />} />
         <Route path="/kpi/:id"            element={<P><KPIDetailPage /></P>} />
         <Route path="/kpi-tong-hop"       element={<P><KPIUnifiedPage /></P>} />
         <Route path="/nq57"               element={<P><NQ57DashboardPage /></P>} />
-        <Route path="/nghi-quyet"         element={<P><NghiQuyetListPage /></P>} />
-        <Route path="/nghi-quyet/:id"     element={<P><NghiQuyetDashboardPage /></P>} />
-        <Route path="/kpi-cl"             element={<P><KpiCLPage /></P>} />
+        <Route path="/nghi-quyet"         element={<Navigate to="/programs" replace />} />
+        <Route path="/nghi-quyet/:id"     element={<Navigate to="/programs" replace />} />
+        <Route path="/kpi-cl"             element={<Navigate to="/kpi-tong-hop" replace />} />
         <Route path="/bao-cao"            element={<P><ReportCenterPage /></P>} />
         <Route path="/bao-cao/:id"        element={<P><ReportDetailPage /></P>} />
         <Route path="/mau-bao-cao"        element={<P><TemplateManagerPage /></P>} />
