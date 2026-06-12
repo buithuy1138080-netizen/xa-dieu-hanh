@@ -201,3 +201,26 @@ class ProjectTaskLink(Base):
 
     project: Mapped[StrategicProject] = relationship("StrategicProject", back_populates="task_links")
     task: Mapped[Task] = relationship("Task")
+
+
+class DocumentStrategicProject(Base):
+    __tablename__ = "document_strategic_projects"
+    __table_args__ = (UniqueConstraint("document_id", "project_id", name="uq_doc_strategic_project"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    document_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("strategic_projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    link_type: Mapped[str] = mapped_column(String(30), nullable=False, default="reference")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    document: Mapped["Document"] = relationship("Document", foreign_keys=[document_id])
+    project: Mapped[StrategicProject] = relationship("StrategicProject", foreign_keys=[project_id])
+    creator: Mapped["User | None"] = relationship("User", foreign_keys=[created_by])

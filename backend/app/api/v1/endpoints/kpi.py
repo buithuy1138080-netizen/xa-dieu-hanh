@@ -126,6 +126,7 @@ async def list_kpis(
     responsible_unit: str | None = Query(None),
     overdue_only: bool = Query(False),
     program_id: int | None = Query(None),
+    strategic_project_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -169,6 +170,8 @@ async def list_kpis(
         conditions.append(KPI.responsible_unit.ilike(f"%{responsible_unit}%"))
     if program_id:
         conditions.append(KPI.program_id == program_id)
+    if strategic_project_id:
+        conditions.append(KPI.strategic_project_id == strategic_project_id)
     if overdue_only:
         now = date.today()
         conditions.append(and_(

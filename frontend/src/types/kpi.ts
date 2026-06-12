@@ -49,6 +49,7 @@ export interface KPIRead {
   status: KPIStatus
   deadline: string | null
   program_id: number | null
+  strategic_project_id: number | null
   responsible_unit: string | null
   responsible_department_id: number | null
   responsible_department: DeptMin | null
@@ -100,6 +101,7 @@ export interface KPICreate {
   status?: KPIStatus
   deadline?: string | null
   program_id?: number | null
+  strategic_project_id?: number | null
   responsible_unit?: string
   responsible_department_id?: number | null
   responsible_user_id?: number | null

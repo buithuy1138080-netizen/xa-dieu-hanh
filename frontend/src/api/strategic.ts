@@ -11,12 +11,14 @@ import type {
   FundingSource,
   FundingSourceCreate,
   FundingSourceList,
+  ProjectDocumentLink,
   StrategicDashboardStats,
   StrategicProject,
   StrategicProjectCreate,
   StrategicProjectList,
   StrategicProjectUpdate,
 } from '../types/strategic'
+import type { KPIRead, KPICreate } from '../types/kpi'
 
 const BASE = '/strategic'
 
@@ -96,6 +98,25 @@ export const strategicApi = {
 
   deleteDisbursement: (id: number): Promise<void> =>
     apiClient.delete(`${BASE}/disbursements/${id}`).then(r => r.data),
+
+  // ── Project KPIs (B1) ─────────────────────────────────────────────────────
+
+  listProjectKpis: (projectId: number, params?: { year?: number; status?: string }): Promise<{ items: KPIRead[]; total: number }> =>
+    apiClient.get('/kpis', { params: { ...params, strategic_project_id: projectId, size: 100 } }).then(r => r.data),
+
+  createProjectKpi: (data: KPICreate): Promise<KPIRead> =>
+    apiClient.post('/kpis', data).then(r => r.data),
+
+  // ── Project Documents (B3) ────────────────────────────────────────────────
+
+  listProjectDocuments: (projectId: number): Promise<ProjectDocumentLink[]> =>
+    apiClient.get(`${BASE}/projects/${projectId}/documents`).then(r => r.data),
+
+  linkProjectDocument: (projectId: number, documentId: number, linkType = 'reference', note?: string) =>
+    apiClient.post(`${BASE}/projects/${projectId}/documents`, { document_id: documentId, link_type: linkType, note }).then(r => r.data),
+
+  unlinkProjectDocument: (projectId: number, documentId: number) =>
+    apiClient.delete(`${BASE}/projects/${projectId}/documents/${documentId}`).then(r => r.data),
 }
 
 export default strategicApi

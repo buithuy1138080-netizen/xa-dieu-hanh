@@ -11,6 +11,7 @@ from app.core.database import Base
 if TYPE_CHECKING:
     from app.models.department import Department
     from app.models.staff import Staff
+    from app.models.strategic import StrategicProject
     from app.models.user import User
 
 
@@ -39,6 +40,9 @@ class KPI(Base):
     # ── Liên kết chương trình (Sprint 1) ────────────────────────────────────
     program_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("programs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    strategic_project_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("strategic_projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
     source_document_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
@@ -69,6 +73,7 @@ class KPI(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
+    strategic_project: Mapped["StrategicProject | None"] = relationship("StrategicProject", foreign_keys=[strategic_project_id])
     responsible_department: Mapped[Department | None] = relationship("Department", foreign_keys=[responsible_department_id])
     responsible_user: Mapped[User | None] = relationship("User", foreign_keys=[responsible_user_id])
     responsible_staff: Mapped[Staff | None] = relationship("Staff", foreign_keys=[responsible_staff_id])

@@ -257,6 +257,96 @@ async def get_dashboard_stats(
     )
 
 
+# ─── Project Documents (B3) ──────────────────────────────────────────────────
+
+@router.get("/projects/{project_id}/documents")
+async def list_project_documents(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.document import Document
+    from app.models.strategic import DocumentStrategicProject
+    await _get_project_or_404(db, project_id)
+    rows = (await db.execute(
+        select(DocumentStrategicProject)
+        .options(selectinload(DocumentStrategicProject.document))
+        .where(DocumentStrategicProject.project_id == project_id)
+        .order_by(DocumentStrategicProject.created_at.desc())
+    )).scalars().all()
+    return [
+        {
+            "link_id": r.id,
+            "link_type": r.link_type,
+            "note": r.note,
+            "linked_at": r.created_at.isoformat(),
+            "document": {
+                "id": r.document.id,
+                "doc_number": r.document.doc_number,
+                "title": r.document.title,
+                "doc_type": r.document.doc_type,
+                "status": r.document.status,
+                "issued_date": r.document.issue_date.isoformat() if r.document.issue_date else None,
+            },
+        }
+        for r in rows
+    ]
+
+
+@router.post("/projects/{project_id}/documents", status_code=status.HTTP_201_CREATED)
+async def link_project_document(
+    project_id: int,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.strategic import DocumentStrategicProject
+    await _get_project_or_404(db, project_id)
+    document_id: int = body.get("document_id")
+    if not document_id:
+        raise HTTPException(400, "document_id là bắt buộc")
+    existing = (await db.execute(
+        select(DocumentStrategicProject).where(
+            DocumentStrategicProject.project_id == project_id,
+            DocumentStrategicProject.document_id == document_id,
+        )
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(409, "Văn bản đã được liên kết với dự án này")
+    link = DocumentStrategicProject(
+        project_id=project_id,
+        document_id=document_id,
+        link_type=body.get("link_type", "reference"),
+        note=body.get("note"),
+        created_by=current_user.id,
+    )
+    db.add(link)
+    await db.commit()
+    return {"ok": True, "link_id": link.id}
+
+
+@router.delete("/projects/{project_id}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unlink_project_document(
+    project_id: int,
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.strategic import DocumentStrategicProject
+    row = (await db.execute(
+        select(DocumentStrategicProject).where(
+            DocumentStrategicProject.project_id == project_id,
+            DocumentStrategicProject.document_id == document_id,
+        )
+    )).scalar_one_or_none()
+    if not row:
+        raise HTTPException(404, "Không tìm thấy liên kết")
+    await db.delete(row)
+    await db.commit()
+
+
+# ─── Project CRUD ─────────────────────────────────────────────────────────────
+
 @router.get("/projects/{project_id}", response_model=StrategicProjectOut)
 async def get_project(
     project_id: int,

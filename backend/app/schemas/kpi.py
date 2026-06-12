@@ -45,6 +45,7 @@ class KPICreate(BaseModel):
     status: str = "on_track"
     deadline: date | None = None
     program_id: int | None = None
+    strategic_project_id: int | None = None
     responsible_unit: str | None = None
     responsible_department_id: int | None = None
     responsible_user_id: int | None = None
@@ -66,6 +67,7 @@ class KPIUpdate(BaseModel):
     status: str | None = None
     deadline: date | None = None
     program_id: int | None = None
+    strategic_project_id: int | None = None
     responsible_unit: str | None = None
     responsible_department_id: int | None = None
     responsible_user_id: int | None = None
@@ -118,6 +120,7 @@ class KPIRead(BaseModel):
     status: str
     deadline: date | None
     program_id: int | None = None
+    strategic_project_id: int | None = None
     responsible_unit: str | None
     responsible_department_id: int | None
     responsible_department: DeptMin | None

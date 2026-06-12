@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import {
   AlertTriangle, BarChart2, BookOpen, ChevronDown, ChevronUp,
   DollarSign, Edit2, FileText, FolderKanban, Layers, Loader2, Plus, Search,
-  Target, Trash2, TrendingUp, X,
+  Target, Trash2, TrendingUp, Unlink, X,
 } from 'lucide-react'
 import {
   Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -13,6 +13,8 @@ import apiClient from '../../api/client'
 import { documentsApi } from '../../api/documents'
 import strategicApi from '../../api/strategic'
 import type { DocumentRead } from '../../types/document'
+import type { KPIRead, KPICreate } from '../../types/kpi'
+import type { ProjectDocumentLink } from '../../types/strategic'
 import type {
   BudgetPlan,
   BudgetPlanCreate,
@@ -414,6 +416,272 @@ function ProjectForm({ initial, onSave, onClose }: {
   )
 }
 
+// ─── Project Detail Panel (KPI + Documents) ──────────────────────────────────
+
+const KPI_STATUS_COLORS: Record<string, string> = {
+  on_track: 'bg-green-100 text-green-700',
+  at_risk: 'bg-amber-100 text-amber-700',
+  behind: 'bg-red-100 text-red-700',
+  completed: 'bg-blue-100 text-blue-700',
+}
+const KPI_STATUS_LABELS: Record<string, string> = {
+  on_track: 'Đúng tiến độ', at_risk: 'Có rủi ro', behind: 'Chậm', completed: 'Hoàn thành',
+}
+const THIS_YEAR_NUM = new Date().getFullYear()
+
+function ProjectDetailPanel({ project, onClose }: { project: StrategicProject; onClose: () => void }) {
+  const [tab, setTab] = useState<'kpi' | 'docs'>('kpi')
+
+  // ── KPI state ──
+  const [kpis, setKpis] = useState<KPIRead[]>([])
+  const [kpiLoading, setKpiLoading] = useState(true)
+  const [showKpiForm, setShowKpiForm] = useState(false)
+  const [kpiForm, setKpiForm] = useState<KPICreate>({
+    title: '', target_value: 100, current_value: 0, year: THIS_YEAR_NUM,
+    period: 'yearly', strategic_project_id: project.id,
+    program_id: project.program_id ?? undefined,
+  })
+  const [kpiSaving, setKpiSaving] = useState(false)
+
+  // ── Document state ──
+  const [docs, setDocs] = useState<ProjectDocumentLink[]>([])
+  const [docLoading, setDocLoading] = useState(false)
+  const [docSearch, setDocSearch] = useState('')
+  const [docResults, setDocResults] = useState<DocumentRead[]>([])
+  const [showDocPicker, setShowDocPicker] = useState(false)
+  const docPickerRef = useRef<HTMLDivElement>(null)
+
+  const loadKpis = useCallback(() => {
+    setKpiLoading(true)
+    strategicApi.listProjectKpis(project.id)
+      .then(r => setKpis(r.items))
+      .catch(() => setKpis([]))
+      .finally(() => setKpiLoading(false))
+  }, [project.id])
+
+  const loadDocs = useCallback(() => {
+    setDocLoading(true)
+    strategicApi.listProjectDocuments(project.id)
+      .then(r => setDocs(r))
+      .catch(() => setDocs([]))
+      .finally(() => setDocLoading(false))
+  }, [project.id])
+
+  useEffect(() => { loadKpis() }, [loadKpis])
+  useEffect(() => { if (tab === 'docs') loadDocs() }, [tab, loadDocs])
+
+  useEffect(() => {
+    if (!docSearch.trim()) { setDocResults([]); return }
+    const t = setTimeout(() => {
+      documentsApi.list({ search: docSearch, size: 8 })
+        .then(r => setDocResults(r.data.items))
+        .catch(() => {})
+    }, 300)
+    return () => clearTimeout(t)
+  }, [docSearch])
+
+  const handleSaveKpi = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setKpiSaving(true)
+    try {
+      await strategicApi.createProjectKpi({ ...kpiForm, strategic_project_id: project.id })
+      setShowKpiForm(false)
+      setKpiForm({ title: '', target_value: 100, current_value: 0, year: THIS_YEAR_NUM, period: 'yearly', strategic_project_id: project.id, program_id: project.program_id ?? undefined })
+      loadKpis()
+    } finally {
+      setKpiSaving(false)
+    }
+  }
+
+  const handleLinkDoc = async (doc: DocumentRead) => {
+    try {
+      await strategicApi.linkProjectDocument(project.id, doc.id)
+      setDocSearch('')
+      setDocResults([])
+      loadDocs()
+    } catch (err: any) {
+      if (err?.response?.status === 409) alert('Văn bản đã được liên kết')
+    }
+  }
+
+  const handleUnlinkDoc = async (docId: number) => {
+    if (!confirm('Bỏ liên kết văn bản này?')) return
+    await strategicApi.unlinkProjectDocument(project.id, docId)
+    loadDocs()
+  }
+
+  return (
+    <div className="border-t border-blue-100 bg-blue-50/30 px-4 py-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex gap-1">
+          <button
+            onClick={() => setTab('kpi')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${tab === 'kpi' ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-slate-500 hover:bg-white/60'}`}
+          >
+            📊 KPI ({kpis.length})
+          </button>
+          <button
+            onClick={() => setTab('docs')}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${tab === 'docs' ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-slate-500 hover:bg-white/60'}`}
+          >
+            📄 Văn bản ({docs.length})
+          </button>
+        </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded"><X size={14} /></button>
+      </div>
+
+      {/* ── KPI Tab ── */}
+      {tab === 'kpi' && (
+        <div className="space-y-2">
+          {kpiLoading ? (
+            <div className="flex justify-center py-4"><Loader2 size={18} className="animate-spin text-blue-400" /></div>
+          ) : kpis.length === 0 && !showKpiForm ? (
+            <p className="text-xs text-slate-400 italic py-2">Chưa có KPI nào cho dự án này.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {kpis.map(k => (
+                <div key={k.id} className="bg-white rounded-lg px-3 py-2 border border-slate-100 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-slate-700 truncate">{k.title}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex-1 max-w-[120px] bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${k.progress}%` }} />
+                      </div>
+                      <span className="text-[10px] text-slate-500">{k.current_value}/{k.target_value} {k.unit ?? ''} · {k.progress.toFixed(0)}%</span>
+                    </div>
+                  </div>
+                  <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${KPI_STATUS_COLORS[k.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                    {KPI_STATUS_LABELS[k.status] ?? k.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showKpiForm ? (
+            <form onSubmit={handleSaveKpi} className="bg-white rounded-lg border border-blue-200 p-3 space-y-2 mt-2">
+              <input
+                required
+                className="w-full border rounded-lg px-2.5 py-1.5 text-xs"
+                placeholder="Tên KPI *"
+                value={kpiForm.title}
+                onChange={e => setKpiForm(f => ({ ...f, title: e.target.value }))}
+              />
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[10px] text-slate-500">Mục tiêu</label>
+                  <input type="number" min={0} className="w-full border rounded px-2 py-1 text-xs" value={kpiForm.target_value}
+                    onChange={e => setKpiForm(f => ({ ...f, target_value: Number(e.target.value) }))} />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500">Hiện tại</label>
+                  <input type="number" min={0} className="w-full border rounded px-2 py-1 text-xs" value={kpiForm.current_value}
+                    onChange={e => setKpiForm(f => ({ ...f, current_value: Number(e.target.value) }))} />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500">Đơn vị</label>
+                  <input className="w-full border rounded px-2 py-1 text-xs" placeholder="%, người..." value={kpiForm.unit ?? ''}
+                    onChange={e => setKpiForm(f => ({ ...f, unit: e.target.value || undefined }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-slate-500">Năm</label>
+                  <input type="number" className="w-full border rounded px-2 py-1 text-xs" value={kpiForm.year}
+                    onChange={e => setKpiForm(f => ({ ...f, year: Number(e.target.value) }))} />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500">Chu kỳ</label>
+                  <select className="w-full border rounded px-2 py-1 text-xs" value={kpiForm.period}
+                    onChange={e => setKpiForm(f => ({ ...f, period: e.target.value as KPICreate['period'] }))}>
+                    <option value="yearly">Năm</option>
+                    <option value="quarterly">Quý</option>
+                    <option value="monthly">Tháng</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setShowKpiForm(false)} className="flex-1 border rounded-lg px-3 py-1.5 text-xs hover:bg-slate-50">Hủy</button>
+                <button type="submit" disabled={kpiSaving} className="flex-1 bg-blue-600 text-white rounded-lg px-3 py-1.5 text-xs hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1">
+                  {kpiSaving && <Loader2 size={11} className="animate-spin" />} Lưu KPI
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              onClick={() => setShowKpiForm(true)}
+              className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 mt-1 px-1"
+            >
+              <Plus size={13} /> Thêm KPI cho dự án
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── Documents Tab ── */}
+      {tab === 'docs' && (
+        <div className="space-y-2">
+          {docLoading ? (
+            <div className="flex justify-center py-4"><Loader2 size={18} className="animate-spin text-blue-400" /></div>
+          ) : docs.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-2">Chưa có văn bản nào được liên kết.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {docs.map(d => (
+                <div key={d.link_id} className="bg-white rounded-lg px-3 py-2 border border-slate-100 flex items-center gap-2">
+                  <FileText size={13} className="text-slate-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    {d.document.doc_number && <span className="text-[10px] font-mono text-slate-400 mr-1">{d.document.doc_number}</span>}
+                    <span className="text-xs text-slate-700 truncate block">{d.document.title}</span>
+                  </div>
+                  <button onClick={() => handleUnlinkDoc(d.document.id)} className="shrink-0 text-slate-300 hover:text-red-500 p-1 rounded" title="Bỏ liên kết">
+                    <Unlink size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Search to link doc */}
+          <div className="relative mt-2" ref={docPickerRef}>
+            <div className="flex items-center gap-2 px-2.5 py-1.5 border border-dashed border-blue-300 rounded-lg bg-white">
+              <Search size={12} className="text-blue-400 shrink-0" />
+              <input
+                type="text"
+                placeholder="Tìm và liên kết văn bản..."
+                value={docSearch}
+                onChange={e => { setDocSearch(e.target.value); setShowDocPicker(true) }}
+                onFocus={() => setShowDocPicker(true)}
+                onBlur={() => setTimeout(() => setShowDocPicker(false), 200)}
+                className="flex-1 text-xs outline-none text-slate-700 bg-transparent"
+              />
+            </div>
+            {showDocPicker && docResults.length > 0 && (
+              <div className="absolute z-30 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden max-h-40 overflow-y-auto">
+                {docResults.map(doc => (
+                  <button
+                    key={doc.id}
+                    type="button"
+                    onMouseDown={() => handleLinkDoc(doc)}
+                    className="w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-blue-50 transition-colors"
+                  >
+                    <FileText size={12} className="text-slate-400 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      {doc.doc_number && <span className="text-[10px] font-mono text-slate-400 mr-1">{doc.doc_number}</span>}
+                      <span className="text-xs text-slate-700 line-clamp-1">{doc.title}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Projects Tab ─────────────────────────────────────────────────────────────
 
 function ProjectsTab() {
@@ -428,6 +696,7 @@ function ProjectsTab() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<StrategicProject | null>(null)
   const [page, setPage] = useState(1)
+  const [expandedId, setExpandedId] = useState<number | null>(null)
   const PAGE_SIZE = 20
 
   const load = useCallback(async () => {
@@ -560,50 +829,68 @@ function ProjectsTab() {
               {projects.length === 0 ? (
                 <tr><td colSpan={9} className="text-center py-12 text-gray-400">Chưa có dự án nào</td></tr>
               ) : projects.map(p => (
-                <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-gray-800">{p.project_name}</p>
-                    {p.project_code && <p className="text-xs text-gray-400">{p.project_code}</p>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge label={PROJECT_TYPE_LABELS[p.project_type]} cls="bg-purple-100 text-purple-700" />
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge label={PROJECT_STATUS_LABELS[p.project_status]} cls={STATUS_COLOR[p.project_status]} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge label={PRIORITY_LABELS[p.priority_level]} cls={PRIORITY_COLOR[p.priority_level]} />
-                  </td>
-                  <td className="px-4 py-3 w-36">
-                    <div className="flex items-center gap-2">
-                      <ProgressBar value={p.progress_percent} color={p.progress_percent >= 80 ? 'bg-green-500' : p.progress_percent >= 50 ? 'bg-blue-500' : 'bg-amber-500'} />
-                      <span className="text-xs text-gray-500 w-8">{p.progress_percent}%</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">
-                    {p.start_date && <div>{p.start_date}</div>}
-                    {p.end_date && <div>→ {p.end_date}</div>}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">
-                    {p.responsible_department?.short_name ?? p.responsible_department?.name ?? '—'}
-                  </td>
-                  <td className="px-4 py-3 text-xs">
-                    {p.source_document ? (
-                      <span className="inline-flex items-center gap-1 text-blue-600 hover:underline cursor-pointer" title={p.source_document.title}>
-                        <FileText size={11} />
-                        {p.source_document.doc_number ?? p.source_document.title.slice(0, 20)}
-                      </span>
-                    ) : (
-                      <span className="text-gray-300">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <button onClick={() => { setEditing(p); setShowForm(true) }} className="p-1.5 hover:bg-blue-50 rounded-lg"><Edit2 size={14} className="text-blue-500" /></button>
-                      {canDelete && <button onClick={() => handleDelete(p.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="text-red-500" /></button>}
-                    </div>
-                  </td>
-                </tr>
+                <>
+                  <tr
+                    key={p.id}
+                    className={`hover:bg-gray-50 cursor-pointer ${expandedId === p.id ? 'bg-blue-50/40' : ''}`}
+                    onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        {expandedId === p.id ? <ChevronUp size={13} className="text-blue-500 shrink-0" /> : <ChevronDown size={13} className="text-slate-400 shrink-0" />}
+                        <div>
+                          <p className="font-medium text-gray-800">{p.project_name}</p>
+                          {p.project_code && <p className="text-xs text-gray-400">{p.project_code}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge label={PROJECT_TYPE_LABELS[p.project_type]} cls="bg-purple-100 text-purple-700" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge label={PROJECT_STATUS_LABELS[p.project_status]} cls={STATUS_COLOR[p.project_status]} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge label={PRIORITY_LABELS[p.priority_level]} cls={PRIORITY_COLOR[p.priority_level]} />
+                    </td>
+                    <td className="px-4 py-3 w-36">
+                      <div className="flex items-center gap-2">
+                        <ProgressBar value={p.progress_percent} color={p.progress_percent >= 80 ? 'bg-green-500' : p.progress_percent >= 50 ? 'bg-blue-500' : 'bg-amber-500'} />
+                        <span className="text-xs text-gray-500 w-8">{p.progress_percent}%</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      {p.start_date && <div>{p.start_date}</div>}
+                      {p.end_date && <div>→ {p.end_date}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      {p.responsible_department?.short_name ?? p.responsible_department?.name ?? '—'}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {p.source_document ? (
+                        <span className="inline-flex items-center gap-1 text-blue-600 hover:underline cursor-pointer" title={p.source_document.title}>
+                          <FileText size={11} />
+                          {p.source_document.doc_number ?? p.source_document.title.slice(0, 20)}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                      <div className="flex gap-1">
+                        <button onClick={() => { setEditing(p); setShowForm(true) }} className="p-1.5 hover:bg-blue-50 rounded-lg"><Edit2 size={14} className="text-blue-500" /></button>
+                        {canDelete && <button onClick={() => handleDelete(p.id)} className="p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={14} className="text-red-500" /></button>}
+                      </div>
+                    </td>
+                  </tr>
+                  {expandedId === p.id && (
+                    <tr key={`${p.id}-detail`}>
+                      <td colSpan={9} className="p-0">
+                        <ProjectDetailPanel project={p} onClose={() => setExpandedId(null)} />
+                      </td>
+                    </tr>
+                  )}
+                </>
               ))}
             </tbody>
           </table>

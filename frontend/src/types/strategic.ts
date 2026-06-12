@@ -247,3 +247,18 @@ export const FUNDING_TYPE_LABELS: Record<FundingType, string> = {
   xa_hoi_hoa: 'Xã hội hóa',
   tai_tro: 'Tài trợ',
 }
+
+export interface ProjectDocumentLink {
+  link_id: number
+  link_type: string
+  note: string | null
+  linked_at: string
+  document: {
+    id: number
+    doc_number: string | null
+    title: string
+    doc_type: string | null
+    status: string | null
+    issued_date: string | null
+  }
+}
