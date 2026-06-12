@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import apiClient from '../../api/client'
 import { kpiApi } from '../../api/kpi'
+import { programsApi } from '../../api/programs'
+import type { Program } from '../../api/programs'
 import KPIStatusBadge from '../../components/kpi/KPIStatusBadge'
 import AppLayout from '../../components/layout/AppLayout'
 import type { KPICreate, KPIPeriod, KPIReadDetail, KPIStatus } from '../../types/kpi'
 
 interface DeptMin { id: number; name: string; short_name: string | null }
+interface StaffItem { id: number; full_name: string; position: string | null; employee_code: string | null; department_id: number | null }
 
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1]
@@ -54,9 +57,13 @@ export default function KPIDetailPage() {
   const [progressNote, setProgressNote] = useState('')
   const [progressSaving, setProgressSaving] = useState(false)
   const [depts, setDepts] = useState<DeptMin[]>([])
+  const [staffList, setStaffList] = useState<StaffItem[]>([])
+  const [programs, setPrograms] = useState<Program[]>([])
 
   useEffect(() => {
     apiClient.get<{ items: DeptMin[] }>('/departments?size=200').then(r => setDepts(r.data.items ?? [])).catch(() => {})
+    apiClient.get<{ items: StaffItem[] }>('/staff?active_only=true&size=200').then(r => setStaffList(r.data.items ?? [])).catch(() => {})
+    programsApi.list().then(r => setPrograms(r.data)).catch(() => {})
   }, [])
 
   async function load() {
@@ -74,6 +81,8 @@ export default function KPIDetailPage() {
         responsible_unit: data.responsible_unit ?? '',
         responsible_department_id: data.responsible_department_id ?? null,
         responsible_user_id: data.responsible_user?.id ?? null,
+        responsible_staff_id: data.responsible_staff?.id ?? null,
+        program_id: data.program_id ?? null,
       })
     } finally {
       setLoading(false)
@@ -314,6 +323,10 @@ export default function KPIDetailPage() {
                 <label className={lbl}>Tên KPI *</label>
                 <input required className={inp} value={editForm.title ?? ''} onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))} />
               </div>
+              <div>
+                <label className={lbl}>Mô tả</label>
+                <textarea rows={2} className={inp} value={editForm.description ?? ''} onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))} />
+              </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className={lbl}>Mục tiêu</label>
@@ -356,21 +369,45 @@ export default function KPIDetailPage() {
                   </select>
                 </div>
               </div>
-              <div>
-                <label className={lbl}>Đơn vị phụ trách</label>
-                <select className={inp} value={editForm.responsible_department_id ?? ''} onChange={e => {
-                  const deptId = e.target.value ? Number(e.target.value) : null
-                  const dept = depts.find(d => d.id === deptId)
-                  setEditForm(p => ({
-                    ...p,
-                    responsible_department_id: deptId,
-                    responsible_unit: dept ? (dept.short_name ?? dept.name) : (p.responsible_unit ?? ''),
-                  }))
-                }}>
-                  <option value="">-- Chọn đơn vị --</option>
-                  {depts.map(d => <option key={d.id} value={d.id}>{d.short_name ?? d.name}</option>)}
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={lbl}>Đơn vị phụ trách</label>
+                  <select className={inp} value={editForm.responsible_department_id ?? ''} onChange={e => {
+                    const deptId = e.target.value ? Number(e.target.value) : null
+                    const dept = depts.find(d => d.id === deptId)
+                    setEditForm(p => ({
+                      ...p,
+                      responsible_department_id: deptId,
+                      responsible_unit: dept ? (dept.short_name ?? dept.name) : (p.responsible_unit ?? ''),
+                    }))
+                  }}>
+                    <option value="">-- Chọn đơn vị --</option>
+                    {depts.map(d => <option key={d.id} value={d.id}>{d.short_name ?? d.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Cán bộ phụ trách</label>
+                  <select className={inp} value={editForm.responsible_staff_id ?? ''} onChange={e => setEditForm(p => ({ ...p, responsible_staff_id: e.target.value ? Number(e.target.value) : null }))}>
+                    <option value="">-- Chưa xác định --</option>
+                    {staffList.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.full_name}{s.position ? ` — ${s.position}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+              {programs.length > 0 && (
+                <div>
+                  <label className={lbl}>Chương trình / Nghị quyết</label>
+                  <select className={inp} value={editForm.program_id ?? ''} onChange={e => setEditForm(p => ({ ...p, program_id: e.target.value ? Number(e.target.value) : null }))}>
+                    <option value="">-- Không liên kết --</option>
+                    {programs.map(prog => (
+                      <option key={prog.id} value={prog.id}>{prog.short_name ?? prog.code} — {prog.name.slice(0, 50)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="flex gap-3 pt-2 justify-end">
                 <button type="button" onClick={() => setEditOpen(false)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition">Hủy</button>
                 <button type="submit" disabled={editSaving} className="px-5 py-2 text-sm bg-violet-600 text-white rounded-lg font-semibold hover:bg-violet-700 disabled:opacity-50 transition">
