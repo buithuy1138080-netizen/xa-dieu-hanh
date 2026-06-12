@@ -688,6 +688,7 @@ function ProjectsTab() {
   const [projects, setProjects] = useState<StrategicProject[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
@@ -699,6 +700,7 @@ function ProjectsTab() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await strategicApi.listProjects({
         skip: (page - 1) * PAGE_SIZE,
@@ -709,6 +711,8 @@ function ProjectsTab() {
       })
       setProjects(res.items)
       setTotal(res.total)
+    } catch {
+      setLoadError('Không thể tải danh sách dự án. Vui lòng thử lại.')
     } finally {
       setLoading(false)
     }
@@ -717,26 +721,40 @@ function ProjectsTab() {
   useEffect(() => { load() }, [load])
 
   const handleSave = async (data: StrategicProjectCreate) => {
-    if (editing) {
-      await strategicApi.updateProject(editing.id, data as StrategicProjectUpdate)
-    } else {
-      await strategicApi.createProject(data)
+    try {
+      if (editing) {
+        await strategicApi.updateProject(editing.id, data as StrategicProjectUpdate)
+      } else {
+        await strategicApi.createProject(data)
+      }
+      setShowForm(false)
+      setEditing(null)
+      load()
+    } catch {
+      alert(editing ? 'Lỗi khi cập nhật dự án. Vui lòng thử lại.' : 'Lỗi khi tạo dự án. Vui lòng thử lại.')
     }
-    setShowForm(false)
-    setEditing(null)
-    load()
   }
 
   const handleDelete = async (id: number) => {
     if (!confirm('Xóa dự án này?')) return
-    await strategicApi.deleteProject(id)
-    load()
+    try {
+      await strategicApi.deleteProject(id)
+      load()
+    } catch {
+      alert('Xóa thất bại. Vui lòng thử lại.')
+    }
   }
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
   return (
     <div className="space-y-4">
+      {loadError && (
+        <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          <AlertTriangle size={15} className="shrink-0" /> {loadError}
+          <button onClick={load} className="ml-auto text-xs underline hover:no-underline">Thử lại</button>
+        </div>
+      )}
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">

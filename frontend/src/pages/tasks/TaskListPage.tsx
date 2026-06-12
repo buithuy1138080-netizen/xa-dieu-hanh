@@ -211,30 +211,36 @@ export default function TaskListPage() {
         due_after:    filters.date_from    || undefined,
         due_before:   filters.date_to      || undefined,
       })
+    } catch {
+      showToast('Xuất file thất bại. Vui lòng thử lại.')
     } finally {
       setExporting(false)
     }
-  }, [filters])
+  }, [filters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchKanban = useCallback(async () => {
     setKanbanLoading(true)
     try {
       const { data } = await tasksApi.list({ page_size: 200 })
       setKanbanTasks(data.items)
+    } catch {
+      showToast('Không thể tải dữ liệu kanban. Vui lòng thử lại.')
     } finally {
       setKanbanLoading(false)
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchOverdue = useCallback(async () => {
     setOverdueLoading(true)
     try {
       const { data } = await tasksApi.overdue()
       setOverdueTasks(data)
+    } catch {
+      showToast('Không thể tải danh sách quá hạn. Vui lòng thử lại.')
     } finally {
       setOverdueLoading(false)
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshStats = () => tasksApi.stats().then((r) => setStats(r.data)).catch(() => {})
 

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { BookOpen, ChevronRight, Edit2, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, BookOpen, ChevronRight, Edit2, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { programsApi, tagsApi } from '../../api/programs'
@@ -34,6 +34,7 @@ export default function ProgramsPage() {
   const [programs, setPrograms] = useState<ProgramWithStats[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
+  const [pageError, setPageError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Program | null>(null)
   const [saving, setSaving] = useState(false)
@@ -42,6 +43,7 @@ export default function ProgramsPage() {
   useEffect(() => {
     Promise.all([programsApi.listWithStats(), tagsApi.list()])
       .then(([p, t]) => { setPrograms(p.data); setTags(t.data) })
+      .catch(() => setPageError('Không thể tải danh sách chương trình. Vui lòng tải lại trang.'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -111,6 +113,11 @@ export default function ProgramsPage() {
     <AppLayout>
       <div className="p-6 space-y-5 max-w-5xl mx-auto">
         {/* Header */}
+        {pageError && (
+          <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            <AlertTriangle size={15} className="shrink-0" /> {pageError}
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
