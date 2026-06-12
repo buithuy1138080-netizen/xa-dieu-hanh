@@ -427,8 +427,6 @@ const KPI_STATUS_COLORS: Record<string, string> = {
 const KPI_STATUS_LABELS: Record<string, string> = {
   on_track: 'Đúng tiến độ', at_risk: 'Có rủi ro', behind: 'Chậm', completed: 'Hoàn thành',
 }
-const THIS_YEAR_NUM = new Date().getFullYear()
-
 function ProjectDetailPanel({ project, onClose }: { project: StrategicProject; onClose: () => void }) {
   const [tab, setTab] = useState<'kpi' | 'docs'>('kpi')
 
@@ -437,7 +435,7 @@ function ProjectDetailPanel({ project, onClose }: { project: StrategicProject; o
   const [kpiLoading, setKpiLoading] = useState(true)
   const [showKpiForm, setShowKpiForm] = useState(false)
   const [kpiForm, setKpiForm] = useState<KPICreate>({
-    title: '', target_value: 100, current_value: 0, year: THIS_YEAR_NUM,
+    title: '', target_value: 100, current_value: 0, year: THIS_YEAR,
     period: 'yearly', strategic_project_id: project.id,
     program_id: project.program_id ?? undefined,
   })
@@ -486,7 +484,7 @@ function ProjectDetailPanel({ project, onClose }: { project: StrategicProject; o
     try {
       await strategicApi.createProjectKpi({ ...kpiForm, strategic_project_id: project.id })
       setShowKpiForm(false)
-      setKpiForm({ title: '', target_value: 100, current_value: 0, year: THIS_YEAR_NUM, period: 'yearly', strategic_project_id: project.id, program_id: project.program_id ?? undefined })
+      setKpiForm({ title: '', target_value: 100, current_value: 0, year: THIS_YEAR, period: 'yearly', strategic_project_id: project.id, program_id: project.program_id ?? undefined })
       loadKpis()
     } finally {
       setKpiSaving(false)

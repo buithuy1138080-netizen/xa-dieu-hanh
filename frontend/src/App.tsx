@@ -35,7 +35,6 @@ const DocumentListPage      = lazy(() => import('./pages/documents/DocumentListP
 const DocumentDetailPage    = lazy(() => import('./pages/documents/DocumentDetailPage'))
 const DirectiveListPage     = lazy(() => import('./pages/directives/DirectiveListPage'))
 const DirectiveDetailPage   = lazy(() => import('./pages/directives/DirectiveDetailPage'))
-const KPIDashboardPage      = lazy(() => import('./pages/kpi/KPIDashboardPage'))
 const KPIDetailPage         = lazy(() => import('./pages/kpi/KPIDetailPage'))
 const KPIUnifiedPage        = lazy(() => import('./pages/kpi/KPIUnifiedPage'))
 const NQ57DashboardPage     = lazy(() => import('./pages/nq57/NQ57DashboardPage'))
@@ -107,7 +106,6 @@ const _preloadAll = () => {
     () => import('./pages/documents/DocumentDetailPage'),
     () => import('./pages/directives/DirectiveListPage'),
     () => import('./pages/directives/DirectiveDetailPage'),
-    () => import('./pages/kpi/KPIDashboardPage'),
     () => import('./pages/kpi/KPIDetailPage'),
     () => import('./pages/kpi/KPIUnifiedPage'),
     () => import('./pages/nq57/NQ57DashboardPage'),

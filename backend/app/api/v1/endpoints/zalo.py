@@ -46,8 +46,10 @@ def _config_read(cfg: ZaloConfig) -> ZaloConfigRead:
 @router.get("/config", response_model=ZaloConfigRead | None)
 async def get_config(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    if current_user.role not in ("admin", "leader"):
+        raise HTTPException(403, "Cần quyền admin hoặc leader")
     cfg = (await db.execute(select(ZaloConfig).limit(1))).scalar_one_or_none()
     return _config_read(cfg) if cfg else None
 
@@ -120,6 +122,8 @@ async def create_template(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role not in ("admin", "leader"):
+        raise HTTPException(403, "Cần quyền admin hoặc leader")
     tmpl = ZaloTemplate(**body.model_dump(), created_by=current_user.id)
     db.add(tmpl)
     await db.commit()
@@ -132,8 +136,10 @@ async def update_template(
     tmpl_id: int,
     body: ZaloTemplateUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    if current_user.role not in ("admin", "leader"):
+        raise HTTPException(403, "Cần quyền admin hoặc leader")
     tmpl = await db.get(ZaloTemplate, tmpl_id)
     if not tmpl:
         raise HTTPException(404, "Không tìm thấy mẫu tin nhắn")
@@ -148,8 +154,10 @@ async def update_template(
 async def delete_template(
     tmpl_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    if current_user.role not in ("admin", "leader"):
+        raise HTTPException(403, "Cần quyền admin hoặc leader")
     tmpl = await db.get(ZaloTemplate, tmpl_id)
     if not tmpl:
         raise HTTPException(404, "Không tìm thấy mẫu tin nhắn")
@@ -165,6 +173,8 @@ async def seed_default_templates(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role not in ("admin",):
+        raise HTTPException(403, "Cần quyền admin")
     inserted = await zalo_notify_engine.seed_defaults(db, current_user.id)
     return {"inserted": inserted, "message": f"Đã thêm {inserted} mẫu mặc định"}
 
@@ -255,6 +265,8 @@ async def manual_send(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role not in ("admin", "leader"):
+        raise HTTPException(403, "Cần quyền admin hoặc leader")
     logs = await zalo_notify_engine.notify_event(
         db=db,
         notif_type=body.notif_type,
