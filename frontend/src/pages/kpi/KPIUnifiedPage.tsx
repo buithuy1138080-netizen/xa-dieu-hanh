@@ -1,13 +1,29 @@
-import { AlertTriangle, BarChart3, Layers, Search, TrendingDown, TrendingUp } from 'lucide-react'
+import { AlertTriangle, BarChart3, Layers, Plus, Search, TrendingDown, TrendingUp } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/layout/AppLayout'
 import { kpiUnifiedApi, type UnifiedKpiItem, type UnifiedKpiSummary } from '../../api/kpiUnified'
+import { kpiApi } from '../../api/kpi'
+import apiClient from '../../api/client'
+import { programsApi } from '../../api/programs'
+import type { KPICreate, KPIPeriod } from '../../types/kpi'
+import { useAuthStore } from '../../store/authStore'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CURRENT_YEAR = new Date().getFullYear()
 const YEARS = [CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1]
+
+const CATEGORIES = ['Kinh tế', 'Xã hội', 'Môi trường', 'Hành chính', 'An ninh trật tự', 'Văn hóa', 'Giáo dục', 'Y tế', 'Hạ tầng số', 'Nhân lực số', 'Chính phủ số']
+const PERIODS: { value: KPIPeriod; label: string }[] = [
+  { value: 'yearly', label: 'Năm' },
+  { value: 'quarterly', label: 'Quý' },
+  { value: 'monthly', label: 'Tháng' },
+  { value: 'five_year', label: 'Nhiệm kỳ (5 năm)' },
+]
+const FORM_INIT: KPICreate = { title: '', target_value: 100, current_value: 0, period: 'yearly', year: CURRENT_YEAR }
+const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white'
+const lbl = 'block text-xs font-medium text-slate-600 mb-1'
 
 const STATUS_OPTS = [
   { value: '', label: 'Tất cả' },
@@ -82,6 +98,8 @@ function SourceBadge({ source }: { source: 'standard' | 'strategic' }) {
 
 export default function KPIUnifiedPage() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canCreate = user?.role === 'admin' || user?.role === 'leader' || user?.role === 'manager'
 
   const [summary, setSummary] = useState<UnifiedKpiSummary | null>(null)
   const [items, setItems] = useState<UnifiedKpiItem[]>([])
@@ -98,6 +116,14 @@ export default function KPIUnifiedPage() {
   const [page, setPage] = useState(1)
   const [sortBy, setSortBy] = useState<'progress' | 'title' | 'year'>('progress')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  // ── Create form state ─────────────────────────────────────────────────────
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState<KPICreate>(FORM_INIT)
+  const [saving, setSaving] = useState(false)
+  const [depts, setDepts] = useState<{ id: number; name: string; short_name: string | null }[]>([])
+  const [staffList, setStaffList] = useState<{ id: number; full_name: string; position: string | null }[]>([])
+  const [programs, setPrograms] = useState<{ id: number; name: string; short_name: string | null; code: string | null }[]>([])
 
   const SIZE = 20
 
@@ -156,13 +182,33 @@ export default function KPIUnifiedPage() {
     setPage(1)
   }
 
-  // Navigate to source detail page
-  function goToDetail(item: UnifiedKpiItem) {
-    if (item.source === 'strategic') {
-      navigate(`/kpi-cl`)
-    } else {
-      navigate(`/kpi/${item.id}`)
+  // Load depts/staff/programs for create form (only when needed)
+  useEffect(() => {
+    if (!canCreate) return
+    apiClient.get<{ id: number; name: string; short_name: string | null }[]>('/departments').then(r => setDepts(r.data)).catch(() => {})
+    apiClient.get<{ items: { id: number; full_name: string; position: string | null }[] }>('/staff?active_only=true&size=200').then(r => setStaffList(r.data.items)).catch(() => {})
+    programsApi.list().then(r => setPrograms(r.data)).catch(() => {})
+  }, [canCreate])
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const { data } = await kpiApi.create(form)
+      setShowForm(false)
+      setForm(FORM_INIT)
+      setPage(1)
+      setSearch('')
+      setSearchInput('')
+      navigate(`/kpi/${data.id}`)
+    } finally {
+      setSaving(false)
     }
+  }
+
+  // Navigate to source detail page — all KPIs now live in /kpi/:id
+  function goToDetail(item: UnifiedKpiItem) {
+    navigate(`/kpi/${item.id}`)
   }
 
   const byStatus = summary?.by_status ?? {}
@@ -190,6 +236,15 @@ export default function KPIUnifiedPage() {
               <option value="">Tất cả</option>
               {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
+            {canCreate && (
+              <button
+                onClick={() => setShowForm(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white text-sm font-semibold rounded-lg hover:bg-violet-700 active:scale-95 transition-all shadow-sm"
+              >
+                <Plus size={15} />
+                <span>Thêm KPI</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -422,6 +477,114 @@ export default function KPIUnifiedPage() {
           </div>
         )}
       </div>
+
+      {/* ── Create KPI Modal ── */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h2 className="font-bold text-slate-800">Thêm KPI mới</h2>
+              <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+            </div>
+            <form onSubmit={handleCreate} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={lbl}>Mã KPI <span className="ml-1 text-xs text-slate-400 font-normal">(để trống để tự sinh)</span></label>
+                  <input className={inp} value={form.code ?? ''} onChange={e => setForm(p => ({ ...p, code: e.target.value || undefined }))} placeholder={`KPI-${form.year}-001 (tự động)`} />
+                </div>
+                <div>
+                  <label className={lbl}>Nhóm</label>
+                  <select className={inp} value={form.category ?? ''} onChange={e => setForm(p => ({ ...p, category: e.target.value || undefined }))}>
+                    <option value="">-- Chọn nhóm --</option>
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className={lbl}>Tên KPI *</label>
+                <input required className={inp} value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="Tỷ lệ hộ nghèo giảm..." />
+              </div>
+              <div>
+                <label className={lbl}>Mô tả</label>
+                <textarea rows={2} className={inp} value={form.description ?? ''} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className={lbl}>Mục tiêu *</label>
+                  <input type="number" required className={inp} value={form.target_value} onChange={e => setForm(p => ({ ...p, target_value: Number(e.target.value) }))} />
+                </div>
+                <div>
+                  <label className={lbl}>Thực hiện</label>
+                  <input type="number" className={inp} value={form.current_value} onChange={e => setForm(p => ({ ...p, current_value: Number(e.target.value) }))} />
+                </div>
+                <div>
+                  <label className={lbl}>Đơn vị tính</label>
+                  <input className={inp} value={form.unit ?? ''} onChange={e => setForm(p => ({ ...p, unit: e.target.value || undefined }))} placeholder="%, người, tỷ..." />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className={lbl}>Chu kỳ</label>
+                  <select className={inp} value={form.period} onChange={e => {
+                    const p = e.target.value as KPIPeriod
+                    setForm(prev => ({ ...prev, period: p, year: p === 'five_year' ? 2025 : prev.year }))
+                  }}>
+                    {PERIODS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>{form.period === 'five_year' ? 'Giai đoạn' : 'Năm *'}</label>
+                  {form.period === 'five_year'
+                    ? <input className={inp} value="2025 – 2031" readOnly style={{ background: '#f8fafc', color: '#64748b' }} />
+                    : <select className={inp} value={form.year} onChange={e => setForm(p => ({ ...p, year: Number(e.target.value) }))}>
+                        {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                  }
+                </div>
+                <div>
+                  <label className={lbl}>Hạn hoàn thành</label>
+                  <input type="date" className={inp} value={form.deadline ?? ''} onChange={e => setForm(p => ({ ...p, deadline: e.target.value || null }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={lbl}>Đơn vị phụ trách</label>
+                  <select className={inp} value={form.responsible_department_id ?? ''} onChange={e => {
+                    const deptId = e.target.value ? Number(e.target.value) : null
+                    const dept = depts.find(d => d.id === deptId)
+                    setForm(p => ({ ...p, responsible_department_id: deptId, responsible_unit: dept ? (dept.short_name ?? dept.name) : p.responsible_unit }))
+                  }}>
+                    <option value="">-- Chọn đơn vị --</option>
+                    {depts.map(d => <option key={d.id} value={d.id}>{d.short_name ?? d.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Cán bộ phụ trách</label>
+                  <select className={inp} value={form.responsible_staff_id ?? ''} onChange={e => setForm(p => ({ ...p, responsible_staff_id: e.target.value ? Number(e.target.value) : null }))}>
+                    <option value="">-- Chưa xác định --</option>
+                    {staffList.map(s => <option key={s.id} value={s.id}>{s.full_name}{s.position ? ` — ${s.position}` : ''}</option>)}
+                  </select>
+                </div>
+              </div>
+              {programs.length > 0 && (
+                <div>
+                  <label className={lbl}>Chương trình / Nghị quyết</label>
+                  <select className={inp} value={form.program_id ?? ''} onChange={e => setForm(p => ({ ...p, program_id: e.target.value ? Number(e.target.value) : null }))}>
+                    <option value="">-- Không liên kết --</option>
+                    {programs.map(prog => <option key={prog.id} value={prog.id}>{prog.short_name ?? prog.code} — {(prog.name ?? '').slice(0, 50)}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className="flex gap-3 pt-2 justify-end">
+                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition">Hủy</button>
+                <button type="submit" disabled={saving} className="px-5 py-2 text-sm bg-violet-600 text-white rounded-lg font-semibold hover:bg-violet-700 disabled:opacity-50 transition">
+                  {saving ? 'Đang lưu...' : 'Thêm KPI'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </AppLayout>
   )
 }
