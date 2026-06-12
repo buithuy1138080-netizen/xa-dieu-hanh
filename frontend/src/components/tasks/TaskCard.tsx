@@ -41,6 +41,7 @@ function colorHash(str: string) {
 function SourceIcon({ task }: { task: Task }) {
   if (task.directive_id) return <ClipboardList size={10} className="text-purple-400" />
   if (task.incoming_document_id || task.outgoing_document_id) return <FileText size={10} className="text-blue-400" />
+  if (task.project_ids && task.project_ids.length > 0) return <FileText size={10} className="text-amber-400" />
   return null
 }
 

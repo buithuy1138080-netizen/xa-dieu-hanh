@@ -101,6 +101,7 @@ export interface Task {
   created_at: string
   updated_at: string | null
   is_overdue: boolean
+  project_ids: number[]
   creator: UserMin | null
   assignee: UserMin | null
   assignee_staff: StaffMin | null

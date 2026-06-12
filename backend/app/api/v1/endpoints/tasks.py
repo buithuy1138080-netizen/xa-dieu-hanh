@@ -215,6 +215,7 @@ class TaskRead(BaseModel):
     created_at: datetime
     updated_at: datetime | None = None
     is_overdue: bool = False
+    project_ids: list[int] = []
     creator: UserMin | None = None
     assignee: UserMin | None = None
     assignee_staff: StaffMin | None = None
@@ -832,6 +833,20 @@ async def list_tasks(
 
     rows = (await db.execute(q)).scalars().all()
     items = [TaskRead.model_validate(_to_read(t)) for t in rows]
+
+    # Inject project_ids from ProjectTaskLink (single query, no N+1)
+    if rows:
+        from app.models.strategic import ProjectTaskLink
+        task_ids = [t.id for t in rows]
+        proj_links = (await db.execute(
+            select(ProjectTaskLink.task_id, ProjectTaskLink.project_id)
+            .where(ProjectTaskLink.task_id.in_(task_ids))
+        )).all()
+        proj_map: dict[int, list[int]] = {}
+        for tid, pid in proj_links:
+            proj_map.setdefault(tid, []).append(pid)
+        for item in items:
+            item.project_ids = proj_map.get(item.id, [])
 
     return PaginatedTasks(
         items=items,

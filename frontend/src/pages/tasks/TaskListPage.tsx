@@ -76,11 +76,12 @@ function daysOverdue(d: string) {
 }
 
 function sourceTag(task: Task) {
-  if (task.directive_id)        return { label: 'Chỉ đạo', cls: 'bg-purple-50 text-purple-700 ring-1 ring-purple-200' }
-  if (task.incoming_document_id) return { label: 'VB đến',  cls: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' }
-  if (task.outgoing_document_id) return { label: 'VB đi',   cls: 'bg-teal-50 text-teal-700 ring-1 ring-teal-200' }
-  if (task.program_id)           return { label: 'CT/NQ',   cls: 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' }
-  return                                 { label: 'Trực tiếp', cls: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200' }
+  if (task.directive_id)                          return { label: 'Chỉ đạo',   cls: 'bg-purple-50 text-purple-700 ring-1 ring-purple-200' }
+  if (task.incoming_document_id)                  return { label: 'VB đến',    cls: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' }
+  if (task.outgoing_document_id)                  return { label: 'VB đi',     cls: 'bg-teal-50 text-teal-700 ring-1 ring-teal-200' }
+  if (task.program_id)                            return { label: 'CT/NQ',     cls: 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' }
+  if (task.project_ids && task.project_ids.length > 0) return { label: 'Dự án CL', cls: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' }
+  return                                                 { label: 'Trực tiếp', cls: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200' }
 }
 
 function colorHash(str: string) {
