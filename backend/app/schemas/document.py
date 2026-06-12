@@ -68,6 +68,7 @@ class DocumentCreate(BaseModel):
     summary: str | None = None
     assignee_id: int | None = None
     assignee_staff_id: int | None = None
+    program_id: int | None = None
 
 
 class DocumentUpdate(BaseModel):
@@ -85,6 +86,7 @@ class DocumentUpdate(BaseModel):
     summary: str | None = None
     assignee_id: int | None = None
     assignee_staff_id: int | None = None
+    program_id: int | None = None
 
 
 class DocumentStatusUpdate(BaseModel):
@@ -134,6 +136,7 @@ class DocumentRead(BaseModel):
     created_by: int
     assignee_id: int | None
     assignee_staff_id: int | None
+    program_id: int | None = None
     creator: UserMin
     assignee: UserMin | None
     assignee_staff: StaffMin | None

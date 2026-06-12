@@ -545,9 +545,16 @@ async def create_document(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    doc = Document(**body.model_dump(), created_by=current_user.id)
+    program_id = body.program_id
+    doc = Document(**body.model_dump(exclude={"program_id"}), created_by=current_user.id)
     db.add(doc)
     await db.flush()
+    if program_id:
+        from app.models.program import DocumentProgram
+        db.add(DocumentProgram(
+            document_id=doc.id, program_id=program_id,
+            link_type="implements", created_by=current_user.id,
+        ))
     _add_history(db, doc.id, current_user.id, "created")
     await db.commit()
     return await _doc_with_relations(db, doc.id)
@@ -574,9 +581,20 @@ async def update_document(
     doc = await _get_doc_or_404(db, doc_id)
     if not _can_manage_doc(current_user, doc, await _get_user_dept(db, current_user.id)):
         raise HTTPException(403, "Không có quyền sửa văn bản này")
-    changes = body.model_dump(exclude_unset=True)
+    changes = body.model_dump(exclude_unset=True, exclude={"program_id"})
     for field, value in changes.items():
         setattr(doc, field, value)
+    if "program_id" in body.model_fields_set and body.program_id is not None:
+        from app.models.program import DocumentProgram
+        existing = (await db.execute(
+            select(DocumentProgram).where(DocumentProgram.document_id == doc_id)
+        )).scalars().all()
+        for lnk in existing:
+            await db.delete(lnk)
+        db.add(DocumentProgram(
+            document_id=doc_id, program_id=body.program_id,
+            link_type="implements", created_by=current_user.id,
+        ))
     _add_history(db, doc.id, current_user.id, "updated")
     await db.commit()
     return await _doc_with_relations(db, doc_id)

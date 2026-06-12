@@ -116,6 +116,7 @@ export interface DocumentCreate {
   summary?: string
   assignee_id?: number | null
   assignee_staff_id?: number | null
+  program_id?: number | null
 }
 
 export interface DocumentUpdate extends Partial<DocumentCreate> {}

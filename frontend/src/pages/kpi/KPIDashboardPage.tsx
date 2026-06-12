@@ -72,12 +72,15 @@ export default function KPIDashboardPage() {
   const navigate = useNavigate()
   const currentUser = useAuthStore(s => s.user)
   const canManage = isAdminOrLeader(currentUser)
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [stats, setStats] = useState<KPIStats | null>(null)
   const [chart, setChart] = useState<KPIChartItem[]>([])
   const [kpis, setKpis] = useState<KPIRead[]>([])
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
+  const _initPage = Number(searchParams.get('page') || 1)
+  const _didMount = useRef(false)
+  const _searchMounted = useRef(false)
+  const [page, setPage] = useState(_initPage)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -144,14 +147,24 @@ export default function KPIDashboardPage() {
         setKpis(k.value.data.items)
         setTotal(k.value.data.total)
         setPage(p)
+        setSearchParams(prev => {
+          const next = new URLSearchParams(prev)
+          if (p <= 1) next.delete('page')
+          else next.set('page', String(p))
+          return next
+        }, { replace: true })
       }
     } finally {
       setLoading(false)
     }
   }, [year, statusFilter, categoryFilter, search, overdueOnly, programFilter])
 
-  useEffect(() => { loadAll(1) }, [year, statusFilter, categoryFilter, overdueOnly, programFilter])
   useEffect(() => {
+    if (!_didMount.current) { _didMount.current = true; loadAll(_initPage) }
+    else loadAll(1)
+  }, [year, statusFilter, categoryFilter, overdueOnly, programFilter])
+  useEffect(() => {
+    if (!_searchMounted.current) { _searchMounted.current = true; return }
     if (searchRef.current) clearTimeout(searchRef.current)
     searchRef.current = setTimeout(() => loadAll(1, search), 400)
     return () => { if (searchRef.current) clearTimeout(searchRef.current) }

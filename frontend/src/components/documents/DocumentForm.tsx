@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Building2, Eye, Paperclip, Sparkles, User, X } from 'lucide-react'
 import apiClient from '../../api/client'
 import { documentsApi } from '../../api/documents'
+import { programsApi } from '../../api/programs'
+import type { Program } from '../../api/programs'
 import type { DocumentCreate, DocumentRead } from '../../types/document'
 
 const DOC_TYPES = [
@@ -39,6 +41,7 @@ function toDateInput(iso: string | null | undefined) {
 export default function DocumentForm({ initial, onSubmit, onCancel, loading }: Props) {
   const [depts, setDepts] = useState<Dept[]>([])
   const [staffList, setStaffList] = useState<Staff[]>([])
+  const [programs, setPrograms] = useState<Program[]>([])
   const [form, setForm] = useState<DocumentCreate>({
     doc_number: initial?.doc_number ?? '',
     title: initial?.title ?? '',
@@ -54,6 +57,7 @@ export default function DocumentForm({ initial, onSubmit, onCancel, loading }: P
     summary: initial?.summary ?? '',
     assignee_id: initial?.assignee_id ?? null,
     assignee_staff_id: initial?.assignee_staff_id ?? null,
+    program_id: initial?.program_id ?? null,
   })
 
   // AI file attach state
@@ -72,6 +76,7 @@ export default function DocumentForm({ initial, onSubmit, onCancel, loading }: P
     apiClient.get<Dept[]>('/departments').then((r) => setDepts(r.data)).catch(() => {})
     apiClient.get<{ items: Staff[] }>('/staff?active_only=true&size=200')
       .then((r) => setStaffList(r.data.items)).catch(() => {})
+    programsApi.list().then((r) => setPrograms(r.data)).catch(() => {})
   }, [])
 
   function set(field: keyof DocumentCreate, value: unknown) {
@@ -444,6 +449,25 @@ export default function DocumentForm({ initial, onSubmit, onCancel, loading }: P
         </label>
         <textarea rows={3} className={inp('summary')} value={form.summary ?? ''} onChange={(e) => set('summary', e.target.value)} placeholder="Tóm tắt nội dung văn bản..." />
       </div>
+
+      {/* ── Chương trình / Nghị quyết ── */}
+      {programs.length > 0 && (
+        <div>
+          <label className={lbl}>🔗 Thuộc chương trình / Nghị quyết</label>
+          <select
+            className={inp('program_id')}
+            value={form.program_id ?? ''}
+            onChange={(e) => set('program_id', e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">-- Không liên kết --</option>
+            {programs.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.short_name ?? p.code} — {p.name.slice(0, 60)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="flex gap-3 pt-2 justify-end">
         <button type="button" onClick={onCancel} className="px-4 py-2 text-sm rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition">
