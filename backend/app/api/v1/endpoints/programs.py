@@ -208,6 +208,84 @@ async def update_tag(
 
 # ── Programs CRUD ─────────────────────────────────────────────────────────────
 
+@router.get("/programs/with_stats")
+async def list_programs_with_stats(
+    status_filter: str | None = Query(None, alias="status"),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Danh sách chương trình kèm stats tổng hợp (tasks, KPI, dự án)."""
+    from app.models.strategic import StrategicProject
+    from datetime import date as _date
+
+    q = select(Program).where(Program.deleted_at.is_(None)).order_by(
+        Program.issued_date.desc().nulls_last(), Program.name
+    )
+    if status_filter:
+        q = q.where(Program.status == status_filter)
+    progs = (await db.execute(q)).scalars().all()
+    if not progs:
+        return []
+
+    prog_ids = [p.id for p in progs]
+
+    # Task stats per program
+    task_rows = (await db.execute(
+        select(
+            Task.program_id,
+            func.count(Task.id).label("total"),
+            func.sum(case((Task.status == "completed", 1), else_=0)).label("done"),
+            func.sum(case((
+                and_(Task.status != "completed", Task.due_date.isnot(None), Task.due_date < _date.today()), 1
+            ), else_=0)).label("overdue"),
+        )
+        .where(Task.program_id.in_(prog_ids), Task.deleted_at.is_(None))
+        .group_by(Task.program_id)
+    )).all()
+    task_map = {r.program_id: {"total": int(r.total), "done": int(r.done or 0), "overdue": int(r.overdue or 0)} for r in task_rows}
+
+    # KPI stats per program
+    kpi_rows = (await db.execute(
+        select(
+            KPI.program_id,
+            func.count(KPI.id).label("total"),
+            func.avg(KPI.progress).label("avg_progress"),
+        )
+        .where(KPI.program_id.in_(prog_ids), KPI.deleted_at.is_(None))
+        .group_by(KPI.program_id)
+    )).all()
+    kpi_map = {r.program_id: {"total": int(r.total), "avg_progress": round(float(r.avg_progress or 0), 1)} for r in kpi_rows}
+
+    # Strategic project count per program
+    proj_rows = (await db.execute(
+        select(StrategicProject.program_id, func.count(StrategicProject.id).label("total"))
+        .where(StrategicProject.program_id.in_(prog_ids))
+        .group_by(StrategicProject.program_id)
+    )).all()
+    proj_map = {r.program_id: int(r.total) for r in proj_rows}
+
+    def _sv(v):
+        if isinstance(v, (date, datetime)):
+            return v.isoformat()
+        return v
+
+    result = []
+    for p in progs:
+        t = task_map.get(p.id, {"total": 0, "done": 0, "overdue": 0})
+        k = kpi_map.get(p.id, {"total": 0, "avg_progress": 0.0})
+        d = {c.key: _sv(getattr(p, c.key)) for c in p.__table__.columns}
+        d["stats"] = {
+            "task_total": t["total"],
+            "task_done": t["done"],
+            "task_overdue": t["overdue"],
+            "kpi_total": k["total"],
+            "kpi_avg_progress": k["avg_progress"],
+            "project_count": proj_map.get(p.id, 0),
+        }
+        result.append(d)
+    return result
+
+
 @router.get("/programs", response_model=list[ProgramOut])
 async def list_programs(
     status_filter: str | None = Query(None, alias="status"),
@@ -627,6 +705,51 @@ async def get_program_documents(
             },
         })
     return result
+
+
+# ── Program → Strategic Projects ─────────────────────────────────────────────
+
+@router.get("/programs/{program_id}/projects")
+async def get_program_projects(
+    program_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Dự án chiến lược liên kết với chương trình."""
+    from app.models.strategic import StrategicProject
+    from sqlalchemy.orm import selectinload as sil
+
+    rows = (await db.execute(
+        select(StrategicProject)
+        .options(sil(StrategicProject.responsible_department))
+        .where(StrategicProject.program_id == program_id)
+        .order_by(StrategicProject.created_at.desc())
+    )).scalars().all()
+
+    def _sv(v):
+        if isinstance(v, (date, datetime)):
+            return v.isoformat()
+        return v
+
+    return [
+        {
+            "id": p.id,
+            "project_code": p.project_code,
+            "project_name": p.project_name,
+            "project_type": p.project_type,
+            "project_status": p.project_status,
+            "priority_level": p.priority_level,
+            "progress_percent": p.progress_percent,
+            "start_date": _sv(p.start_date),
+            "end_date": _sv(p.end_date),
+            "responsible_department": {
+                "id": p.responsible_department.id,
+                "name": p.responsible_department.name,
+                "short_name": p.responsible_department.short_name,
+            } if p.responsible_department else None,
+        }
+        for p in rows
+    ]
 
 
 # ── Document ↔ Tag ────────────────────────────────────────────────────────────

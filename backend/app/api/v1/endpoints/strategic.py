@@ -102,6 +102,7 @@ async def list_projects(
     project_type: str | None = None,
     priority_level: str | None = None,
     responsible_department_id: int | None = None,
+    program_id: int | None = None,
     search: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -122,6 +123,8 @@ async def list_projects(
         stmt = stmt.where(StrategicProject.priority_level == priority_level)
     if responsible_department_id:
         stmt = stmt.where(StrategicProject.responsible_department_id == responsible_department_id)
+    if program_id:
+        stmt = stmt.where(StrategicProject.program_id == program_id)
     if search:
         q = f"%{search}%"
         stmt = stmt.where(

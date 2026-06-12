@@ -144,6 +144,7 @@ function ProjectForm({ initial, onSave, onClose }: {
     project_code: initial?.project_code ?? '',
     project_name: initial?.project_name ?? '',
     project_type: initial?.project_type ?? 'project',
+    program_id: initial?.program_id ?? null,
     description: initial?.description ?? '',
     start_date: initial?.start_date ?? '',
     end_date: initial?.end_date ?? '',
@@ -159,6 +160,7 @@ function ProjectForm({ initial, onSave, onClose }: {
   const [saving, setSaving] = useState(false)
   const [staffList, setStaffList] = useState<StaffItem[]>([])
   const [depts, setDepts] = useState<DeptMin[]>([])
+  const [programs, setPrograms] = useState<{ id: number; code: string; name: string; short_name: string | null }[]>([])
 
   // Coordinating departments (multi-select)
   const [coordDepts, setCoordDepts] = useState<DeptMin[]>(initial?.coordinating_departments ?? [])
@@ -174,6 +176,7 @@ function ProjectForm({ initial, onSave, onClose }: {
   useEffect(() => {
     apiClient.get<{ items: StaffItem[] }>('/staff?active_only=true&size=200').then(r => setStaffList(r.data.items)).catch(() => {})
     apiClient.get<DeptMin[]>('/departments').then(r => setDepts(r.data)).catch(() => {})
+    apiClient.get<{ id: number; code: string; name: string; short_name: string | null }[]>('/programs?status=active').then(r => setPrograms(r.data)).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -213,6 +216,21 @@ function ProjectForm({ initial, onSave, onClose }: {
           </select>
         </div>
       </div>
+      {programs.length > 0 && (
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">🔗 Thuộc chương trình / NQ</label>
+          <select
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+            value={form.program_id ?? ''}
+            onChange={e => setForm(f => ({ ...f, program_id: e.target.value ? Number(e.target.value) : null }))}
+          >
+            <option value="">-- Không liên kết --</option>
+            {programs.map(p => (
+              <option key={p.id} value={p.id}>{p.short_name ?? p.code} — {p.name.slice(0, 50)}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">Tên dự án <span className="text-red-500">*</span></label>
         <input required className="w-full border rounded-lg px-3 py-2 text-sm" value={form.project_name} onChange={set('project_name')} placeholder="Nhập tên dự án..." />

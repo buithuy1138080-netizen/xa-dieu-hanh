@@ -1,9 +1,9 @@
 import { motion } from 'framer-motion'
 import { BookOpen, ChevronRight, Edit2, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { programsApi, tagsApi } from '../../api/programs'
-import type { Program, Tag } from '../../api/programs'
+import type { Program, ProgramWithStats, Tag } from '../../api/programs'
 import TagBadge from '../../components/common/TagBadge'
 import AppLayout from '../../components/layout/AppLayout'
 import { useAuthStore } from '../../store/authStore'
@@ -31,7 +31,7 @@ export default function ProgramsPage() {
   const { user } = useAuthStore()
   const canEdit = ['admin', 'leader', 'manager'].includes(user?.role ?? '')
   const canDelete = ['admin', 'leader'].includes(user?.role ?? '')
-  const [programs, setPrograms] = useState<Program[]>([])
+  const [programs, setPrograms] = useState<ProgramWithStats[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -40,7 +40,7 @@ export default function ProgramsPage() {
   const [form, setForm] = useState(EMPTY_FORM)
 
   useEffect(() => {
-    Promise.all([programsApi.list(), tagsApi.list()])
+    Promise.all([programsApi.listWithStats(), tagsApi.list()])
       .then(([p, t]) => { setPrograms(p.data); setTags(t.data) })
       .finally(() => setLoading(false))
   }, [])
@@ -170,7 +170,41 @@ export default function ProgramsPage() {
                         </p>
                       )}
                       {p.description && (
-                        <p className="text-xs text-slate-500 mt-1.5 line-clamp-2">{p.description}</p>
+                        <p className="text-xs text-slate-500 mt-1.5 line-clamp-1">{p.description}</p>
+                      )}
+                      {/* Mini stats */}
+                      {p.stats && (
+                        <div className="flex items-center gap-4 mt-2.5 flex-wrap">
+                          {p.stats.task_total > 0 && (
+                            <div className="flex items-center gap-1.5 min-w-[120px]">
+                              <span className="text-[10px] text-slate-400">📋 {p.stats.task_done}/{p.stats.task_total} NV</span>
+                              <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-emerald-500 rounded-full"
+                                  style={{ width: `${p.stats.task_total ? (p.stats.task_done / p.stats.task_total) * 100 : 0}%` }}
+                                />
+                              </div>
+                              {p.stats.task_overdue > 0 && (
+                                <span className="text-[10px] text-red-500 font-semibold">⚠️ {p.stats.task_overdue}</span>
+                              )}
+                            </div>
+                          )}
+                          {p.stats.kpi_total > 0 && (
+                            <div className="flex items-center gap-1.5 min-w-[100px]">
+                              <span className="text-[10px] text-slate-400">📊 {p.stats.kpi_total} KPI</span>
+                              <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-violet-400 rounded-full"
+                                  style={{ width: `${p.stats.kpi_avg_progress}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] text-violet-600 font-semibold">{p.stats.kpi_avg_progress.toFixed(0)}%</span>
+                            </div>
+                          )}
+                          {p.stats.project_count > 0 && (
+                            <span className="text-[10px] text-blue-500">🔷 {p.stats.project_count} dự án</span>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
@@ -192,12 +226,6 @@ export default function ProgramsPage() {
                           <Trash2 size={14} className="text-red-500" />
                         </button>
                       )}
-                      <Link
-                        to={`/nq57?program=${p.id}`}
-                        className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 font-semibold px-3 py-1.5 rounded-lg hover:bg-violet-50 transition"
-                      >
-                        Theo dõi <ChevronRight size={13} />
-                      </Link>
                     </div>
                   </div>
                 </motion.div>

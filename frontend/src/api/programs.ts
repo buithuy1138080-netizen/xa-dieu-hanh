@@ -147,6 +147,32 @@ export interface PaginatedResponse<T> {
   pages: number
 }
 
+export interface ProgramStats {
+  task_total: number
+  task_done: number
+  task_overdue: number
+  kpi_total: number
+  kpi_avg_progress: number
+  project_count: number
+}
+
+export interface ProgramWithStats extends Program {
+  stats: ProgramStats
+}
+
+export interface ProgramProject {
+  id: number
+  project_code: string | null
+  project_name: string
+  project_type: string
+  project_status: string
+  priority_level: string
+  progress_percent: number
+  start_date: string | null
+  end_date: string | null
+  responsible_department: { id: number; name: string; short_name: string | null } | null
+}
+
 export const tagsApi = {
   list: (params?: { tag_type?: string; active_only?: boolean }) =>
     apiClient.get<Tag[]>('/tags', { params }),
@@ -177,6 +203,12 @@ export const programsApi = {
 
   documents: (id: number, params?: { link_type?: string }) =>
     apiClient.get<ProgramDocument[]>(`/programs/${id}/documents`, { params }),
+
+  listWithStats: (params?: { status?: string }) =>
+    apiClient.get<ProgramWithStats[]>('/programs/with_stats', { params }),
+
+  projects: (id: number) =>
+    apiClient.get<ProgramProject[]>(`/programs/${id}/projects`),
 }
 
 export const documentTagsApi = {

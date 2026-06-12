@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  AlertTriangle, BookOpen, CheckSquare, ChevronDown, ChevronRight,
+  AlertTriangle, BookOpen, Briefcase, CheckSquare, ChevronDown, ChevronRight,
   Download, ExternalLink, FileText, Filter, Link2, Plus, RefreshCw, Target, Trash2, TrendingUp, X,
 } from 'lucide-react'
 import { documentsApi } from '../../api/documents'
 import { tasksApi } from '../../api/tasks'
 import type { DocumentRead } from '../../types/document'
 import { documentProgramsApi, programsApi } from '../../api/programs'
-import type { Program, ProgramDashboard, ProgramDocument, ProgramKpi, ProgramTask } from '../../api/programs'
+import type { Program, ProgramDashboard, ProgramDocument, ProgramKpi, ProgramProject, ProgramTask } from '../../api/programs'
 import AppLayout from '../../components/layout/AppLayout'
 import TaskForm from '../../components/tasks/TaskForm'
 import { useAuthStore } from '../../store/authStore'
@@ -99,6 +99,10 @@ export default function NQ57DashboardPage() {
   // Tab documents
   const [docs, setDocs] = useState<ProgramDocument[]>([])
   const [loadingDocs, setLoadingDocs] = useState(false)
+
+  // Strategic projects
+  const [projects, setProjects] = useState<ProgramProject[]>([])
+  const [loadingProjects, setLoadingProjects] = useState(false)
 
   // Link document modal
   const [showLinkDoc, setShowLinkDoc] = useState(false)
@@ -241,6 +245,15 @@ export default function NQ57DashboardPage() {
     else if (tab === 'kpis') loadKpis()
     else if (tab === 'documents') loadDocs()
   }, [tab, selectedId])
+
+  useEffect(() => {
+    if (!selectedId) return
+    setLoadingProjects(true)
+    programsApi.projects(selectedId)
+      .then(r => setProjects(r.data))
+      .catch(() => setProjects([]))
+      .finally(() => setLoadingProjects(false))
+  }, [selectedId])
 
   useEffect(() => {
     if (tab === 'tasks') {
@@ -445,6 +458,61 @@ export default function NQ57DashboardPage() {
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-400" />Quá hạn ({s!.task_overdue})</span>
               </div>
             </div>
+
+            {/* Dự án Chiến lược */}
+            {(loadingProjects || projects.length > 0) && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
+                    <Briefcase size={14} className="text-blue-500" />
+                    Dự án Chiến lược ({projects.length})
+                  </h3>
+                  <button
+                    onClick={() => navigate('/strategic')}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-semibold"
+                  >
+                    Xem tất cả <ChevronRight size={12} />
+                  </button>
+                </div>
+                {loadingProjects ? (
+                  <div className="text-center py-4 text-slate-400 text-xs">Đang tải...</div>
+                ) : (
+                  <div className="space-y-2">
+                    {projects.map(p => {
+                      const statusColor = p.project_status === 'active' ? 'bg-blue-500'
+                        : p.project_status === 'completed' ? 'bg-emerald-500'
+                        : p.project_status === 'on_hold' ? 'bg-amber-400' : 'bg-slate-300'
+                      const statusLabel: Record<string, string> = {
+                        planning: 'Lập kế hoạch', active: 'Đang thực hiện',
+                        on_hold: 'Tạm dừng', completed: 'Hoàn thành', cancelled: 'Huỷ',
+                      }
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => navigate('/strategic')}
+                          className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer transition"
+                        >
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${statusColor}`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="text-xs font-medium text-slate-800 truncate flex-1">{p.project_name}</p>
+                              <span className="text-[10px] text-slate-400 shrink-0">{statusLabel[p.project_status] ?? p.project_status}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1">
+                                <ProgressBar value={p.progress_percent} color="bg-blue-400" thin />
+                              </div>
+                              <span className="text-[10px] text-slate-400 shrink-0 w-8 text-right">{p.progress_percent}%</span>
+                            </div>
+                          </div>
+                          <ChevronRight size={12} className="text-slate-300 shrink-0" />
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid md:grid-cols-2 gap-4">
               {/* Tiến độ theo nhóm ưu tiên */}
@@ -768,20 +836,36 @@ export default function NQ57DashboardPage() {
               </div>
             ) : (
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                {/* KPI group by field */}
-                {Object.entries(
-                  kpis.reduce((acc, k) => {
-                    const f = k.field || 'Chung'
-                    if (!acc[f]) acc[f] = []
-                    acc[f].push(k)
+                {/* KPI group by category (fallback: field, then 'Chung') */}
+                {(() => {
+                  const grouped = kpis.reduce((acc, k) => {
+                    const grp = k.category || k.field || 'Chung'
+                    if (!acc[grp]) acc[grp] = []
+                    acc[grp].push(k)
                     return acc
                   }, {} as Record<string, ProgramKpi[]>)
-                ).map(([field, items]) => (
-                  <div key={field}>
-                    <div className="flex items-center gap-2 px-5 py-2.5 bg-violet-50 border-b border-violet-100">
-                      <span className="text-xs font-bold text-violet-700">{field}</span>
-                      <span className="text-xs text-violet-500">{items.length} chỉ tiêu</span>
+                  const entries = Object.entries(grouped)
+                  const onlyChung = entries.length === 1 && entries[0][0] === 'Chung'
+                  return entries
+                })().map(([grp, items]) => {
+                  const avgPct = items.length ? Math.round(items.reduce((s, k) => s + k.progress, 0) / items.length) : 0
+                  const onlyChung = grp === 'Chung' && kpis.every(k => !k.category && !k.field)
+                  return (
+                  <div key={grp}>
+                    {!onlyChung && (
+                    <div className="flex items-center justify-between px-5 py-2.5 bg-violet-50 border-b border-violet-100">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-violet-700">{grp}</span>
+                        <span className="text-xs text-violet-500">{items.length} chỉ tiêu</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-20">
+                          <ProgressBar value={avgPct} color="bg-violet-400" thin />
+                        </div>
+                        <span className="text-xs text-violet-600 font-semibold w-8 text-right">{avgPct}%</span>
+                      </div>
                     </div>
+                    )}
                     <div className="divide-y divide-slate-50">
                       {items.map(k => {
                         const pct = Math.min(100, k.progress)
@@ -795,11 +879,14 @@ export default function NQ57DashboardPage() {
                           >
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-0.5">
+                                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                                   <p className="text-sm font-medium text-slate-800 truncate">{k.title}</p>
                                   <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${KPI_STATUS_COLORS[k.status] ?? 'bg-slate-100 text-slate-500'}`}>
                                     {KPI_STATUS_LABELS[k.status] ?? k.status}
                                   </span>
+                                  {k.field && onlyChung && (
+                                    <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{k.field}</span>
+                                  )}
                                 </div>
                                 <div className="flex items-center gap-3 mt-1.5">
                                   <div className="flex-1 max-w-xs">
@@ -817,7 +904,8 @@ export default function NQ57DashboardPage() {
                       })}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

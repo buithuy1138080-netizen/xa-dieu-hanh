@@ -33,6 +33,7 @@ class StrategicProjectCreate(BaseModel):
     project_code: str | None = None
     project_name: str
     project_type: str = "project"
+    program_id: int | None = None
     nghi_quyet_id: int | None = None
     source_document_id: int | None = None
     muc_tieu_id: int | None = None
@@ -52,6 +53,7 @@ class StrategicProjectUpdate(BaseModel):
     project_code: str | None = None
     project_name: str | None = None
     project_type: str | None = None
+    program_id: int | None = None
     nghi_quyet_id: int | None = None
     source_document_id: int | None = None
     muc_tieu_id: int | None = None
@@ -80,6 +82,7 @@ class StrategicProjectOut(BaseModel):
     project_code: str | None = None
     project_name: str
     project_type: str
+    program_id: int | None = None
     nghi_quyet_id: int | None = None
     source_document_id: int | None = None
     source_document: DocMin | None = None

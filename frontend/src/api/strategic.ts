@@ -29,6 +29,7 @@ export interface ProjectListParams {
   project_type?: string
   priority_level?: string
   responsible_department_id?: number
+  program_id?: number
   search?: string
 }
 

@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.department import Department
     from app.models.document import Document
     from app.models.nghi_quyet import NghiQuyet
+    from app.models.program import Program
     from app.models.staff import Staff
     from app.models.task import Task
     from app.models.user import User
@@ -39,6 +40,9 @@ class StrategicProject(Base):
     # project/program/plan/digital_transform
     project_type: Mapped[str] = mapped_column(String(30), nullable=False, default="project")
 
+    program_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("programs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     nghi_quyet_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("nghi_quyet.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -77,6 +81,7 @@ class StrategicProject(Base):
     )
 
     # relationships
+    program: Mapped["Program | None"] = relationship("Program", foreign_keys=[program_id])
     nghi_quyet: Mapped["NghiQuyet | None"] = relationship("NghiQuyet", foreign_keys=[nghi_quyet_id])
     source_document: Mapped["Document | None"] = relationship("Document", foreign_keys=[source_document_id])
     responsible_department: Mapped[Department | None] = relationship(
