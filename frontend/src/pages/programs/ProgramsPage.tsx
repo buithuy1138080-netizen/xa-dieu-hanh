@@ -29,8 +29,16 @@ const EMPTY_FORM = {
 export default function ProgramsPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const canEdit = ['admin', 'leader', 'manager'].includes(user?.role ?? '')
-  const canDelete = ['admin', 'leader'].includes(user?.role ?? '')
+  const canCreate = ['admin', 'leader', 'manager'].includes(user?.role ?? '')
+  function canEditProgram(p: Program) {
+    if (!user) return false
+    if (['admin', 'leader'].includes(user.role)) return true
+    if (user.role === 'manager') return p.created_by === user.id
+    return false
+  }
+  function canDeleteProgram(p: Program) {
+    return canEditProgram(p)
+  }
   const [programs, setPrograms] = useState<ProgramWithStats[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,7 +133,7 @@ export default function ProgramsPage() {
             </h1>
             <p className="text-sm text-slate-400 mt-0.5">Quản lý các chương trình, nghị quyết, đề án đang triển khai</p>
           </div>
-          {canEdit && (
+          {canCreate && (
             <button
               onClick={openCreate}
               className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-semibold rounded-xl hover:bg-violet-700 transition"
@@ -215,7 +223,7 @@ export default function ProgramsPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                      {canEdit && (
+                      {canEditProgram(p) && (
                         <button
                           onClick={() => openEdit(p)}
                           className="p-1.5 hover:bg-blue-50 rounded-lg"
@@ -224,7 +232,7 @@ export default function ProgramsPage() {
                           <Edit2 size={14} className="text-blue-500" />
                         </button>
                       )}
-                      {canDelete && (
+                      {canDeleteProgram(p) && (
                         <button
                           onClick={() => handleDelete(p)}
                           className="p-1.5 hover:bg-red-50 rounded-lg"

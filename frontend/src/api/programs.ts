@@ -31,6 +31,7 @@ export interface Program {
   review_cycle: string | null
   source_document_id: number | null
   created_at: string
+  created_by: number
 }
 
 export interface ProgramDashboard {

@@ -85,6 +85,7 @@ class ProgramOut(BaseModel):
     review_cycle: str | None
     source_document_id: int | None
     created_at: datetime
+    created_by: int
     model_config = {"from_attributes": True}
 
 
@@ -307,8 +308,8 @@ async def create_program(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role not in ("admin", "leader"):
-        raise HTTPException(403, "Chỉ admin/lãnh đạo mới tạo được chương trình")
+    if current_user.role not in ("admin", "leader", "manager"):
+        raise HTTPException(403, "Không có quyền tạo chương trình")
     existing = (await db.execute(
         select(Program).where(Program.code == body.code)
     )).scalar_one_or_none()
@@ -349,6 +350,8 @@ async def update_program(
     )).scalar_one_or_none()
     if not prog:
         raise HTTPException(404, "Không tìm thấy chương trình")
+    if current_user.role == "manager" and prog.created_by != current_user.id:
+        raise HTTPException(403, "Chỉ được sửa chương trình do mình tạo")
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(prog, k, v)
     prog.updated_at = datetime.now(timezone.utc)
@@ -363,13 +366,15 @@ async def delete_program(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role not in ("admin", "leader"):
-        raise HTTPException(403, "Chỉ admin/lãnh đạo mới xóa được chương trình")
+    if current_user.role not in ("admin", "leader", "manager"):
+        raise HTTPException(403, "Không có quyền xóa chương trình")
     prog = (await db.execute(
         select(Program).where(Program.id == program_id, Program.deleted_at.is_(None))
     )).scalar_one_or_none()
     if not prog:
         raise HTTPException(404, "Không tìm thấy chương trình")
+    if current_user.role == "manager" and prog.created_by != current_user.id:
+        raise HTTPException(403, "Chỉ được xóa chương trình do mình tạo")
     prog.deleted_at = datetime.now(timezone.utc)
     await db.commit()
 
