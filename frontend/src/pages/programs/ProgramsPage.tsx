@@ -102,10 +102,13 @@ export default function ProgramsPage() {
       }
       if (editing) {
         const res = await programsApi.update(editing.id, payload)
-        setPrograms(prev => prev.map(x => x.id === editing.id ? res.data : x))
+        // spread data mới lên item cũ để giữ nguyên field stats
+        setPrograms(prev => prev.map(x => x.id === editing.id ? { ...x, ...res.data } : x))
       } else {
-        const res = await programsApi.create(payload)
-        setPrograms(prev => [res.data, ...prev])
+        await programsApi.create(payload)
+        // reload để lấy ProgramWithStats đầy đủ
+        const list = await programsApi.listWithStats()
+        setPrograms(list.data)
       }
       setShowForm(false)
       setEditing(null)
