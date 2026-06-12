@@ -471,7 +471,7 @@ async def zalo_webhook(payload: dict, db: AsyncSession = Depends(get_db)):
     if text_up in ("NHIEMVU", "NV"):
         tasks = (await db.execute(
             select(Task).where(
-                Task.assigned_to == link.user_id,
+                Task.assignee_id == link.user_id,
                 Task.status.in_(["pending", "in_progress"]),
             ).order_by(Task.due_date).limit(5)
         )).scalars().all()
@@ -495,7 +495,7 @@ async def zalo_webhook(payload: dict, db: AsyncSession = Depends(get_db)):
         else:
             lines = ["📄 VĂN BẢN MỚI NHẤT:\n"]
             for d in docs:
-                lines.append(f"• [{d.doc_number or 'N/A'}] {d.trich_yeu or d.title or ''}")
+                lines.append(f"• [{d.doc_number or 'N/A'}] {d.summary or d.title or ''}")
             await reply("\n".join(lines))
 
     else:
