@@ -61,7 +61,7 @@ export default function KPIDetailPage() {
   const [programs, setPrograms] = useState<Program[]>([])
 
   useEffect(() => {
-    apiClient.get<{ items: DeptMin[] }>('/departments?size=200').then(r => setDepts(r.data.items ?? [])).catch(() => {})
+    apiClient.get<DeptMin[]>('/departments').then(r => setDepts(r.data)).catch(() => {})
     apiClient.get<{ items: StaffItem[] }>('/staff?active_only=true&size=200').then(r => setStaffList(r.data.items ?? [])).catch(() => {})
     programsApi.list().then(r => setPrograms(r.data)).catch(() => {})
   }, [])
