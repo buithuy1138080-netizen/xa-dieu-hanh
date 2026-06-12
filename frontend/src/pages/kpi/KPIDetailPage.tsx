@@ -148,7 +148,7 @@ export default function KPIDetailPage() {
         {/* Top bar */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/kpi')} className="text-slate-400 hover:text-slate-700 text-sm">← Danh sách</button>
+            <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-700 text-sm">← Danh sách</button>
             <span className="text-slate-300">|</span>
             <KPIStatusBadge status={kpi.status} />
             {kpi.code && <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{kpi.code}</span>}

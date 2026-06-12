@@ -408,7 +408,7 @@ export default function KPIDashboardPage() {
         )}
 
         {/* KPI List */}
-        <div className="space-y-3">
+        <div className="space-y-3 pb-24">
           {/* Filters */}
           <div className="flex gap-3 flex-wrap">
             <div className="relative flex-1 min-w-48">
@@ -489,7 +489,7 @@ export default function KPIDashboardPage() {
           </div>
 
           {pages > 1 && (
-            <div className="flex items-center justify-between text-sm text-slate-500">
+            <div className="flex items-center justify-between text-sm text-slate-500 pr-20">
               <span>Trang {page}/{pages} · {total} KPI</span>
               <div className="flex gap-1">
                 <button disabled={page <= 1} onClick={() => loadAll(page - 1)}
