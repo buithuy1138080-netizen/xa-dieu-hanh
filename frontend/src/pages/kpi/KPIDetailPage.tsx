@@ -56,6 +56,8 @@ export default function KPIDetailPage() {
   const [progressValue, setProgressValue] = useState('')
   const [progressNote, setProgressNote] = useState('')
   const [progressSaving, setProgressSaving] = useState(false)
+  const [progressError, setProgressError] = useState<string | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
   const [depts, setDepts] = useState<DeptMin[]>([])
   const [staffList, setStaffList] = useState<StaffItem[]>([])
   const [programs, setPrograms] = useState<Program[]>([])
@@ -96,10 +98,13 @@ export default function KPIDetailPage() {
   async function handleEdit(e: React.FormEvent) {
     e.preventDefault()
     setEditSaving(true)
+    setEditError(null)
     try {
       await kpiApi.update(kpiId, editForm)
       setEditOpen(false)
       await load()
+    } catch (err: any) {
+      setEditError(err?.response?.data?.detail ?? 'Lưu thất bại. Vui lòng thử lại.')
     } finally {
       setEditSaving(false)
     }
@@ -109,11 +114,14 @@ export default function KPIDetailPage() {
     e.preventDefault()
     if (!progressValue) return
     setProgressSaving(true)
+    setProgressError(null)
     try {
       await kpiApi.recordProgress(kpiId, Number(progressValue), progressNote || undefined)
       setProgressValue('')
       setProgressNote('')
       await load()
+    } catch (err: any) {
+      setProgressError(err?.response?.data?.detail ?? 'Ghi nhận thất bại. Vui lòng thử lại.')
     } finally {
       setProgressSaving(false)
     }
@@ -121,8 +129,12 @@ export default function KPIDetailPage() {
 
   async function handleDelete() {
     if (!confirm('Xóa KPI này?')) return
-    await kpiApi.delete(kpiId)
-    navigate('/kpi')
+    try {
+      await kpiApi.delete(kpiId)
+      navigate('/kpi-tong-hop')
+    } catch (err: any) {
+      alert(err?.response?.data?.detail ?? 'Xóa thất bại. Vui lòng thử lại.')
+    }
   }
 
   if (loading) {
@@ -154,7 +166,7 @@ export default function KPIDetailPage() {
             {kpi.code && <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{kpi.code}</span>}
           </div>
           <div className="flex gap-2 shrink-0">
-            <button onClick={() => setEditOpen(true)} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition text-slate-600">✏ Sửa</button>
+            <button onClick={() => { setEditOpen(true); setEditError(null) }} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition text-slate-600">✏ Sửa</button>
             <button onClick={handleDelete} className="px-3 py-1.5 text-sm border border-red-200 rounded-lg hover:bg-red-50 transition text-red-600">🗑 Xóa</button>
           </div>
         </div>
@@ -262,6 +274,9 @@ export default function KPIDetailPage() {
                   <textarea rows={2} className={inp} value={progressNote}
                     onChange={e => setProgressNote(e.target.value)} placeholder="Ghi chú kết quả..." />
                 </div>
+                {progressError && (
+                  <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{progressError}</p>
+                )}
                 <button type="submit" disabled={progressSaving || !progressValue}
                   className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition">
                   {progressSaving ? 'Đang lưu...' : 'Ghi nhận kết quả'}
@@ -408,8 +423,11 @@ export default function KPIDetailPage() {
                   </select>
                 </div>
               )}
+              {editError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{editError}</p>
+              )}
               <div className="flex gap-3 pt-2 justify-end">
-                <button type="button" onClick={() => setEditOpen(false)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition">Hủy</button>
+                <button type="button" onClick={() => { setEditOpen(false); setEditError(null) }} className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition">Hủy</button>
                 <button type="submit" disabled={editSaving} className="px-5 py-2 text-sm bg-violet-600 text-white rounded-lg font-semibold hover:bg-violet-700 disabled:opacity-50 transition">
                   {editSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
                 </button>
