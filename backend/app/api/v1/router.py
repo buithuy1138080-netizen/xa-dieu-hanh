@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import ai_chat, auth, dashboard, departments, directives, documents, gsheet_sync, kpi, kpi_chien_luoc, kpi_unified, meetings, nghi_quyet, notifications, nq57, ocr, programs, report_templates, reports, schedule, staff, strategic, tasks, users, ws, zalo
+from app.api.v1.endpoints import ai_chat, auth, dashboard, departments, directives, documents, kpi, kpi_chien_luoc, kpi_unified, meetings, nghi_quyet, notifications, nq57, ocr, programs, report_templates, reports, schedule, staff, strategic, tasks, users, ws, zalo
 
 api_router = APIRouter()
 
@@ -21,7 +21,6 @@ api_router.include_router(kpi_unified.router, prefix="/kpi-unified", tags=["kpi-
 api_router.include_router(ocr.router, prefix="/ocr", tags=["ocr"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(report_templates.router, prefix="/report-templates", tags=["report-templates"])
-api_router.include_router(gsheet_sync.router, prefix="/sync", tags=["sync"])
 api_router.include_router(zalo.router, prefix="/zalo", tags=["zalo"])
 api_router.include_router(strategic.router, prefix="/strategic", tags=["strategic"])
 api_router.include_router(programs.router, prefix="", tags=["programs"])

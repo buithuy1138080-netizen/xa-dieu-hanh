@@ -41,7 +41,6 @@ const NQ57DashboardPage     = lazy(() => import('./pages/nq57/NQ57DashboardPage'
 const ReportCenterPage      = lazy(() => import('./pages/reports/ReportCenterPage'))
 const ReportDetailPage      = lazy(() => import('./pages/reports/ReportDetailPage'))
 const TemplateManagerPage   = lazy(() => import('./pages/reports/TemplateManagerPage'))
-const SyncCenterPage        = lazy(() => import('./pages/gsheet/SyncCenterPage'))
 const ZaloNotifPage         = lazy(() => import('./pages/zalo/ZaloNotifPage'))
 const StaffPage             = lazy(() => import('./pages/staff/StaffPage'))
 const StrategicPage         = lazy(() => import('./pages/strategic/StrategicPage'))
@@ -145,7 +144,6 @@ function AnimatedRoutes() {
         <Route path="/bao-cao"            element={<P><ReportCenterPage /></P>} />
         <Route path="/bao-cao/:id"        element={<P><ReportDetailPage /></P>} />
         <Route path="/mau-bao-cao"        element={<P><TemplateManagerPage /></P>} />
-        <Route path="/dong-bo"            element={<P><SyncCenterPage /></P>} />
         <Route path="/zalo"               element={<P><ZaloNotifPage /></P>} />
         <Route path="/programs"           element={<P><ProgramsPage /></P>} />
         <Route path="/strategic"           element={<P><StrategicPage /></P>} />

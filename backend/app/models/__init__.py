@@ -9,7 +9,6 @@ from app.models.kpi import KPI, KPIProgress, KPIHistory  # noqa: F401
 from app.models.nq57 import NQ57Task, NQ57Progress  # noqa: F401
 from app.models.ocr_document import OcrDocument  # noqa: F401
 from app.models.report import Report  # noqa: F401
-from app.models.gsheet_sync import SyncConfig, SyncLog, SyncConflict  # noqa: F401
 from app.models.zalo import ZaloConfig, ZaloTemplate, ZaloLog, ZaloUserLink  # noqa: F401
 from app.models.strategic import StrategicProject, BudgetPlan, FundingSource, Disbursement, ProjectTaskLink, ProjectDepartment, DocumentStrategicProject  # noqa: F401
 from app.models.nghi_quyet import NghiQuyet, MucTieuNQ  # noqa: F401

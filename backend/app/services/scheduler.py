@@ -301,27 +301,6 @@ scheduler.add_job(
 )
 
 
-# ── Auto Google Sheet sync jobs ───────────────────────────────────────────────
-
-async def _run_auto_sync() -> None:
-    """Check all active SyncConfigs and trigger those whose interval is due."""
-    try:
-        from app.services.sync_engine import run_auto_sync_due
-        await run_auto_sync_due()
-    except Exception:
-        log.exception("Auto-sync check failed")
-
-
-scheduler.add_job(
-    _run_auto_sync,
-    "interval",
-    minutes=5,
-    id="auto_gsheet_sync",
-    replace_existing=True,
-    misfire_grace_time=120,
-)
-
-
 # ── Zalo notification jobs ────────────────────────────────────────────────────
 
 async def _zalo_task_warnings() -> None:

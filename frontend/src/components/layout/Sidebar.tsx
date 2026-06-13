@@ -5,7 +5,7 @@ import {
   CheckSquare, ChevronRight, ClipboardList, FileText,
   KeyRound, LayoutDashboard, LogOut,
   CalendarDays, PanelLeftClose, PanelLeftOpen,
-  RefreshCw, Shield, Target, Users, X,
+  Shield, Target, Users, X,
 } from 'lucide-react'
 import ChangePasswordModal from '../common/ChangePasswordModal'
 import { NavLink, useNavigate } from 'react-router-dom'
@@ -63,7 +63,6 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { to: '/bao-cao',     label: 'Báo cáo tự động',  icon: BarChart3 },
       { to: '/mau-bao-cao', label: 'Mẫu báo cáo',      icon: BookTemplate },
-      { to: '/dong-bo',     label: 'Đồng bộ GSheet',   icon: RefreshCw, allowedRoles: ['admin'] },
       { to: '/zalo',        label: 'Zalo Thông báo',    icon: Bell,      allowedRoles: ['admin'] },
     ],
   },
