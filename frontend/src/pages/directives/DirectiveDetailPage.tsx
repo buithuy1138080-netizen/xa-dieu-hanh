@@ -59,7 +59,6 @@ export default function DirectiveDetailPage() {
   const navigate = useNavigate()
   const { user: me } = useAuthStore()
   const canEdit = me?.role === 'admin' || me?.role === 'leader'
-  const canDelete = canEdit
 
   const [directive, setDirective] = useState<DirectiveReadDetail | null>(null)
   const [loading, setLoading] = useState(true)

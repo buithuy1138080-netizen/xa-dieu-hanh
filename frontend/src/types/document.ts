@@ -57,6 +57,7 @@ export interface DocumentRead {
   created_by: number
   assignee_id: number | null
   assignee_staff_id: number | null
+  program_id: number | null
   creator: UserMin
   assignee: UserMin | null
   assignee_staff: StaffMin | null

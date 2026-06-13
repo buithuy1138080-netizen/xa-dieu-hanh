@@ -12,7 +12,7 @@ import type { Program, ProgramDashboard, ProgramDocument, ProgramKpi, ProgramPro
 import AppLayout from '../../components/layout/AppLayout'
 import TaskForm from '../../components/tasks/TaskForm'
 import { useAuthStore } from '../../store/authStore'
-import { isAdminOrLeader, isManagerOrAbove } from '../../types'
+import { isManagerOrAbove } from '../../types'
 
 // ── Hằng số ───────────────────────────────────────────────────────────────────
 
@@ -845,7 +845,6 @@ export default function NQ57DashboardPage() {
                     return acc
                   }, {} as Record<string, ProgramKpi[]>)
                   const entries = Object.entries(grouped)
-                  const onlyChung = entries.length === 1 && entries[0][0] === 'Chung'
                   return entries
                 })().map(([grp, items]) => {
                   const avgPct = items.length ? Math.round(items.reduce((s, k) => s + k.progress, 0) / items.length) : 0

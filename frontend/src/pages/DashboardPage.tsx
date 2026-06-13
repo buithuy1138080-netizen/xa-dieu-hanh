@@ -160,7 +160,7 @@ export default function DashboardPage() {
         errors.push('Tổng quan hệ thống')
       }
       if (t.status === 'fulfilled') setTimeline(t.value.data)
-      if (u.status === 'fulfilled') setUnits(u.value.data)
+      if (u.status === 'fulfilled' && u.value) setUnits(u.value.data)
       if (errors.length) setApiErrors(errors)
     }).finally(() => setLoading(false))
   }, [])

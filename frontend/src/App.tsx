@@ -38,9 +38,6 @@ const DirectiveDetailPage   = lazy(() => import('./pages/directives/DirectiveDet
 const KPIDetailPage         = lazy(() => import('./pages/kpi/KPIDetailPage'))
 const KPIUnifiedPage        = lazy(() => import('./pages/kpi/KPIUnifiedPage'))
 const NQ57DashboardPage     = lazy(() => import('./pages/nq57/NQ57DashboardPage'))
-const NghiQuyetListPage     = lazy(() => import('./pages/nghi-quyet/NghiQuyetListPage'))
-const NghiQuyetDashboardPage = lazy(() => import('./pages/nghi-quyet/NghiQuyetDashboardPage'))
-const KpiCLPage             = lazy(() => import('./pages/kpi-chien-luoc/KpiCLPage'))
 const ReportCenterPage      = lazy(() => import('./pages/reports/ReportCenterPage'))
 const ReportDetailPage      = lazy(() => import('./pages/reports/ReportDetailPage'))
 const TemplateManagerPage   = lazy(() => import('./pages/reports/TemplateManagerPage'))
@@ -109,9 +106,6 @@ const _preloadAll = () => {
     () => import('./pages/kpi/KPIDetailPage'),
     () => import('./pages/kpi/KPIUnifiedPage'),
     () => import('./pages/nq57/NQ57DashboardPage'),
-    () => import('./pages/nghi-quyet/NghiQuyetListPage'),
-    () => import('./pages/nghi-quyet/NghiQuyetDashboardPage'),
-    () => import('./pages/kpi-chien-luoc/KpiCLPage'),
     () => import('./pages/reports/ReportCenterPage'),
     () => import('./pages/staff/StaffPage'),
     () => import('./pages/strategic/StrategicPage'),
