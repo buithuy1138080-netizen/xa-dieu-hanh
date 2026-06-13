@@ -86,6 +86,7 @@ export interface ProgramKpi {
   id: number
   title: string
   unit: string | null
+  category: string | null
   target_value: number
   current_value: number
   progress: number
