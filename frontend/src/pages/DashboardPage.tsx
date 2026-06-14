@@ -172,6 +172,7 @@ export default function DashboardPage() {
   const taskPieData = useMemo(() => stats ? [
     { name: 'Chờ xử lý',     value: stats.pending,      color: '#94a3b8' },
     { name: 'Đang thực hiện', value: stats.in_progress,  color: '#3b82f6' },
+    { name: 'Quá hạn',        value: stats.overdue,      color: '#f97316' },
     { name: 'Hoàn thành',     value: stats.completed,    color: '#22c55e' },
     { name: 'Đã huỷ',         value: stats.cancelled,    color: '#f87171' },
   ].filter(d => d.value > 0) : [], [stats])

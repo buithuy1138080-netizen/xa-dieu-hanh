@@ -356,7 +356,7 @@ async def _next_task_code(db: AsyncSession) -> str:
 
 
 def _is_overdue(t: Task) -> bool:
-    if t.status in ("completed", "cancelled"):
+    if t.status in ("completed", "cancelled", "overdue"):
         return False
     if t.due_date is None:
         return False
@@ -572,7 +572,10 @@ def _calc_stats(rows: list[Task]) -> TaskStats:
             s.completed += 1
         elif st == "cancelled":
             s.cancelled += 1
-        if _is_overdue(t):
+        elif st == "overdue":
+            s.overdue += 1
+        # Real-time: pending/in_progress tasks past due_date (before scheduler ran)
+        if st in ("pending", "in_progress") and _is_overdue(t):
             s.overdue += 1
         if t.priority == "high":
             s.high_priority += 1
