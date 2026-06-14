@@ -403,7 +403,7 @@ export default function TaskListPage() {
 
         {/* ── Stat cards (list + overdue views) ── */}
         {view !== 'kanban' && stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {STAT_CARDS(stats).map((c, i) => (
               <motion.div
                 key={c.label}
