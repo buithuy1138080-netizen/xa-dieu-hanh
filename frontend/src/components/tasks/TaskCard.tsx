@@ -21,6 +21,7 @@ const statusRing: Record<TaskStatus, string> = {
   in_progress: 'ring-blue-200 bg-blue-50/30',
   completed:   'ring-emerald-200 bg-emerald-50/30',
   cancelled:   'ring-red-200 bg-red-50/20',
+  overdue:     'ring-orange-200 bg-orange-50/30',
 }
 
 function fmtDate(d: string) {

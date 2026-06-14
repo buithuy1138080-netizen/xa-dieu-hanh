@@ -1,6 +1,8 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { QK } from '../../lib/queryKeys'
 import { directivesApi } from '../../api/directives'
 import DirectivePriorityBadge from '../../components/directives/DirectivePriorityBadge'
 import DirectiveStatusBadge from '../../components/directives/DirectiveStatusBadge'
@@ -8,7 +10,7 @@ import DirectiveForm from '../../components/directives/DirectiveForm'
 import AppLayout from '../../components/layout/AppLayout'
 import { useAuthStore } from '../../store/authStore'
 import { isAdminOrLeader } from '../../types'
-import type { DirectiveCreate, DirectivePriority, DirectiveRead, DirectiveStatus } from '../../types/directive'
+import type { DirectiveCreate, DirectivePriority, DirectiveStatus } from '../../types/directive'
 
 const STATUS_TABS: { value: DirectiveStatus | ''; label: string }[] = [
   { value: '', label: 'Tất cả' },
@@ -39,64 +41,52 @@ export default function DirectiveListPage() {
   const navigate = useNavigate()
   const currentUser = useAuthStore(s => s.user)
   const canManage = isAdminOrLeader(currentUser)
-  const [items, setItems] = useState<DirectiveRead[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
-  const [fetchError, setFetchError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const [search, setSearch] = useState('')
-  const [statusTab, setStatusTab] = useState<DirectiveStatus | ''>('')
+  const [search, setSearch]               = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [statusTab, setStatusTab]         = useState<DirectiveStatus | ''>('')
   const [priorityFilter, setPriorityFilter] = useState<DirectivePriority | ''>('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateFrom, setDateFrom]           = useState('')
+  const [dateTo, setDateTo]               = useState('')
+  const [page, setPage]                   = useState(1)
 
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const SIZE = 20
 
-  const load = useCallback(async (
-    p = 1,
-    q = search,
-    st = statusTab,
-    pr = priorityFilter,
-    df = dateFrom,
-    dt = dateTo,
-  ) => {
-    setLoading(true)
-    setFetchError(null)
-    try {
-      const { data } = await directivesApi.list({
-        page: p, size: SIZE,
-        search: q || undefined,
-        status: st || undefined,
-        priority: pr || undefined,
-        from_date: df || undefined,
-        to_date: dt || undefined,
-      })
-      setItems(data.items)
-      setTotal(data.total)
-      setPage(p)
-    } catch {
-      setFetchError('Không thể tải danh sách chỉ đạo. Vui lòng thử lại.')
-    } finally {
-      setLoading(false)
-    }
-  }, [search, statusTab, priorityFilter, dateFrom, dateTo])
+  const params = useMemo(() => ({
+    page, size: SIZE,
+    search: debouncedSearch || undefined,
+    status: statusTab || undefined,
+    priority: priorityFilter || undefined,
+    from_date: dateFrom || undefined,
+    to_date: dateTo || undefined,
+  }), [page, debouncedSearch, statusTab, priorityFilter, dateFrom, dateTo])
 
-  useEffect(() => { load(1) }, [statusTab, priorityFilter, dateFrom, dateTo])
+  const { data, isLoading: loading, isError, refetch } = useQuery({
+    queryKey: QK.directives(params),
+    queryFn: () => directivesApi.list(params).then(r => r.data),
+  })
 
-  useEffect(() => {
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
+  const fetchError = isError ? 'Không thể tải danh sách chỉ đạo. Vui lòng thử lại.' : null
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val)
     if (searchRef.current) clearTimeout(searchRef.current)
-    searchRef.current = setTimeout(() => load(1, search), 400)
-    return () => { if (searchRef.current) clearTimeout(searchRef.current) }
-  }, [search])
+    searchRef.current = setTimeout(() => { setDebouncedSearch(val); setPage(1) }, 400)
+  }
+
+  const handleFilterChange = () => setPage(1)
 
   async function handleCreate(data: DirectiveCreate) {
     setSaving(true)
     try {
       const { data: d } = await directivesApi.create(data)
+      queryClient.invalidateQueries({ queryKey: ['directives'] })
       setShowForm(false)
       navigate(`/directives/${d.id}`)
     } finally {
@@ -136,7 +126,7 @@ export default function DirectiveListPage() {
           {STATUS_TABS.map((t) => (
             <button
               key={t.value}
-              onClick={() => setStatusTab(t.value)}
+              onClick={() => { setStatusTab(t.value); handleFilterChange() }}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 statusTab === t.value
                   ? 'bg-white text-indigo-700 shadow-sm'
@@ -154,14 +144,14 @@ export default function DirectiveListPage() {
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Tìm theo tiêu đề, nội dung..."
               className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
             />
           </div>
           <select
             value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value as DirectivePriority | '')}
+            onChange={(e) => { setPriorityFilter(e.target.value as DirectivePriority | ''); handleFilterChange() }}
             className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600"
           >
             {PRIORITY_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -170,7 +160,7 @@ export default function DirectiveListPage() {
             type="date"
             value={dateFrom}
             max={dateTo || undefined}
-            onChange={(e) => setDateFrom(e.target.value)}
+            onChange={(e) => { setDateFrom(e.target.value); handleFilterChange() }}
             title="Từ ngày ban hành"
             className="border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600"
           />
@@ -179,7 +169,7 @@ export default function DirectiveListPage() {
             type="date"
             value={dateTo}
             min={dateFrom || undefined}
-            onChange={(e) => setDateTo(e.target.value)}
+            onChange={(e) => { setDateTo(e.target.value); handleFilterChange() }}
             title="Đến ngày ban hành"
             className="border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-600"
           />
@@ -199,6 +189,7 @@ export default function DirectiveListPage() {
           <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 flex items-center gap-2">
             <AlertTriangle size={15} className="shrink-0" />
             {fetchError}
+            <button onClick={() => refetch()} className="ml-auto underline text-xs">Thử lại</button>
           </div>
         )}
 
@@ -324,12 +315,12 @@ export default function DirectiveListPage() {
             <div className="flex gap-1">
               <button
                 disabled={page <= 1}
-                onClick={() => load(page - 1)}
+                onClick={() => setPage(p => p - 1)}
                 className="px-3 py-1.5 border rounded-lg disabled:opacity-40 hover:bg-slate-50 transition"
               >‹ Trước</button>
               <button
                 disabled={page >= pages}
-                onClick={() => load(page + 1)}
+                onClick={() => setPage(p => p + 1)}
                 className="px-3 py-1.5 border rounded-lg disabled:opacity-40 hover:bg-slate-50 transition"
               >Sau ›</button>
             </div>

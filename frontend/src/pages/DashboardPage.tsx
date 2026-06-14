@@ -4,17 +4,16 @@ import {
   FileText, ClipboardList, TrendingUp, Building2,
   ArrowRight, Activity, Target, Zap, CalendarRange,
 } from 'lucide-react'
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { useQueries } from '@tanstack/react-query'
+import { memo, useMemo, useState } from 'react'
+import { QK } from '../lib/queryKeys'
 import { Link } from 'react-router-dom'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { dashboardApi } from '../api/dashboard'
-import type {
-  DashboardStats, DirectiveStats, DocumentStats, KPIStatsDash, NQ57StatsDash,
-  OverdueTask, TimelinePoint, UpcomingTask, UnitPerformance,
-} from '../api/dashboard'
+import type { UnitPerformance } from '../api/dashboard'
 import AppLayout from '../components/layout/AppLayout'
 import { useAuthStore } from '../store/authStore'
 
@@ -124,50 +123,47 @@ export default function DashboardPage() {
   const { user } = useAuthStore()
   const isAdminOrLeader = ['admin', 'leader'].includes(user?.role ?? '')
 
-  const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [timeline, setTimeline] = useState<TimelinePoint[]>([])
-  const [overdue, setOverdue] = useState<OverdueTask[]>([])
-  const [units, setUnits] = useState<UnitPerformance[]>([])
-  const [directiveStats, setDirectiveStats] = useState<DirectiveStats | null>(null)
-  const [kpiStats, setKpiStats] = useState<KPIStatsDash | null>(null)
-  const [nq57Stats, setNq57Stats] = useState<NQ57StatsDash | null>(null)
-  const [docStats, setDocStats] = useState<DocumentStats | null>(null)
-  const [upcomingTasks, setUpcomingTasks] = useState<UpcomingTask[]>([])
-  const [loading, setLoading] = useState(true)
-  const [apiErrors, setApiErrors] = useState<string[]>([])
-
   const [dateFrom, setDateFrom] = useState(defaultRange().from)
   const [dateTo,   setDateTo]   = useState(defaultRange().to)
+  const [appliedFrom, setAppliedFrom] = useState(dateFrom)
+  const [appliedTo,   setAppliedTo]   = useState(dateTo)
 
-  const fetchData = useCallback((from: string, to: string) => {
-    setLoading(true)
-    const errors: string[] = []
-    Promise.allSettled([
-      dashboardApi.summary(),
-      dashboardApi.timeline(30, from, to),
-      isAdminOrLeader ? dashboardApi.unitPerformance(from, to) : Promise.resolve(null),
-    ]).then(([s, t, u]) => {
-      if (s.status === 'fulfilled') {
-        const d = s.value.data
-        setStats(d.tasks)
-        setOverdue(d.overdue_tasks)
-        setUpcomingTasks(d.upcoming_tasks)
-        setDirectiveStats(d.directives)
-        setKpiStats(d.kpi)
-        setNq57Stats(d.nq57)
-        setDocStats(d.documents)
-      } else {
-        errors.push('Tổng quan hệ thống')
-      }
-      if (t.status === 'fulfilled') setTimeline(t.value.data)
-      if (u.status === 'fulfilled' && u.value) setUnits(u.value.data)
-      if (errors.length) setApiErrors(errors)
-    }).finally(() => setLoading(false))
-  }, [])
+  const handleApply = () => {
+    if (dateFrom && dateTo) { setAppliedFrom(dateFrom); setAppliedTo(dateTo) }
+  }
 
-  useEffect(() => { fetchData(dateFrom, dateTo) }, [])   // eslint-disable-line
+  const [summaryQ, timelineQ, unitQ] = useQueries({
+    queries: [
+      {
+        queryKey: QK.dashboardSummary(appliedFrom, appliedTo),
+        queryFn: () => dashboardApi.summary().then(r => r.data),
+      },
+      {
+        queryKey: QK.dashboardTimeline({ days: 30, from: appliedFrom, to: appliedTo }),
+        queryFn: () => dashboardApi.timeline(30, appliedFrom, appliedTo).then(r => r.data),
+      },
+      {
+        queryKey: QK.dashboardUnitPerf({ from: appliedFrom, to: appliedTo }),
+        queryFn: () => isAdminOrLeader
+          ? dashboardApi.unitPerformance(appliedFrom, appliedTo).then(r => r.data)
+          : Promise.resolve([] as UnitPerformance[]),
+        enabled: isAdminOrLeader,
+      },
+    ],
+  })
 
-  const handleApply = () => { if (dateFrom && dateTo) fetchData(dateFrom, dateTo) }
+  const summaryData  = summaryQ.data
+  const stats        = summaryData?.tasks        ?? null
+  const overdue      = summaryData?.overdue_tasks ?? []
+  const upcomingTasks = summaryData?.upcoming_tasks ?? []
+  const directiveStats = summaryData?.directives ?? null
+  const kpiStats     = summaryData?.kpi          ?? null
+  const nq57Stats    = summaryData?.nq57         ?? null
+  const docStats     = summaryData?.documents    ?? null
+  const timeline     = timelineQ.data            ?? []
+  const units        = unitQ.data                ?? []
+  const loading      = summaryQ.isLoading
+  const apiErrors    = summaryQ.isError ? ['Tổng quan hệ thống'] : []
 
   const taskPieData = useMemo(() => stats ? [
     { name: 'Chờ xử lý',     value: stats.pending,      color: '#94a3b8' },
@@ -196,7 +192,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs rounded-xl px-4 py-2.5">
             <span className="font-semibold">Một số dữ liệu chưa tải được:</span>
             <span>{apiErrors.join(', ')}</span>
-            <button className="ml-auto text-amber-500 hover:text-amber-700" onClick={() => setApiErrors([])}>✕</button>
+            <button className="ml-auto text-amber-500 hover:text-amber-700" onClick={() => summaryQ.refetch()}>Thử lại</button>
           </div>
         )}
 

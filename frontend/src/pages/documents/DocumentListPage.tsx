@@ -1,6 +1,8 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Download, Eye, Sparkles, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { QK } from '../../lib/queryKeys'
 import { documentsApi } from '../../api/documents'
 import DocStatusBadge from '../../components/documents/DocStatusBadge'
 import DocTypeBadge from '../../components/documents/DocTypeBadge'
@@ -48,11 +50,8 @@ export default function DocumentListPage() {
   const navigate = useNavigate()
   const currentUser = useAuthStore(s => s.user)
   const canManage = !!currentUser
-  const [docs, setDocs] = useState<DocumentRead[]>([])
-  const [total, setTotal] = useState(0)
+  const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
-  const [fetchError, setFetchError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -62,6 +61,7 @@ export default function DocumentListPage() {
   const [viewLoading, setViewLoading] = useState(false)
 
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [typeTab, setTypeTab] = useState<DocType | ''>('')
   const [statusFilter, setStatusFilter] = useState<DocStatus | ''>('')
   const [dateFrom, setDateFrom] = useState('')
@@ -70,29 +70,30 @@ export default function DocumentListPage() {
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const SIZE = 20
 
-  const load = useCallback(async (p = 1, q = search, t = typeTab, s = statusFilter, df = dateFrom, dt = dateTo) => {
-    setLoading(true)
-    setFetchError(null)
-    try {
-      const { data } = await documentsApi.list({
-        page: p, size: SIZE,
-        search: q || undefined,
-        doc_type: t || undefined,
-        status: s || undefined,
-        from_date: df || undefined,
-        to_date: dt || undefined,
-      })
-      setDocs(data.items)
-      setTotal(data.total)
-      setPage(p)
-    } catch {
-      setFetchError('Không thể tải danh sách văn bản. Vui lòng thử lại.')
-    } finally {
-      setLoading(false)
-    }
-  }, [search, typeTab, statusFilter, dateFrom, dateTo])
+  const params = useMemo(() => ({
+    page, size: SIZE,
+    search: debouncedSearch || undefined,
+    doc_type: typeTab || undefined,
+    status: statusFilter || undefined,
+    from_date: dateFrom || undefined,
+    to_date: dateTo || undefined,
+  }), [page, debouncedSearch, typeTab, statusFilter, dateFrom, dateTo])
 
-  useEffect(() => { load(1) }, [typeTab, statusFilter, dateFrom, dateTo])
+  const { data, isLoading: loading, isError, refetch } = useQuery({
+    queryKey: QK.documents(params),
+    queryFn: () => documentsApi.list(params).then(r => r.data),
+  })
+
+  const docs  = data?.items ?? []
+  const total = data?.total ?? 0
+  const fetchError = isError ? 'Không thể tải danh sách văn bản. Vui lòng thử lại.' : null
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val)
+    if (searchRef.current) clearTimeout(searchRef.current)
+    searchRef.current = setTimeout(() => { setDebouncedSearch(val); setPage(1) }, 400)
+  }
+  const handleFilterChange = () => setPage(1)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -105,12 +106,6 @@ export default function DocumentListPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  useEffect(() => {
-    if (searchRef.current) clearTimeout(searchRef.current)
-    searchRef.current = setTimeout(() => load(1, search), 400)
-    return () => { if (searchRef.current) clearTimeout(searchRef.current) }
-  }, [search])
-
   async function handleCreate(data: DocumentCreate, file?: File | null) {
     setSaving(true)
     try {
@@ -122,6 +117,7 @@ export default function DocumentListPage() {
           alert('Văn bản đã lưu nhưng đính kèm file thất bại. Vui lòng thử tải lên lại trong trang chi tiết.')
         }
       }
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
       setShowForm(false)
       navigate(`/documents/${doc.id}`)
     } finally {
@@ -226,7 +222,7 @@ export default function DocumentListPage() {
           {TYPE_TABS.map((t) => (
             <button
               key={t.value}
-              onClick={() => setTypeTab(t.value)}
+              onClick={() => { setTypeTab(t.value); handleFilterChange() }}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 typeTab === t.value
                   ? 'bg-white text-blue-700 shadow-sm'
@@ -244,14 +240,14 @@ export default function DocumentListPage() {
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Tìm theo số hiệu, trích yếu, cơ quan..."
               className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             />
           </div>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as DocStatus | '')}
+            onChange={(e) => { setStatusFilter(e.target.value as DocStatus | ''); handleFilterChange() }}
             className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
           >
             {STATUS_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -260,7 +256,7 @@ export default function DocumentListPage() {
             type="date"
             value={dateFrom}
             max={dateTo || undefined}
-            onChange={(e) => setDateFrom(e.target.value)}
+            onChange={(e) => { setDateFrom(e.target.value); handleFilterChange() }}
             title="Từ ngày ban hành"
             className="border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
           />
@@ -269,7 +265,7 @@ export default function DocumentListPage() {
             type="date"
             value={dateTo}
             min={dateFrom || undefined}
-            onChange={(e) => setDateTo(e.target.value)}
+            onChange={(e) => { setDateTo(e.target.value); handleFilterChange() }}
             title="Đến ngày ban hành"
             className="border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
           />
@@ -289,6 +285,7 @@ export default function DocumentListPage() {
           <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 flex items-center gap-2">
             <AlertTriangle size={15} className="shrink-0" />
             {fetchError}
+            <button onClick={() => refetch()} className="ml-auto underline text-xs">Thử lại</button>
           </div>
         )}
 
@@ -427,12 +424,12 @@ export default function DocumentListPage() {
             <div className="flex gap-1">
               <button
                 disabled={page <= 1}
-                onClick={() => load(page - 1)}
+                onClick={() => setPage(p => p - 1)}
                 className="px-3 py-1.5 border rounded-lg disabled:opacity-40 hover:bg-slate-50 transition"
               >‹ Trước</button>
               <button
                 disabled={page >= pages}
-                onClick={() => load(page + 1)}
+                onClick={() => setPage(p => p + 1)}
                 className="px-3 py-1.5 border rounded-lg disabled:opacity-40 hover:bg-slate-50 transition"
               >Sau ›</button>
             </div>
@@ -507,7 +504,7 @@ export default function DocumentListPage() {
       {showUploadAI && (
         <DocumentUploadAI
           onClose={() => setShowUploadAI(false)}
-          onSaved={() => { load(1); setShowUploadAI(false) }}
+          onSaved={() => { queryClient.invalidateQueries({ queryKey: ['documents'] }); setShowUploadAI(false) }}
         />
       )}
 
