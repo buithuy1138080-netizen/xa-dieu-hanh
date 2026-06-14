@@ -105,6 +105,7 @@ async def notify_event(
 
     Deduplication: skips sending if an identical log (same notif_type +
     entity_id + user) already exists within dedup_hours.
+    Uses batch queries to avoid N+1 performance issues.
     """
     if not recipient_user_ids:
         return []
@@ -120,45 +121,55 @@ async def notify_event(
 
     await _ensure_token_valid(db, config)
 
+    # ── Batch load: ZaloUserLinks for all recipients (eliminates N+1) ─────────
+    links_result = await db.execute(
+        select(ZaloUserLink).where(
+            ZaloUserLink.user_id.in_(recipient_user_ids),
+            ZaloUserLink.is_active == True,
+        )
+    )
+    links_by_user: dict[int, ZaloUserLink] = {
+        lnk.user_id: lnk for lnk in links_result.scalars()
+    }
+
+    # ── Batch dedup check (2 queries instead of 2N) ───────────────────────────
+    deduped_sent: set[int] = set()
+    deduped_failed: set[int] = set()
+    if entity_id and dedup_hours > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=dedup_hours)
+        failed_cutoff = datetime.now(timezone.utc) - timedelta(hours=max(dedup_hours, 2))
+
+        sent_rows = await db.execute(
+            select(ZaloLog.recipient_user_id).where(
+                ZaloLog.recipient_user_id.in_(recipient_user_ids),
+                ZaloLog.notif_type == notif_type,
+                ZaloLog.entity_id == entity_id,
+                ZaloLog.status == "sent",
+                ZaloLog.sent_at >= cutoff,
+            )
+        )
+        deduped_sent = {row[0] for row in sent_rows if row[0] is not None}
+
+        failed_rows = await db.execute(
+            select(ZaloLog.recipient_user_id).where(
+                ZaloLog.recipient_user_id.in_(recipient_user_ids),
+                ZaloLog.notif_type == notif_type,
+                ZaloLog.entity_id == entity_id,
+                ZaloLog.status == "failed",
+                ZaloLog.created_at >= failed_cutoff,
+            )
+        )
+        deduped_failed = {row[0] for row in failed_rows if row[0] is not None}
+
+    # Render template once for all recipients
+    rendered = _render(template.content, context)
+
     logs: list[ZaloLog] = []
     for user_id in recipient_user_ids:
-        # Dedup: skip if sent successfully within dedup_hours
-        if entity_id and dedup_hours > 0:
-            cutoff = datetime.now(timezone.utc) - timedelta(hours=dedup_hours)
-            sent_ok = (await db.execute(
-                select(ZaloLog).where(
-                    ZaloLog.recipient_user_id == user_id,
-                    ZaloLog.notif_type == notif_type,
-                    ZaloLog.entity_id == entity_id,
-                    ZaloLog.status == "sent",
-                    ZaloLog.sent_at >= cutoff,
-                )
-            )).scalar_one_or_none()
-            if sent_ok:
-                continue
+        if user_id in deduped_sent or user_id in deduped_failed:
+            continue
 
-            # Dedup: also skip if recently failed (avoid hourly retry spam).
-            # Failed sends are retried at most once per dedup window, not every hour.
-            failed_cutoff = datetime.now(timezone.utc) - timedelta(hours=max(dedup_hours, 2))
-            failed_recently = (await db.execute(
-                select(ZaloLog).where(
-                    ZaloLog.recipient_user_id == user_id,
-                    ZaloLog.notif_type == notif_type,
-                    ZaloLog.entity_id == entity_id,
-                    ZaloLog.status == "failed",
-                    ZaloLog.created_at >= failed_cutoff,
-                )
-            )).scalar_one_or_none()
-            if failed_recently:
-                continue
-
-        link = (await db.execute(
-            select(ZaloUserLink).where(
-                ZaloUserLink.user_id == user_id,
-                ZaloUserLink.is_active == True,
-            )
-        )).scalar_one_or_none()
-
+        link = links_by_user.get(user_id)
         phone = link.zalo_phone if link else None
         zalo_uid = link.zalo_user_id if link else None
 
@@ -166,18 +177,14 @@ async def notify_event(
             logger.debug("Zalo skip user=%s: no phone or zalo_user_id", user_id)
             continue
 
-        # For oa_message channel, zalo_user_id is required (can't send to phone directly).
-        # Skip early to avoid creating a "failed" log for a known-unconfigured state.
+        # For oa_message channel, zalo_user_id is required.
         if template.channel == "oa_message" and not zalo_uid:
             logger.debug(
                 "Zalo skip user=%s notif=%s: channel=oa_message but no zalo_user_id. "
-                "User must send a message to the OA first (webhook will capture their ID), "
-                "or admin can set zalo_user_id manually in User Links.",
+                "User must send a message to the OA first.",
                 user_id, notif_type,
             )
             continue
-
-        rendered = _render(template.content, context)
 
         log = ZaloLog(
             template_id=template.id,
@@ -208,6 +215,16 @@ async def notify_event(
         logs.append(log)
 
     await db.commit()
+
+    if logs:
+        sent_count = sum(1 for l in logs if l.status == "sent")
+        failed_count = len(logs) - sent_count
+        logger.info(
+            "Zalo notify_event type=%s sent=%d failed=%d skipped_dedup=%d",
+            notif_type, sent_count, failed_count,
+            len(deduped_sent) + len(deduped_failed),
+        )
+
     return logs
 
 
@@ -225,15 +242,20 @@ async def notify_bulk(
 
     await _ensure_token_valid(db, config)
 
+    # Batch load ZaloUserLinks (eliminates N+1)
+    links_result = await db.execute(
+        select(ZaloUserLink).where(
+            ZaloUserLink.user_id.in_(recipient_user_ids),
+            ZaloUserLink.is_active == True,
+        )
+    )
+    links_by_user: dict[int, ZaloUserLink] = {
+        lnk.user_id: lnk for lnk in links_result.scalars()
+    }
+
     logs: list[ZaloLog] = []
     for user_id in recipient_user_ids:
-        link = (await db.execute(
-            select(ZaloUserLink).where(
-                ZaloUserLink.user_id == user_id,
-                ZaloUserLink.is_active == True,
-            )
-        )).scalar_one_or_none()
-
+        link = links_by_user.get(user_id)
         zalo_uid = link.zalo_user_id if link else None
         phone = link.zalo_phone if link else None
         if not zalo_uid and not phone:
@@ -333,12 +355,18 @@ async def _dispatch(
 
 async def _ensure_token_valid(db: AsyncSession, config: ZaloConfig) -> None:
     if not config.token_expiry:
+        logger.debug("Zalo: token_expiry chưa set, dùng token hiện tại không kiểm tra hết hạn")
         return
     now = datetime.now(timezone.utc)
     expiry = config.token_expiry if config.token_expiry.tzinfo else config.token_expiry.replace(tzinfo=timezone.utc)
     if (expiry - now).total_seconds() > 3600:
         return
     if not config.refresh_token or not config.app_id or not config.app_secret:
+        logger.warning(
+            "Zalo: token sắp hết hạn (%s) nhưng không thể tự làm mới — thiếu refresh_token/app_id/app_secret. "
+            "Vui lòng cập nhật token thủ công trong cấu hình Zalo.",
+            expiry.strftime("%d/%m/%Y %H:%M UTC"),
+        )
         return
     result = await zalo_api_service.refresh_token(config.app_id, config.app_secret, config.refresh_token)
     if "access_token" in result:
@@ -348,10 +376,10 @@ async def _ensure_token_valid(db: AsyncSession, config: ZaloConfig) -> None:
         expires_in = int(result.get("expires_in", 3600))
         config.token_expiry = now + timedelta(seconds=expires_in)
         await db.commit()
-        logger.info("Zalo OA token auto-refreshed thành công")
+        logger.info("Zalo OA token auto-refreshed thành công, hết hạn lúc %s",
+                    config.token_expiry.strftime("%d/%m/%Y %H:%M UTC"))
     else:
         logger.warning(
-            "Zalo OA token refresh thất bại — sẽ dùng token cũ (có thể đã hết hạn). "
-            "Lỗi: %s",
+            "Zalo OA token refresh thất bại — sẽ dùng token cũ (có thể đã hết hạn). Lỗi: %s",
             result.get("message", str(result)),
         )

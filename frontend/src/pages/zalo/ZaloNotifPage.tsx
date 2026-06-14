@@ -214,10 +214,14 @@ function TemplatesTab() {
   const [editTmpl, setEditTmpl] = useState<ZaloTemplateRead | null>(null)
   const [seeding, setSeeding] = useState(false)
   const [seedMsg, setSeedMsg] = useState('')
+  const [loadErr, setLoadErr] = useState('')
 
   async function load() {
-    const r = await zaloApi.listTemplates()
-    setTemplates(r.data)
+    try {
+      const r = await zaloApi.listTemplates()
+      setTemplates(r.data)
+      setLoadErr('')
+    } catch { setLoadErr('Không tải được danh sách mẫu tin nhắn') }
   }
   useEffect(() => { load() }, [])
 
@@ -232,12 +236,15 @@ function TemplatesTab() {
 
   async function doDelete(id: number) {
     if (!confirm('Xóa mẫu tin nhắn này?')) return
-    await zaloApi.deleteTemplate(id)
-    await load()
+    try {
+      await zaloApi.deleteTemplate(id)
+      await load()
+    } catch { setSeedMsg('❌ Lỗi khi xóa mẫu') }
   }
 
   return (
     <div className="space-y-4">
+      {loadErr && <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{loadErr}</div>}
       <div className="flex items-center justify-between">
         <div className="flex gap-3">
           <button
@@ -578,9 +585,12 @@ function UserLinksTab() {
   const [importMsg, setImportMsg] = useState('')
   const [editLink, setEditLink] = useState<{ userId: number; phone: string; zaloUid: string } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState('')
 
   async function load() {
-    const r = await zaloApi.listUserLinks(); setLinks(r.data)
+    try {
+      const r = await zaloApi.listUserLinks(); setLinks(r.data)
+    } catch { /* fail silently — table shows empty */ }
   }
   useEffect(() => { load() }, [])
 
@@ -595,10 +605,12 @@ function UserLinksTab() {
 
   async function saveEdit() {
     if (!editLink) return
-    setSaving(true)
+    setSaving(true); setSaveErr('')
     try {
       await zaloApi.upsertUserLink({ user_id: editLink.userId, zalo_phone: editLink.phone || undefined, zalo_user_id: editLink.zaloUid || undefined })
       setEditLink(null); await load()
+    } catch (e: any) {
+      setSaveErr(e?.response?.data?.detail ?? 'Lỗi khi lưu liên kết')
     } finally { setSaving(false) }
   }
 
@@ -632,12 +644,13 @@ function UserLinksTab() {
                 placeholder="Lấy từ Zalo OA webhook" />
             </div>
           </div>
+          {saveErr && <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{saveErr}</div>}
           <div className="flex gap-3">
             <button onClick={saveEdit} disabled={saving}
               className="px-4 py-2 text-sm bg-blue-600 text-white font-semibold rounded-lg disabled:opacity-60">
               {saving ? '...' : 'Lưu'}
             </button>
-            <button onClick={() => setEditLink(null)} className="px-4 py-2 text-sm text-slate-500 font-medium">Hủy</button>
+            <button onClick={() => { setEditLink(null); setSaveErr('') }} className="px-4 py-2 text-sm text-slate-500 font-medium">Hủy</button>
           </div>
         </div>
       )}
@@ -742,7 +755,6 @@ function SendTab({ templates }: { templates: ZaloTemplateRead[] }) {
       try { ctx = JSON.parse(contextInput) } catch { ctx = {} }
       const r = await zaloApi.send({ ...form, recipient_user_ids: uids, context: ctx })
       setResult(r.data)
-      // Auto-fetch recent failed logs to show actual Zalo error codes
       if (r.data.failed > 0) {
         setTimeout(async () => {
           try {
@@ -751,6 +763,8 @@ function SendTab({ templates }: { templates: ZaloTemplateRead[] }) {
           } catch { /* ignore */ }
         }, 500)
       }
+    } catch (e: any) {
+      setResult({ sent: 0, failed: 0, no_link: 0, errors: [{ user_id: 0, error: e?.response?.data?.detail ?? 'Lỗi kết nối server' }] })
     } finally { setSending(false) }
   }
 
@@ -872,6 +886,8 @@ function TestTab() {
     try {
       const r = await zaloApi.broadcast({ subject: bcSubject, text: bcText, recipient_user_ids: uids })
       setBcResult(r.data)
+    } catch (e: any) {
+      setBcResult({ sent: 0, failed: 0, no_link: 0, errors: [{ user_id: 0, error: e?.response?.data?.detail ?? 'Lỗi kết nối server' }] })
     } finally { setBcSending(false) }
   }
 

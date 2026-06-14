@@ -332,6 +332,8 @@ async def broadcast_message(
         raise HTTPException(400, "Cần cung cấp nội dung text")
     if not recipient_user_ids:
         raise HTTPException(400, "Cần cung cấp danh sách recipient_user_ids")
+    if len(recipient_user_ids) > 500:
+        raise HTTPException(400, "Tối đa 500 người nhận mỗi lần gửi")
     logs = await zalo_notify_engine.notify_bulk(
         db=db,
         subject=subject,
@@ -429,8 +431,10 @@ async def zalo_webhook(payload: dict, db: AsyncSession = Depends(get_db)):
     if not cfg or not cfg.access_token:
         return {"ok": True}
 
-    async def reply(msg: str):
-        await zalo_api_service.send_oa_message(cfg.access_token, zalo_user_id, msg)
+    async def reply(msg: str) -> None:
+        result = await zalo_api_service.send_oa_message(cfg.access_token, zalo_user_id, msg)
+        if result.get("error") != 0:
+            logger.warning("Webhook reply failed user=%s: %s", zalo_user_id, result.get("message"))
 
     # Check if already linked
     link = (await db.execute(
@@ -539,8 +543,11 @@ async def list_oa_followers(
     followers = data.get("followers") or []
     total = data.get("total", 0)
 
-    # Build map of existing links by zalo_user_id
-    existing = (await db.execute(select(ZaloUserLink))).scalars().all()
+    # Only load links for the followers returned (not all links in DB)
+    follower_zalo_ids = [str(f.get("user_id", "") or "") for f in followers if f.get("user_id")]
+    existing = (await db.execute(
+        select(ZaloUserLink).where(ZaloUserLink.zalo_user_id.in_(follower_zalo_ids))
+    )).scalars().all() if follower_zalo_ids else []
     linked_map: dict[str, int] = {
         lnk.zalo_user_id: lnk.user_id
         for lnk in existing

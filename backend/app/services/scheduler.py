@@ -340,14 +340,15 @@ async def _zalo_task_warnings() -> None:
                 )
             )
             overdue = result.scalars().all()
+            overdue_sent = overdue_failed = 0
             for task in overdue:
                 target = task.assignee_id or task.created_by
                 due_utc = task.due_date if task.due_date.tzinfo else task.due_date.replace(tzinfo=timezone.utc)
                 days_late = max(0, (today - due_utc).days)
-                await notify_event(
+                logs = await notify_event(
                     db, "task_overdue",
                     context={
-                        "task_title": task.title,
+                        "task_title": task.title or "",
                         "days_late": days_late,
                         "due_date": task.due_date.strftime("%d/%m/%Y"),
                     },
@@ -355,6 +356,11 @@ async def _zalo_task_warnings() -> None:
                     entity_type="task", entity_id=task.id,
                     triggered_by="scheduler", dedup_hours=24,
                 )
+                for l in logs:
+                    if l.status == "sent":
+                        overdue_sent += 1
+                    else:
+                        overdue_failed += 1
 
             # Tasks due within 3 days
             result2 = await db.execute(
@@ -366,14 +372,15 @@ async def _zalo_task_warnings() -> None:
                     Task.status.notin_(["completed", "cancelled"]),
                 )
             )
+            warn_sent = warn_failed = 0
             for task in result2.scalars().all():
                 target = task.assignee_id or task.created_by
                 due_utc = task.due_date if task.due_date.tzinfo else task.due_date.replace(tzinfo=timezone.utc)
                 days_left = max(0, (due_utc - today).days)
-                await notify_event(
+                logs = await notify_event(
                     db, "task_warning",
                     context={
-                        "task_title": task.title,
+                        "task_title": task.title or "",
                         "days_left": days_left,
                         "due_date": task.due_date.strftime("%d/%m/%Y"),
                     },
@@ -381,6 +388,16 @@ async def _zalo_task_warnings() -> None:
                     entity_type="task", entity_id=task.id,
                     triggered_by="scheduler", dedup_hours=24,
                 )
+                for l in logs:
+                    if l.status == "sent":
+                        warn_sent += 1
+                    else:
+                        warn_failed += 1
+
+            log.info(
+                "Zalo task warnings: overdue sent=%d failed=%d | warning sent=%d failed=%d",
+                overdue_sent, overdue_failed, warn_sent, warn_failed,
+            )
     except Exception:
         log.exception("Zalo task warnings job failed")
 
@@ -412,6 +429,7 @@ async def _zalo_kpi_alerts() -> None:
                     KPI.status.notin_(["completed"]),
                 )
             )
+            kpi_sent = kpi_failed = 0
             for kpi in result.scalars().all():
                 recipients = []
                 if kpi.responsible_user_id:
@@ -420,10 +438,10 @@ async def _zalo_kpi_alerts() -> None:
                     recipients.append(kpi.created_by)
                 if not recipients:
                     continue
-                await notify_event(
+                logs = await notify_event(
                     db, "kpi_low",
                     context={
-                        "kpi_title": kpi.title,
+                        "kpi_title": kpi.title or "",
                         "progress": round(kpi.progress, 1),
                         "target": round(kpi.target_value, 1),
                     },
@@ -431,6 +449,12 @@ async def _zalo_kpi_alerts() -> None:
                     entity_type="kpi", entity_id=kpi.id,
                     triggered_by="scheduler", dedup_hours=48,
                 )
+                for l in logs:
+                    if l.status == "sent":
+                        kpi_sent += 1
+                    else:
+                        kpi_failed += 1
+            log.info("Zalo KPI alerts: sent=%d failed=%d", kpi_sent, kpi_failed)
     except Exception:
         log.exception("Zalo KPI alerts job failed")
 
