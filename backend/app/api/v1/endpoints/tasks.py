@@ -1096,6 +1096,29 @@ async def update_task(
     if start and due and due < start:
         raise HTTPException(400, "Hạn hoàn thành không thể trước ngày bắt đầu")
 
+    if body.incoming_document_id:
+        from app.models.document import Document as Doc
+        doc = await db.get(Doc, body.incoming_document_id)
+        if not doc or getattr(doc, 'deleted_at', None):
+            raise HTTPException(404, "Văn bản đến không tồn tại")
+    if body.outgoing_document_id:
+        from app.models.document import Document as Doc
+        doc = await db.get(Doc, body.outgoing_document_id)
+        if not doc or getattr(doc, 'deleted_at', None):
+            raise HTTPException(404, "Văn bản đi không tồn tại")
+    if body.directive_id:
+        from app.models.directive import Directive
+        d = await db.get(Directive, body.directive_id)
+        if not d or getattr(d, 'deleted_at', None):
+            raise HTTPException(404, "Chỉ đạo không tồn tại")
+    if body.program_id:
+        from app.models.program import Program
+        p = await db.get(Program, body.program_id)
+        if not p or getattr(p, 'deleted_at', None):
+            raise HTTPException(404, "Chương trình không tồn tại")
+
+    old_program_id = t.program_id
+
     fields = ["title", "description", "content_summary", "priority", "start_date", "due_date",
               "incoming_document_id", "outgoing_document_id", "directive_id", "program_id",
               "assignee_id", "assignee_staff_id", "supervising_user_id", "lead_department_id",
@@ -1112,6 +1135,13 @@ async def update_task(
 
     if body.coordinating_department_ids is not None:
         await _set_departments(db, t, t.lead_department_id, body.coordinating_department_ids)
+
+    # Sync program progress nếu program_id thay đổi
+    new_program_id = t.program_id
+    if old_program_id and old_program_id != new_program_id:
+        await _sync_program_progress(db, old_program_id)
+    if new_program_id:
+        await _sync_program_progress(db, new_program_id)
 
     await db.commit()
     task = await _get_task(db, t.id, detail=False)
