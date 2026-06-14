@@ -422,12 +422,12 @@ export default function NQ57DashboardPage() {
             {/* Stat cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { label: 'Tổng nhiệm vụ', value: s!.task_total, icon: '📋', color: 'text-slate-700', bg: 'bg-slate-50' },
-                { label: 'Hoàn thành', value: `${s!.task_done}/${s!.task_total}`, icon: '✅', color: 'text-emerald-700', bg: 'bg-emerald-50' },
-                { label: 'Quá hạn', value: s!.task_overdue, icon: '⚠️', color: 'text-red-600', bg: 'bg-red-50' },
-                { label: 'KPI đạt', value: `${s!.kpi_completed}/${s!.kpi_total}`, icon: '📊', color: 'text-blue-700', bg: 'bg-blue-50' },
+                { label: 'Tổng nhiệm vụ', value: s!.task_total,                         icon: '📋', color: 'text-slate-700',   bg: 'bg-slate-50',   onClick: () => { setTaskStatus(''); setTaskOverdue(false); setTab('tasks') } },
+                { label: 'Hoàn thành',    value: `${s!.task_done}/${s!.task_total}`,     icon: '✅', color: 'text-emerald-700', bg: 'bg-emerald-50', onClick: () => { setTaskStatus('completed'); setTaskOverdue(false); setTab('tasks') } },
+                { label: 'Quá hạn',       value: s!.task_overdue,                        icon: '⚠️', color: 'text-red-600',     bg: 'bg-red-50',     onClick: () => { setTaskStatus(''); setTaskOverdue(true); setTab('tasks') } },
+                { label: 'KPI đạt',       value: `${s!.kpi_completed}/${s!.kpi_total}`, icon: '📊', color: 'text-blue-700',   bg: 'bg-blue-50',    onClick: () => setTab('kpis') },
               ].map(c => (
-                <div key={c.label} className={`rounded-2xl p-4 border border-slate-100 shadow-sm ${c.bg}`}>
+                <div key={c.label} onClick={c.onClick} className={`rounded-2xl p-4 border border-slate-100 shadow-sm cursor-pointer hover:shadow-md hover:scale-[1.02] transition-all ${c.bg}`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{c.label}</p>
