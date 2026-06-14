@@ -148,7 +148,7 @@ async def _ensure_user(db: AsyncSession, staff: Staff) -> User:
     user = User(
         username=username,
         email=email,
-        hashed_password=staff.password_hash or hash_password("changeme"),
+        hashed_password=staff.password_hash or hash_password(__import__('secrets').token_hex(16)),
         full_name=staff.full_name,
         role=staff.role,
         is_active=staff.is_active,

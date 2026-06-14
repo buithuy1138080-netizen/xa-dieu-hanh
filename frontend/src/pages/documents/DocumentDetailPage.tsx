@@ -126,7 +126,11 @@ export default function DocumentDetailPage() {
     try {
       await documentsApi.update(docId, data)
       if (file) {
-        await documentsApi.uploadFile(docId, file).catch(() => {})
+        try {
+          await documentsApi.uploadFile(docId, file)
+        } catch {
+          alert('Văn bản đã lưu nhưng đính kèm file thất bại. Vui lòng thử tải lên lại.')
+        }
       }
       setEditOpen(false)
       await load()

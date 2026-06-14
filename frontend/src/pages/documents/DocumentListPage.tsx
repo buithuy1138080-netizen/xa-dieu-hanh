@@ -116,7 +116,11 @@ export default function DocumentListPage() {
     try {
       const { data: doc } = await documentsApi.create(data)
       if (file) {
-        await documentsApi.uploadFile(doc.id, file).catch(() => {})
+        try {
+          await documentsApi.uploadFile(doc.id, file)
+        } catch {
+          alert('Văn bản đã lưu nhưng đính kèm file thất bại. Vui lòng thử tải lên lại trong trang chi tiết.')
+        }
       }
       setShowForm(false)
       navigate(`/documents/${doc.id}`)
