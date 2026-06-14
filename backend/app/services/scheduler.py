@@ -480,6 +480,45 @@ scheduler.add_job(
 )
 
 
+# ── Auto-mark overdue tasks ───────────────────────────────────────────────────
+
+async def _mark_overdue_tasks() -> None:
+    """Auto-set status='overdue' for tasks whose due_date has passed."""
+    from app.models.task import Task
+
+    today = datetime.now(timezone.utc)
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Task).where(
+                    Task.due_date.isnot(None),
+                    Task.deleted_at.is_(None),
+                    Task.due_date < today,
+                    Task.status.in_(["pending", "in_progress"]),
+                )
+            )
+            tasks = result.scalars().all()
+            count = len(tasks)
+            for task in tasks:
+                task.status = "overdue"
+            if count:
+                await db.commit()
+                log.info("Auto-marked %d tasks as overdue", count)
+    except Exception:
+        log.exception("Mark overdue tasks job failed")
+
+
+# Daily at 00:05
+scheduler.add_job(
+    _mark_overdue_tasks,
+    "cron",
+    hour=0, minute=5,
+    id="mark_overdue_tasks",
+    replace_existing=True,
+    misfire_grace_time=3600,
+)
+
+
 # ── Notification & log cleanup ────────────────────────────────────────────────
 
 _NOTIF_RETENTION_DAYS = 90   # keep read notifications for 90 days

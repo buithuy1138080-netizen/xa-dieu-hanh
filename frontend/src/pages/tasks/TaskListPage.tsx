@@ -56,6 +56,13 @@ const KANBAN_COLS: {
     overCls: 'bg-emerald-50 border-emerald-300 border-dashed',
   },
   {
+    id: 'overdue', label: 'Quá hạn', icon: AlertTriangle,
+    headerCls: 'bg-orange-50 border-orange-200 text-orange-700',
+    countCls: 'bg-orange-100 text-orange-700',
+    zoneCls: 'bg-orange-50/20',
+    overCls: 'bg-orange-50 border-orange-300 border-dashed',
+  },
+  {
     id: 'cancelled', label: 'Đã huỷ', icon: XCircle,
     headerCls: 'bg-red-50 border-red-200 text-red-600',
     countCls: 'bg-red-100 text-red-600',

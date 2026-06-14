@@ -1,4 +1,4 @@
-export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled' | 'overdue'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
 export interface UserMin {

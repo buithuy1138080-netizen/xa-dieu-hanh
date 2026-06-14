@@ -14,10 +14,11 @@ import type { TaskDetail, TaskStatus } from '../../types/task'
 import { useAuthStore } from '../../store/authStore'
 
 const STATUS_FLOW: { id: TaskStatus; label: string; activeCls: string; baseCls: string }[] = [
-  { id: 'pending',     label: 'Chờ xử lý',      activeCls: 'bg-slate-600 text-white ring-2 ring-slate-400 ring-offset-1',   baseCls: 'border border-slate-300 text-slate-600 hover:bg-slate-50' },
-  { id: 'in_progress', label: 'Đang thực hiện',  activeCls: 'bg-blue-600 text-white ring-2 ring-blue-400 ring-offset-1',     baseCls: 'border border-blue-200 text-blue-600 hover:bg-blue-50' },
+  { id: 'pending',     label: 'Chờ xử lý',      activeCls: 'bg-slate-600 text-white ring-2 ring-slate-400 ring-offset-1',     baseCls: 'border border-slate-300 text-slate-600 hover:bg-slate-50' },
+  { id: 'in_progress', label: 'Đang thực hiện',  activeCls: 'bg-blue-600 text-white ring-2 ring-blue-400 ring-offset-1',       baseCls: 'border border-blue-200 text-blue-600 hover:bg-blue-50' },
+  { id: 'overdue',     label: 'Quá hạn',         activeCls: 'bg-orange-600 text-white ring-2 ring-orange-400 ring-offset-1',   baseCls: 'border border-orange-200 text-orange-600 hover:bg-orange-50' },
   { id: 'completed',   label: 'Hoàn thành',      activeCls: 'bg-emerald-600 text-white ring-2 ring-emerald-400 ring-offset-1', baseCls: 'border border-emerald-200 text-emerald-600 hover:bg-emerald-50' },
-  { id: 'cancelled',   label: 'Đã huỷ',          activeCls: 'bg-red-500 text-white ring-2 ring-red-400 ring-offset-1',       baseCls: 'border border-red-200 text-red-500 hover:bg-red-50' },
+  { id: 'cancelled',   label: 'Đã huỷ',          activeCls: 'bg-red-500 text-white ring-2 ring-red-400 ring-offset-1',         baseCls: 'border border-red-200 text-red-500 hover:bg-red-50' },
 ]
 
 const AUDIT_LABELS: Record<string, string> = {
@@ -31,7 +32,7 @@ const AUDIT_LABELS: Record<string, string> = {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: 'Chờ xử lý', in_progress: 'Đang thực hiện', completed: 'Hoàn thành', cancelled: 'Đã huỷ',
+  pending: 'Chờ xử lý', in_progress: 'Đang thực hiện', completed: 'Hoàn thành', cancelled: 'Đã huỷ', overdue: 'Quá hạn',
 }
 
 function fmtDate(d: string | null | undefined) {
@@ -432,6 +433,7 @@ export default function TaskDetailPage() {
                         <div className={`w-2 h-2 rounded-full shrink-0 ${
                           sub.status === 'completed' ? 'bg-emerald-500' :
                           sub.status === 'in_progress' ? 'bg-blue-500' :
+                          sub.status === 'overdue' ? 'bg-orange-500' :
                           sub.status === 'cancelled' ? 'bg-red-400' : 'bg-slate-300'
                         }`} />
                         <div className="flex-1 min-w-0">
@@ -441,6 +443,7 @@ export default function TaskDetailPage() {
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${
                           sub.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
                           sub.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                          sub.status === 'overdue' ? 'bg-orange-100 text-orange-700' :
                           sub.status === 'cancelled' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'
                         }`}>
                           {sub.progress_percent}%

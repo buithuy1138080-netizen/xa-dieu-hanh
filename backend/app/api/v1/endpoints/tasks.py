@@ -97,7 +97,7 @@ from app.core.config import settings as _settings
 UPLOAD_DIR = Path(_settings.UPLOAD_DIR) / "tasks"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-VALID_STATUSES   = {"pending", "in_progress", "completed", "cancelled"}
+VALID_STATUSES   = {"pending", "in_progress", "completed", "cancelled", "overdue"}
 VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
 ALLOWED_UPLOAD_EXTS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg"}
 VALID_SORT_COLS  = {"created_at", "updated_at", "due_date", "title", "priority", "status", "progress_percent"}
@@ -890,6 +890,9 @@ async def create_task(
         if not p or getattr(p, 'deleted_at', None):
             raise HTTPException(404, "Chương trình không tồn tại")
 
+    if body.start_date and body.due_date and body.due_date < body.start_date:
+        raise HTTPException(400, "Hạn hoàn thành không thể trước ngày bắt đầu")
+
     task_code = await _next_task_code(db)
     t = Task(
         task_code=task_code,
@@ -1084,6 +1087,11 @@ async def update_task(
 
     if body.priority is not None and body.priority not in VALID_PRIORITIES:
         raise HTTPException(400, f"priority must be one of {VALID_PRIORITIES}")
+
+    start = body.start_date if body.start_date is not None else t.start_date
+    due = body.due_date if body.due_date is not None else t.due_date
+    if start and due and due < start:
+        raise HTTPException(400, "Hạn hoàn thành không thể trước ngày bắt đầu")
 
     fields = ["title", "description", "content_summary", "priority", "start_date", "due_date",
               "incoming_document_id", "outgoing_document_id", "directive_id", "program_id",
