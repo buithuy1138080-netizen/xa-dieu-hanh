@@ -8,6 +8,8 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_admin_or_leader
 from app.models.department import Department
+from app.models.staff import Staff
+from app.models.task import Task
 from app.models.user import User
 
 router = APIRouter()
@@ -214,6 +216,36 @@ async def delete_department(
     _: User = Depends(require_admin_or_leader),
 ):
     d = await _get_or_404(db, dept_id)
+
+    staff_count = (
+        await db.execute(
+            select(func.count()).select_from(Staff).where(
+                Staff.department_id == dept_id,
+                Staff.is_active == True,  # noqa: E712
+            )
+        )
+    ).scalar_one()
+    if staff_count > 0:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Không thể xóa: phòng ban có {staff_count} nhân sự đang hoạt động",
+        )
+
+    task_count = (
+        await db.execute(
+            select(func.count()).select_from(Task).where(
+                Task.lead_department_id == dept_id,
+                Task.deleted_at.is_(None),
+                Task.status.notin_(["completed", "cancelled"]),
+            )
+        )
+    ).scalar_one()
+    if task_count > 0:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Không thể xóa: phòng ban có {task_count} nhiệm vụ đang xử lý",
+        )
+
     await db.delete(d)
     await db.commit()
     _invalidate_dept_cache()
