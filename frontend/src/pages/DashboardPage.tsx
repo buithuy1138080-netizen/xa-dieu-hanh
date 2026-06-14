@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import {
-  AlertTriangle, BarChart3, Bell, CheckCircle2,
+  AlertTriangle, BarChart3, Bell, CheckCircle2, Clock,
   FileText, ClipboardList, TrendingUp, Building2,
   ArrowRight, Activity, Target, Zap, CalendarRange,
 } from 'lucide-react'
@@ -238,13 +238,14 @@ export default function DashboardPage() {
         </motion.div>
 
         {/* ── Row 1: Stat cards ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
           <StatCard label="Tổng nhiệm vụ"   value={stats?.total ?? 0}       colorClass="bg-blue-500"    icon={Activity}      href="/tasks"      delay={0}    />
-          <StatCard label="Đang thực hiện"   value={stats?.in_progress ?? 0} colorClass="bg-indigo-500"  icon={Zap}           href="/tasks"      delay={0.02} />
-          <StatCard label="Hoàn thành"       value={stats?.completed ?? 0}   sub={`${completionRate}% tỷ lệ`} colorClass="bg-emerald-500" icon={CheckCircle2} delay={0.04} />
-          <StatCard label="Quá hạn"          value={stats?.overdue ?? 0}     colorClass="bg-red-500"     icon={AlertTriangle} href="/overdue"    delay={0.06} />
-          <StatCard label="Chỉ đạo"          value={directiveStats?.total ?? 0} sub={`${directiveStats?.active ?? 0} hoạt động`} colorClass="bg-amber-500" icon={ClipboardList} href="/directives" delay={0.08} />
-          <StatCard label="Văn bản"          value={docStats?.total ?? '—'}  sub={docStats ? `${docStats.incoming} đến · ${docStats.outgoing} đi` : undefined} colorClass="bg-slate-500" icon={FileText} href="/documents"  delay={0.1} />
+          <StatCard label="Chờ xử lý"        value={stats?.pending ?? 0}     colorClass="bg-slate-500"   icon={Clock}         href="/tasks"      delay={0.02} />
+          <StatCard label="Đang thực hiện"   value={stats?.in_progress ?? 0} colorClass="bg-indigo-500"  icon={Zap}           href="/tasks"      delay={0.04} />
+          <StatCard label="Hoàn thành"       value={stats?.completed ?? 0}   sub={`${completionRate}% tỷ lệ`} colorClass="bg-emerald-500" icon={CheckCircle2} delay={0.06} />
+          <StatCard label="Quá hạn"          value={stats?.overdue ?? 0}     colorClass="bg-red-500"     icon={AlertTriangle} href="/overdue"    delay={0.08} />
+          <StatCard label="Chỉ đạo"          value={directiveStats?.total ?? 0} sub={`${directiveStats?.active ?? 0} hoạt động`} colorClass="bg-amber-500" icon={ClipboardList} href="/directives" delay={0.1} />
+          <StatCard label="Văn bản"          value={docStats?.total ?? '—'}  sub={docStats ? `${docStats.incoming} đến · ${docStats.outgoing} đi` : undefined} colorClass="bg-slate-500" icon={FileText} href="/documents"  delay={0.12} />
         </div>
 
         {/* ── Row 2: KPI + NQ57 + Pie ── */}
