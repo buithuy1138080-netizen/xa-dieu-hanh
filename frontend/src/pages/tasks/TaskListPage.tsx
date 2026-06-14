@@ -99,6 +99,7 @@ function colorHash(str: string) {
 
 const STAT_CARDS = (stats: TaskStats) => [
   { label: 'Tổng nhiệm vụ', value: stats.total,       icon: ListChecks,    iconBg: 'bg-blue-100',    iconCl: 'text-blue-600',    valueCl: 'text-slate-800',   border: 'border-l-blue-500',    filterStatus: '' },
+  { label: 'Chờ xử lý',     value: stats.pending,     icon: CircleDashed,  iconBg: 'bg-slate-100',   iconCl: 'text-slate-500',   valueCl: 'text-slate-800',   border: 'border-l-slate-400',   filterStatus: 'pending' },
   { label: 'Đang thực hiện', value: stats.in_progress, icon: Clock,         iconBg: 'bg-amber-100',   iconCl: 'text-amber-600',   valueCl: 'text-slate-800',   border: 'border-l-amber-500',   filterStatus: 'in_progress' },
   { label: 'Hoàn thành',    value: stats.completed,   icon: CheckSquare,   iconBg: 'bg-emerald-100', iconCl: 'text-emerald-600', valueCl: 'text-emerald-700', border: 'border-l-emerald-500', filterStatus: 'completed' },
   { label: 'Quá hạn',       value: stats.overdue,     icon: AlertTriangle, iconBg: 'bg-red-100',     iconCl: 'text-red-600',     valueCl: 'text-red-700',     border: 'border-l-red-500',     filterStatus: 'overdue' },
