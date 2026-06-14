@@ -200,7 +200,7 @@ class ProjectTaskLink(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     project: Mapped[StrategicProject] = relationship("StrategicProject", back_populates="task_links")
-    task: Mapped[Task] = relationship("Task")
+    task: Mapped[Task] = relationship("Task", passive_deletes=True)
 
 
 class DocumentStrategicProject(Base):

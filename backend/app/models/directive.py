@@ -95,7 +95,7 @@ class DirectiveTask(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     directive: Mapped[Directive] = relationship("Directive", back_populates="linked_tasks")
-    task: Mapped[Task] = relationship("Task")
+    task: Mapped[Task] = relationship("Task", passive_deletes=True)
 
 
 class DirectiveComment(Base):
