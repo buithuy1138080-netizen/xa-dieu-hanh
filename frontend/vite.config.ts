@@ -20,9 +20,7 @@ export default defineConfig({
         start_url: '/dashboard',
         lang: 'vi',
         icons: [
-          { src: '/logo.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: '/logo.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
-          { src: '/logo.png', sizes: 'any',     type: 'image/png' },
+          { src: '/logo.png', sizes: 'any', type: 'image/png', purpose: 'any maskable' },
         ],
         shortcuts: [
           { name: 'Nhiệm vụ',  url: '/tasks',    icons: [{ src: '/logo.png', sizes: '96x96' }] },
