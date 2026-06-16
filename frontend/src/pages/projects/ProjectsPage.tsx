@@ -2,11 +2,18 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   CheckCircle2, ChevronRight, Clock, FolderKanban, Layers,
-  Loader2, Plus, Search, Users,
+  Loader2, Plus, Search, Users, Banknote, BookOpen,
 } from 'lucide-react'
 import AppLayout from '../../components/layout/AppLayout'
 import { tasksApi } from '../../api/tasks'
 import type { Task } from '../../types/task'
+import { usersApi } from '../../api/users'
+import { departmentsApi } from '../../api/departments'
+import type { UserPublic } from '../../api/users'
+import type { DeptRead } from '../../api/departments'
+import apiClient from '../../api/client'
+
+interface ProgramMin { id: number; name: string; short_name?: string | null }
 
 const STATUS_LABEL: Record<string, string> = {
   pending:     'Chưa bắt đầu',
@@ -33,6 +40,13 @@ const PRIORITY_LABEL: Record<string, string> = {
   low: 'Thấp', medium: 'TB', high: 'Cao', urgent: 'Khẩn',
 }
 
+const PROJECT_TYPE_LABEL: Record<string, string> = {
+  project:          'Dự án',
+  plan:             'Đề án',
+  program:          'Kế hoạch',
+  digital_transform:'Chuyển đổi số',
+}
+
 function ProgressBar({ value }: { value: number }) {
   const color = value >= 100 ? 'bg-green-500' : value >= 60 ? 'bg-blue-500' : value >= 30 ? 'bg-amber-400' : 'bg-slate-300'
   return (
@@ -40,6 +54,12 @@ function ProgressBar({ value }: { value: number }) {
       <div className={`${color} h-1.5 rounded-full transition-all`} style={{ width: `${Math.min(value, 100)}%` }} />
     </div>
   )
+}
+
+function fmt(n: number) {
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + ' tỷ'
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(0) + ' tr'
+  return n.toLocaleString('vi-VN')
 }
 
 export default function ProjectsPage() {
@@ -88,14 +108,14 @@ export default function ProjectsPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-800">Dự án</h1>
-              <p className="text-sm text-slate-500">Quản lý dự án từ nhiệm vụ</p>
+              <p className="text-sm text-slate-500">Quản lý dự án, đề án, kế hoạch</p>
             </div>
           </div>
           <button
             onClick={() => setShowForm(true)}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition"
           >
-            <Plus size={15} />Tạo dự án
+            <Plus size={15} />+ Tạo dự án
           </button>
         </div>
 
@@ -159,9 +179,14 @@ export default function ProjectsPage() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    {/* Title + badges */}
+                    {/* Badges row */}
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="text-xs text-slate-400 font-mono">{p.task_code}</span>
+                      {p.project_type && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">
+                          {PROJECT_TYPE_LABEL[p.project_type] ?? p.project_type}
+                        </span>
+                      )}
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLOR[p.status] ?? STATUS_COLOR.pending}`}>
                         {STATUS_LABEL[p.status] ?? p.status}
                       </span>
@@ -206,6 +231,12 @@ export default function ProjectsPage() {
                       {p.lead_department.short_name || p.lead_department.name}
                     </span>
                   )}
+                  {p.budget_amount != null && p.budget_amount > 0 && (
+                    <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                      <Banknote size={11} />
+                      {fmt(p.budget_amount)} đ
+                    </span>
+                  )}
                 </div>
 
                 {/* Progress */}
@@ -219,7 +250,6 @@ export default function ProjectsPage() {
         )}
       </div>
 
-      {/* Modal tạo dự án */}
       {showForm && (
         <CreateProjectModal
           onClose={() => setShowForm(false)}
@@ -231,39 +261,43 @@ export default function ProjectsPage() {
 }
 
 
-// ── Modal tạo dự án nhanh ──────────────────────────────────────────────────────
-
-import { usersApi } from '../../api/users'
-import { departmentsApi } from '../../api/departments'
-import type { UserPublic } from '../../api/users'
-import type { DeptRead } from '../../api/departments'
+// ── Modal tạo dự án ────────────────────────────────────────────────────────────
 
 function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [form, setForm] = useState({
-    title: '', description: '', priority: 'medium',
-    due_date: '', assignee_id: '', lead_department_id: '',
+    title: '', description: '', priority: 'medium', project_type: 'project',
+    start_date: '', due_date: '', assignee_id: '', lead_department_id: '',
+    program_id: '', budget_amount: '',
   })
-  const [users, setUsers]   = useState<UserPublic[]>([])
-  const [depts, setDepts]   = useState<DeptRead[]>([])
-  const [saving, setSaving] = useState(false)
-  const [error, setError]   = useState('')
+  const [users, setUsers]       = useState<UserPublic[]>([])
+  const [depts, setDepts]       = useState<DeptRead[]>([])
+  const [programs, setPrograms] = useState<ProgramMin[]>([])
+  const [saving, setSaving]     = useState(false)
+  const [error, setError]       = useState('')
 
   useEffect(() => {
     usersApi.names().then(r => setUsers(r.data))
     departmentsApi.list().then(r => setDepts(r.data))
+    apiClient.get<ProgramMin[]>('/programs?status=active').then(r => setPrograms(r.data)).catch(() => {})
   }, [])
+
+  function set(k: string, v: string) { setForm(p => ({ ...p, [k]: v })) }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.title.trim()) { setError('Vui lòng nhập tên dự án'); return }
-    setSaving(true)
+    setSaving(true); setError('')
     try {
       await tasksApi.create({
         title: form.title.trim(),
         description: form.description || undefined,
         priority: form.priority as 'low' | 'medium' | 'high' | 'urgent',
         is_project: true,
+        project_type: form.project_type || undefined,
+        budget_amount: form.budget_amount ? Number(form.budget_amount) : undefined,
+        start_date: form.start_date || undefined,
         due_date: form.due_date ? form.due_date + 'T23:59:59' : undefined,
+        program_id: form.program_id ? Number(form.program_id) : undefined,
         assignee_id: form.assignee_id ? Number(form.assignee_id) : undefined,
         lead_department_id: form.lead_department_id ? Number(form.lead_department_id) : undefined,
       })
@@ -276,8 +310,8 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg my-4">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <FolderKanban size={18} className="text-indigo-600" />
@@ -289,45 +323,46 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2">{error}</p>}
 
+          {/* Tên dự án */}
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Tên dự án *</label>
             <input
               value={form.title}
-              onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+              onChange={e => set('title', e.target.value)}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
               placeholder="Nhập tên dự án..."
               autoFocus
             />
           </div>
 
+          {/* Mô tả */}
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Mô tả</label>
             <textarea
               value={form.description}
-              onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+              onChange={e => set('description', e.target.value)}
               rows={2}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
               placeholder="Mô tả ngắn về dự án..."
             />
           </div>
 
+          {/* Loại + Ưu tiên */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Hạn hoàn thành</label>
-              <input
-                type="date"
-                value={form.due_date}
-                onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              />
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Loại</label>
+              <select value={form.project_type} onChange={e => set('project_type', e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                <option value="project">Dự án</option>
+                <option value="plan">Đề án</option>
+                <option value="program">Kế hoạch</option>
+                <option value="digital_transform">Chuyển đổi số</option>
+              </select>
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Ưu tiên</label>
-              <select
-                value={form.priority}
-                onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              >
+              <select value={form.priority} onChange={e => set('priority', e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
                 <option value="low">Thấp</option>
                 <option value="medium">Trung bình</option>
                 <option value="high">Cao</option>
@@ -336,25 +371,63 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
             </div>
           </div>
 
+          {/* Ngày bắt đầu + Hạn hoàn thành */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Ngày bắt đầu</label>
+              <input type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Ngày kết thúc</label>
+              <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            </div>
+          </div>
+
+          {/* Chương trình / NQ */}
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1 flex items-center gap-1">
+              <BookOpen size={11} /> Thuộc chương trình / NQ
+            </label>
+            <select value={form.program_id} onChange={e => set('program_id', e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
+              <option value="">-- Không liên kết --</option>
+              {programs.map(p => (
+                <option key={p.id} value={p.id}>{p.short_name ? `[${p.short_name}] ` : ''}{p.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Kinh phí */}
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1 flex items-center gap-1">
+              <Banknote size={11} /> Kinh phí (đồng)
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={form.budget_amount}
+              onChange={e => set('budget_amount', e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              placeholder="VD: 500000000"
+            />
+          </div>
+
+          {/* Quản lý + Đơn vị chủ trì */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Quản lý dự án</label>
-              <select
-                value={form.assignee_id}
-                onChange={e => setForm(p => ({ ...p, assignee_id: e.target.value }))}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              >
+              <select value={form.assignee_id} onChange={e => set('assignee_id', e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
                 <option value="">— Chưa chọn</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.username}</option>)}
               </select>
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Đơn vị chủ trì</label>
-              <select
-                value={form.lead_department_id}
-                onChange={e => setForm(p => ({ ...p, lead_department_id: e.target.value }))}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              >
+              <select value={form.lead_department_id} onChange={e => set('lead_department_id', e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
                 <option value="">— Chưa chọn</option>
                 {depts.map(d => <option key={d.id} value={d.id}>{d.short_name || d.name}</option>)}
               </select>
@@ -369,7 +442,7 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
             <button type="submit" disabled={saving}
               className="flex items-center gap-2 px-5 py-2 text-sm rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-40 transition">
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-              Tạo dự án
+              + Tạo dự án
             </button>
           </div>
         </form>

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -83,6 +83,8 @@ class Task(Base):
 
     # ── Project flag (Hướng B: task có thể là dự án) ─────────────────────────
     is_project: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    project_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    budget_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # ── Classification (task_type discriminates nq57 vs regular) ──────────────
     task_type: Mapped[str] = mapped_column(String(20), default="regular", index=True)

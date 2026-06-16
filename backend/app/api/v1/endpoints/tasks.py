@@ -193,6 +193,8 @@ class TaskRead(BaseModel):
     priority: str
     progress_percent: int
     is_project: bool = False
+    project_type: str | None = None
+    budget_amount: float | None = None
     start_date: date | None = None
     due_date: datetime | None = None
     completed_at: datetime | None = None
@@ -243,6 +245,8 @@ class TaskCreate(BaseModel):
     content_summary: str | None = None
     priority: str = "medium"
     is_project: bool = False
+    project_type: str | None = None
+    budget_amount: float | None = None
     start_date: date | None = None
     due_date: datetime | None = None
     program_id: int | None = None
@@ -272,6 +276,8 @@ class TaskUpdate(BaseModel):
     content_summary: str | None = None
     priority: str | None = None
     is_project: bool | None = None
+    project_type: str | None = None
+    budget_amount: float | None = None
     start_date: date | None = None
     due_date: datetime | None = None
     program_id: int | None = None
@@ -913,6 +919,8 @@ async def create_task(
         content_summary=body.content_summary,
         priority=body.priority,
         is_project=body.is_project,
+        project_type=body.project_type,
+        budget_amount=body.budget_amount,
         status="pending",
         progress_percent=0,
         start_date=body.start_date,
@@ -1132,6 +1140,7 @@ async def update_task(
     old_program_id = t.program_id
 
     fields = ["title", "description", "content_summary", "priority", "is_project",
+              "project_type", "budget_amount",
               "start_date", "due_date",
               "incoming_document_id", "outgoing_document_id", "directive_id", "program_id",
               "assignee_id", "assignee_staff_id", "supervising_user_id", "lead_department_id",

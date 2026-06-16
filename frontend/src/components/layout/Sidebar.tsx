@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  BarChart3, Bell, BookTemplate, Briefcase, Building,
+  BarChart3, Bell, BookTemplate, Building,
   CheckSquare, ChevronRight, ClipboardList, FileText,
   FolderKanban, KeyRound, LayoutDashboard, LogOut,
   CalendarDays, PanelLeftClose, PanelLeftOpen,
@@ -42,8 +42,6 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: 'CHƯƠNG TRÌNH & NQ',
     items: [
       { to: '/programs',  label: 'Chương trình / NQ',  icon: Shield },
-      // /nq57 still accessible via URL; merged into Programs with filter
-      { to: '/strategic', label: 'Dự án Chiến lược',   icon: Briefcase },
     ],
   },
   {

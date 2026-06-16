@@ -102,6 +102,8 @@ export interface Task {
   updated_at: string | null
   is_overdue: boolean
   is_project: boolean
+  project_type: string | null
+  budget_amount: number | null
   project_ids: number[]
   subtasks_count: number
   creator: UserMin | null
@@ -149,6 +151,8 @@ export interface TaskCreate {
   content_summary?: string
   priority: TaskPriority
   is_project?: boolean
+  project_type?: string | null
+  budget_amount?: number | null
   start_date?: string
   due_date?: string
   program_id?: number | null
@@ -170,6 +174,8 @@ export interface TaskUpdate {
   content_summary?: string
   priority?: TaskPriority
   is_project?: boolean
+  project_type?: string | null
+  budget_amount?: number | null
   start_date?: string | null
   due_date?: string | null
   program_id?: number | null
