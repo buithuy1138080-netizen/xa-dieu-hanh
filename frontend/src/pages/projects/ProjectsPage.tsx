@@ -47,12 +47,13 @@ const TYPE_LABEL: Record<string, string> = {
 
 // ─── sub-components ──────────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub, icon: Icon, color }: {
+function StatCard({ label, value, sub, icon: Icon, color, onClick }: {
   label: string; value: string | number; sub?: string
-  icon: React.ElementType; color: string
+  icon: React.ElementType; color: string; onClick?: () => void
 }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex items-start gap-3">
+    <div onClick={onClick}
+      className={`bg-white rounded-xl border border-slate-100 shadow-sm p-4 flex items-start gap-3 ${onClick ? 'cursor-pointer hover:shadow-md hover:border-indigo-200 transition-all' : ''}`}>
       <div className={`${color} w-9 h-9 rounded-xl flex items-center justify-center shrink-0`}>
         <Icon size={16} className="text-white" />
       </div>
@@ -60,6 +61,7 @@ function StatCard({ label, value, sub, icon: Icon, color }: {
         <p className="text-xs text-slate-500 truncate">{label}</p>
         <p className="text-xl font-bold text-slate-800 leading-tight">{value}</p>
         {sub && <p className="text-[11px] text-slate-400">{sub}</p>}
+        {onClick && <p className="text-[10px] text-indigo-400 mt-0.5">Xem chi tiết →</p>}
       </div>
     </div>
   )
@@ -77,10 +79,12 @@ function PBar({ value, color = 'bg-blue-500' }: { value: number; color?: string 
 
 export default function ProjectsPage() {
   const navigate = useNavigate()
-  const [projects, setProjects] = useState<Task[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [tab, setTab]           = useState<'dashboard' | 'projects'>('dashboard')
-  const [showForm, setShowForm] = useState(false)
+  const [projects, setProjects]   = useState<Task[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [tab, setTab]             = useState<'dashboard' | 'projects'>('dashboard')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [filterType,   setFilterType]   = useState('')
+  const [showForm, setShowForm]   = useState(false)
 
   async function load() {
     setLoading(true)
@@ -91,6 +95,12 @@ export default function ProjectsPage() {
   }
 
   useEffect(() => { load() }, [])
+
+  function goFilter(status = '', type = '') {
+    setFilterStatus(status)
+    setFilterType(type)
+    setTab('projects')
+  }
 
   return (
     <AppLayout>
@@ -127,9 +137,10 @@ export default function ProjectsPage() {
         {loading ? (
           <div className="py-20 flex justify-center"><Loader2 size={28} className="animate-spin text-indigo-500" /></div>
         ) : tab === 'dashboard' ? (
-          <DashboardTab projects={projects} onNavigate={id => navigate(`/tasks/${id}`)} />
+          <DashboardTab projects={projects} onNavigate={id => navigate(`/tasks/${id}`)} onFilter={goFilter} />
         ) : (
-          <ProjectsTab projects={projects} onNavigate={id => navigate(`/tasks/${id}`)} />
+          <ProjectsTab projects={projects} onNavigate={id => navigate(`/tasks/${id}`)}
+            initStatus={filterStatus} initType={filterType} />
         )}
       </div>
 
@@ -142,7 +153,10 @@ export default function ProjectsPage() {
 
 // ─── Dashboard tab ────────────────────────────────────────────────────────────
 
-function DashboardTab({ projects, onNavigate }: { projects: Task[]; onNavigate: (id: number) => void }) {
+function DashboardTab({ projects, onNavigate, onFilter }: {
+  projects: Task[]; onNavigate: (id: number) => void
+  onFilter: (status?: string, type?: string) => void
+}) {
   const stats = useMemo(() => {
     const total         = projects.length
     const in_progress   = projects.filter(p => p.status === 'in_progress').length
@@ -177,11 +191,11 @@ function DashboardTab({ projects, onNavigate }: { projects: Task[]; onNavigate: 
     <div className="space-y-5">
       {/* Row 1 — project count */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <StatCard label="Tổng dự án"      value={stats.total}       icon={FolderKanban}  color="bg-blue-500" />
-        <StatCard label="Đang thực hiện"  value={stats.in_progress} icon={TrendingUp}     color="bg-green-500" />
-        <StatCard label="Hoàn thành"      value={stats.completed}   icon={Target}         color="bg-indigo-500" />
-        <StatCard label="Đã huỷ"          value={stats.cancelled}   icon={Layers}         color="bg-amber-500" />
-        <StatCard label="Quá hạn"         value={stats.overdue}     icon={AlertTriangle}  color="bg-red-500" />
+        <StatCard label="Tổng dự án"      value={stats.total}       icon={FolderKanban}  color="bg-blue-500"   onClick={() => onFilter()} />
+        <StatCard label="Đang thực hiện"  value={stats.in_progress} icon={TrendingUp}     color="bg-green-500"  onClick={() => onFilter('in_progress')} />
+        <StatCard label="Hoàn thành"      value={stats.completed}   icon={Target}         color="bg-indigo-500" onClick={() => onFilter('completed')} />
+        <StatCard label="Đã huỷ"          value={stats.cancelled}   icon={Layers}         color="bg-amber-500"  onClick={() => onFilter('cancelled')} />
+        <StatCard label="Quá hạn"         value={stats.overdue}     icon={AlertTriangle}  color="bg-red-500"    onClick={() => onFilter('overdue')} />
       </div>
 
       {/* Row 2 — budget */}
@@ -282,12 +296,20 @@ function DashboardTab({ projects, onNavigate }: { projects: Task[]; onNavigate: 
 
 // ─── Projects list tab ────────────────────────────────────────────────────────
 
-function ProjectsTab({ projects, onNavigate }: { projects: Task[]; onNavigate: (id: number) => void }) {
+function ProjectsTab({ projects, onNavigate, initStatus = '', initType = '' }: {
+  projects: Task[]; onNavigate: (id: number) => void
+  initStatus?: string; initType?: string
+}) {
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState('')
-  const [type,   setType]   = useState('')
+  const [status, setStatus] = useState(initStatus)
+  const [type,   setType]   = useState(initType)
+
+  // sync khi initStatus thay đổi (click từ dashboard)
+  useEffect(() => { setStatus(initStatus) }, [initStatus])
+  useEffect(() => { setType(initType) },     [initType])
 
   const filtered = projects.filter(p => {
+    if (status === 'overdue') return p.is_overdue
     if (status && p.status !== status) return false
     if (type   && (p.project_type ?? 'project') !== type) return false
     if (search) {
@@ -313,6 +335,7 @@ function ProjectsTab({ projects, onNavigate }: { projects: Task[]; onNavigate: (
           <option value="in_progress">Đang thực hiện</option>
           <option value="completed">Hoàn thành</option>
           <option value="cancelled">Đã huỷ</option>
+          <option value="overdue">Quá hạn</option>
         </select>
         <select value={type} onChange={e => setType(e.target.value)}
           className="text-sm border border-slate-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">

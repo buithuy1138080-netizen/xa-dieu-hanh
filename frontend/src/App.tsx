@@ -43,7 +43,6 @@ const ReportDetailPage      = lazy(() => import('./pages/reports/ReportDetailPag
 const TemplateManagerPage   = lazy(() => import('./pages/reports/TemplateManagerPage'))
 const ZaloNotifPage         = lazy(() => import('./pages/zalo/ZaloNotifPage'))
 const StaffPage             = lazy(() => import('./pages/staff/StaffPage'))
-const StrategicPage         = lazy(() => import('./pages/strategic/StrategicPage'))
 const ProjectsPage          = lazy(() => import('./pages/projects/ProjectsPage'))
 const UserManagementPage    = lazy(() => import('./pages/users/UserManagementPage'))
 const DepartmentPage        = lazy(() => import('./pages/departments/DepartmentPage'))
@@ -148,7 +147,7 @@ function AnimatedRoutes() {
         <Route path="/zalo"               element={<P><ZaloNotifPage /></P>} />
         <Route path="/programs"           element={<P><ProgramsPage /></P>} />
         <Route path="/projects"            element={<P><ProjectsPage /></P>} />
-        <Route path="/strategic"           element={<P><StrategicPage /></P>} />
+        <Route path="/strategic"           element={<Navigate to="/projects" replace />} />
         <Route path="/departments"        element={<P><DepartmentPage /></P>} />
         <Route path="/staff"              element={<P><StaffPage /></P>} />
         <Route path="/users"              element={<P><UserManagementPage /></P>} />
