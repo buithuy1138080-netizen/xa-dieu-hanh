@@ -4,8 +4,7 @@ Migrate toàn bộ StrategicProject → Task[is_project=True]
 Chạy: docker compose exec backend python scripts/migrate_strategic_to_tasks.py
 
 Script idempotent: bỏ qua project đã migrate (kiểm tra theo title + is_project=True).
-Budget: lấy từ BudgetPlan (sum total_budget → budget_amount, sum spent_budget → budget_disbursed).
-Đơn vị budget giữ nguyên như trong BudgetPlan — kiểm tra sau khi chạy.
+Budget: lấy từ BudgetPlan, chuyển đổi đồng → triệu đồng (chia 1,000,000).
 """
 
 import asyncio
@@ -76,13 +75,11 @@ async def main():
                 skipped += 1
                 continue
 
-            # Tính budget từ BudgetPlan
-            budget_amount = sum(bp.total_budget for bp in sp.budget_plans) if sp.budget_plans else None
-            budget_disbursed = sum(bp.spent_budget for bp in sp.budget_plans) if sp.budget_plans else None
-            if budget_amount == 0:
-                budget_amount = None
-            if budget_disbursed == 0:
-                budget_disbursed = None
+            # Tính budget từ BudgetPlan, chuyển đồng → triệu đồng
+            raw_budget = sum(bp.total_budget for bp in sp.budget_plans) if sp.budget_plans else 0
+            raw_spent = sum(bp.spent_budget for bp in sp.budget_plans) if sp.budget_plans else 0
+            budget_amount = round(raw_budget / 1_000_000, 2) if raw_budget else None
+            budget_disbursed = round(raw_spent / 1_000_000, 2) if raw_spent else None
 
             # Chuyển end_date (date) → due_date (datetime)
             due_date = None
