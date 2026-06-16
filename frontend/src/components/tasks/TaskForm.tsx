@@ -444,8 +444,8 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
               </div>
             )}
 
-            {/* Parent task picker — chỉ tìm dự án (is_project=true) */}
-            <div ref={parentRef} className="relative">
+            {/* Parent task picker — chỉ hiện khi KHÔNG phải dự án */}
+            {!isProject && <div ref={parentRef} className="relative">
               <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
                 <FolderKanban size={12} className="text-indigo-400" /> Thuộc dự án
               </label>
@@ -489,7 +489,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
                   ))}
                 </div>
               )}
-            </div>
+            </div>}
 
             <div className="grid grid-cols-3 gap-3">
               <div>
