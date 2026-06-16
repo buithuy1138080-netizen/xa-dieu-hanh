@@ -1467,6 +1467,116 @@ async function runAutomation() {
 }
 
 /* ══════════════════════════════════════
+   AUTO-CAPTURE — Hướng 1
+   Tự động nhập văn bản khi mở trang chi tiết
+   Không cần thao tác thủ công
+══════════════════════════════════════ */
+
+const _autoCapturedUrls = new Set();  // URLs đã capture (guard chống chạy 2 lần)
+
+async function autoCapture() {
+  const pageKey = location.href;
+  if (_autoCapturedUrls.has(pageKey)) return;
+
+  const detail = extractDetail();
+  if (!detail.title || detail.title.length < 5) return;  // trang chưa render xong → observer sẽ thử lại
+
+  _autoCapturedUrls.add(pageKey);
+
+  const token = await getIOCToken();
+  if (!token) {
+    showToast('🔑 Đăng nhập IOC để tự động nhập văn bản', '#64748b');
+    return;
+  }
+
+  showToast('⏳ IOC: Đang nhập văn bản...', '#2563eb');
+
+  try {
+    const createResult = await chrome.runtime.sendMessage({
+      action: 'IOC_API',
+      method: 'POST',
+      path:   '/api/v1/documents/capture',
+      body: {
+        title:       detail.title,
+        doc_number:  detail.docNumber || '',
+        doc_type:    getDocType(),
+        issuer:      detail.issuer || '',
+        issue_date:  detail.issueDate || '',
+        source_url:  location.href,
+        create_task: false,
+      },
+    });
+
+    if (createResult && createResult.error) {
+      const err = createResult.error;
+      if (err === 'NOT_AUTHENTICATED' || err.includes('401')) {
+        chrome.runtime.sendMessage({ action: 'IOC_CLEAR_TOKEN' });
+        showToast('🔑 Phiên đăng nhập hết hạn — nhấn FAB để đăng nhập lại', '#f59e0b');
+        return;
+      }
+      throw new Error(err);
+    }
+
+    // Văn bản đã tồn tại → thông báo nhẹ, không mở tab
+    if (createResult && createResult._duplicate) {
+      showToast(`ℹ️ Đã có trong IOC: ${detail.docNumber || detail.title.slice(0, 30)}`, '#64748b');
+      return;
+    }
+
+    const docId = createResult && (createResult.doc_id || createResult.id);
+    if (!docId) throw new Error('API không trả về doc_id');
+
+    // Upload file: ưu tiên đã bắt qua interceptor, fallback tìm trên trang
+    let uploaded = 0;
+    const attachments = _capturedFiles.length > 0
+      ? _capturedFiles.slice(0, 3)
+      : findAttachments().slice(0, 3);
+
+    for (const f of attachments) {
+      try {
+        let base64 = f.base64;
+        let mimeType = f.mimeType || 'application/octet-stream';
+        const fileName = f.name || f.fileName || 'document.pdf';
+
+        if (!base64 && f.url) {
+          const resp = await fetch(f.url, { credentials: 'include' });
+          if (!resp.ok) continue;
+          const blob = await resp.blob();
+          mimeType = blob.type || mimeType;
+          base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+
+        if (!base64) continue;
+
+        const upResult = await chrome.runtime.sendMessage({
+          action: 'IOC_UPLOAD_BASE64',
+          path: `/api/v1/documents/${docId}/file`,
+          filename: fileName, mimeType, base64, docId,
+        });
+
+        if (upResult && !upResult.error) uploaded++;
+      } catch (_) {}
+    }
+
+    if (uploaded > 0) _capturedFiles.length = 0;
+
+    const msg = uploaded > 0
+      ? `✅ IOC: Đã nhập + ${uploaded} file — #${docId}`
+      : `✅ IOC: Đã nhập "${detail.title.slice(0, 35)}"`;
+    showToast(msg, '#059669');
+
+  } catch (err) {
+    showToast(`❌ IOC auto: ${(err.message || 'lỗi').slice(0, 60)}`, '#dc2626');
+    _autoCapturedUrls.delete(pageKey);  // cho phép thử lại thủ công
+  }
+}
+
+/* ══════════════════════════════════════
    FAB BUTTON
 ══════════════════════════════════════ */
 
@@ -1535,11 +1645,14 @@ function init() {
   if (isDetailPage()) {
     if (watchForDetail) {
       watchForDetail = false;
+      _autoCapturedUrls.add(location.href);  // manual flow → không auto-capture
       setTimeout(() => {
         const old = document.getElementById('ioc-panel');
         if (old) old.remove();
         openPanel();
       }, 300);
+    } else {
+      setTimeout(autoCapture, 800);  // Hướng 1: tự động khi mở trang chi tiết
     }
   } else {
     // Retry thông minh: dừng khi đã inject thành công, tối đa 3 lần
@@ -1579,9 +1692,12 @@ function _startMutationObserver() {
         }
         if (watchForDetail) {
           watchForDetail = false;
+          _autoCapturedUrls.add(location.href);  // manual flow → không auto-capture
           const old = document.getElementById('ioc-panel');
           if (old) old.remove();
           setTimeout(openPanel, 200);
+        } else {
+          setTimeout(autoCapture, 600);  // Hướng 1: thử lại khi DOM cập nhật
         }
       } else {
         injectRowButtons();

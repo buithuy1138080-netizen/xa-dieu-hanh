@@ -84,4 +84,27 @@ export const documentsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+
+  extractTasks: (id: number) =>
+    apiClient.post<{ tasks: AISuggestedTask[]; source: string }>(`/documents/${id}/extract-tasks`),
+
+  bulkCreateTasks: (id: number, tasks: BulkTaskItem[]) =>
+    apiClient.post<{ created: number; task_ids: number[] }>(`/documents/${id}/bulk-tasks`, { tasks }),
+}
+
+export interface AISuggestedTask {
+  title: string
+  description?: string | null
+  deadline?: string | null
+  priority: string
+  lead_agency?: string | null
+}
+
+export interface BulkTaskItem {
+  title: string
+  description?: string | null
+  deadline?: string | null
+  priority: string
+  lead_department_id?: number | null
+  assignee_id?: number | null
 }

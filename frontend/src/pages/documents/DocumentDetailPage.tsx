@@ -1,6 +1,7 @@
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import TaskSuggestModal from '../../components/documents/TaskSuggestModal'
 import { departmentsApi } from '../../api/departments'
 import type { DeptRead } from '../../api/departments'
 import { documentsApi } from '../../api/documents'
@@ -73,6 +74,7 @@ export default function DocumentDetailPage() {
   const [statusNote, setStatusNote] = useState('')
   const [statusChanging, setStatusChanging] = useState(false)
 
+  const [taskSuggestOpen, setTaskSuggestOpen] = useState(false)
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [taskForm, setTaskForm] = useState<DocumentTaskCreate>({
     title: '', description: '', priority: 'medium', deadline: '', assignee_id: null, lead_department_id: null,
@@ -361,12 +363,20 @@ export default function DocumentDetailPage() {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
                 <h2 className="text-sm font-semibold text-slate-700">Nhiệm vụ liên quan</h2>
-                <button
-                  onClick={() => setTaskFormOpen(true)}
-                  className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold"
-                >
-                  + Tạo nhiệm vụ
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setTaskSuggestOpen(true)}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition font-semibold"
+                  >
+                    <Sparkles size={12} />AI trích xuất
+                  </button>
+                  <button
+                    onClick={() => setTaskFormOpen(true)}
+                    className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold"
+                  >
+                    + Tạo thủ công
+                  </button>
+                </div>
               </div>
               {doc.linked_tasks.length === 0 ? (
                 <p className="text-sm text-slate-400 text-center py-8">Chưa có nhiệm vụ nào được tạo từ văn bản này</p>
@@ -507,6 +517,19 @@ export default function DocumentDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* AI Task Suggest Modal */}
+      {taskSuggestOpen && (
+        <TaskSuggestModal
+          docId={docId}
+          onClose={() => setTaskSuggestOpen(false)}
+          onCreated={(count) => {
+            setTaskSuggestOpen(false)
+            load()
+            alert(`✅ Đã tạo ${count} nhiệm vụ thành công!`)
+          }}
+        />
       )}
 
       {/* Task creation modal */}

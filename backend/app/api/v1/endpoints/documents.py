@@ -821,6 +821,144 @@ async def create_task_from_doc(
     return (await db.execute(stmt)).scalar_one()
 
 
+# ─── AI Extract Tasks + Bulk Create ─────────────────────────────────────────
+
+class AISuggestedTask(BaseModel):
+    title: str
+    description: str | None = None
+    deadline: str | None = None      # YYYY-MM-DD
+    priority: str = "medium"
+    lead_agency: str | None = None   # tên đơn vị dạng text từ AI
+
+
+class AIExtractResponse(BaseModel):
+    tasks: list[AISuggestedTask]
+    source: str   # "ai_file" | "ai_text" | "none"
+
+
+class BulkTaskItem(BaseModel):
+    title: str
+    description: str | None = None
+    deadline: datetime | None = None
+    priority: str = "medium"
+    lead_department_id: int | None = None
+    assignee_id: int | None = None
+
+
+class BulkTaskRequest(BaseModel):
+    tasks: list[BulkTaskItem]
+
+
+class BulkTaskResponse(BaseModel):
+    created: int
+    task_ids: list[int]
+
+
+@router.post("/{doc_id}/extract-tasks", response_model=AIExtractResponse)
+async def extract_tasks_ai(
+    doc_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Chạy AI trên file đã lưu của văn bản, trả về danh sách nhiệm vụ gợi ý."""
+    import asyncio as _asyncio
+
+    doc = await _get_doc_or_404(db, doc_id)
+
+    result = None
+    source = "none"
+
+    # Ưu tiên file gốc → AI Vision
+    if doc.file_path:
+        file_path = DOC_UPLOAD_DIR.parent / doc.file_path
+        if file_path.exists():
+            try:
+                result = await _asyncio.to_thread(ai_parser_service.parse_file_with_vision, file_path)
+                source = "ai_file"
+            except Exception as exc:
+                logger.warning("extract_tasks_ai: vision failed for doc %s: %s", doc_id, exc)
+
+    # Fallback: raw_text
+    if not result and doc.raw_text:
+        try:
+            result = await _asyncio.to_thread(ai_parser_service.parse_document, doc.raw_text)
+            source = "ai_text"
+        except Exception as exc:
+            logger.warning("extract_tasks_ai: text parse failed for doc %s: %s", doc_id, exc)
+
+    if not result:
+        return AIExtractResponse(tasks=[], source="none")
+
+    tasks: list[AISuggestedTask] = []
+    for t in result.get("nhiem_vu") or []:
+        raw_dl = t.get("deadline")
+        deadline_str: str | None = None
+        if raw_dl:
+            try:
+                from datetime import date as _date
+                deadline_str = str(_date.fromisoformat(str(raw_dl)))
+            except Exception:
+                pass
+
+        prio_map = {"urgent": "urgent", "high": "high", "medium": "medium", "low": "low"}
+        tasks.append(AISuggestedTask(
+            title=(t.get("ten_nhiem_vu") or "")[:300].strip(),
+            description=t.get("mo_ta") or None,
+            deadline=deadline_str,
+            priority=prio_map.get(t.get("muc_uu_tien", "medium"), "medium"),
+            lead_agency=t.get("don_vi_chu_tri") or None,
+        ))
+
+    return AIExtractResponse(tasks=[t for t in tasks if t.title], source=source)
+
+
+@router.post("/{doc_id}/bulk-tasks", response_model=BulkTaskResponse, status_code=201)
+async def bulk_create_tasks(
+    doc_id: int,
+    body: BulkTaskRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Tạo nhiều nhiệm vụ cùng lúc từ danh sách gợi ý AI, liên kết với văn bản."""
+    await _get_doc_or_404(db, doc_id)
+
+    if not body.tasks:
+        raise HTTPException(400, "Danh sách nhiệm vụ trống")
+
+    from app.api.v1.endpoints.tasks import _next_task_code
+
+    created_ids: list[int] = []
+    for item in body.tasks:
+        task_code = await _next_task_code(db)
+        task = Task(
+            task_code=task_code,
+            title=item.title,
+            description=item.description,
+            priority=item.priority if item.priority in ("low", "medium", "high", "urgent") else "medium",
+            due_date=item.deadline,
+            assignee_id=item.assignee_id,
+            lead_department_id=item.lead_department_id,
+            created_by=current_user.id,
+            status="pending",
+            progress_percent=0,
+        )
+        db.add(task)
+        await db.flush()
+
+        db.add(TaskAuditLog(
+            task_id=task.id,
+            user_id=current_user.id,
+            action="created",
+            new_value=f"AI từ văn bản #{doc_id}",
+        ))
+        db.add(DocumentTask(doc_id=doc_id, task_id=task.id))
+        _add_history(db, doc_id, current_user.id, "task_created", note=item.title)
+        created_ids.append(task.id)
+
+    await db.commit()
+    return BulkTaskResponse(created=len(created_ids), task_ids=created_ids)
+
+
 # ─── Capture từ dhtn.dcs.vn (Bookmarklet) ───────────────────────────────────
 
 class CaptureRequest(BaseModel):
