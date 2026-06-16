@@ -8,7 +8,7 @@ import { documentsApi } from '../../api/documents'
 import { tasksApi } from '../../api/tasks'
 import type { DocumentRead } from '../../types/document'
 import { documentProgramsApi, programsApi } from '../../api/programs'
-import type { Program, ProgramDashboard, ProgramDocument, ProgramKpi, ProgramProject, ProgramTask } from '../../api/programs'
+import type { Program, ProgramDashboard, ProgramDocument, ProgramKpi, ProgramTask } from '../../api/programs'
 import type { Task } from '../../types/task'
 import AppLayout from '../../components/layout/AppLayout'
 import TaskForm from '../../components/tasks/TaskForm'
@@ -101,11 +101,8 @@ export default function NQ57DashboardPage() {
   const [docs, setDocs] = useState<ProgramDocument[]>([])
   const [loadingDocs, setLoadingDocs] = useState(false)
 
-  // Strategic projects
-  const [projects, setProjects] = useState<ProgramProject[]>([])
-  const [loadingProjects, setLoadingProjects] = useState(false)
-  // Task-based projects (is_project=true)
   const [taskProjects, setTaskProjects] = useState<Task[]>([])
+  const [loadingProjects, setLoadingProjects] = useState(false)
 
   // Link document modal
   const [showLinkDoc, setShowLinkDoc] = useState(false)
@@ -252,13 +249,10 @@ export default function NQ57DashboardPage() {
   useEffect(() => {
     if (!selectedId) return
     setLoadingProjects(true)
-    Promise.all([
-      programsApi.projects(selectedId).then(r => r.data).catch(() => []),
-      tasksApi.list({ is_project: true, program_id: selectedId, page_size: 50 }).then(r => r.data.items).catch(() => []),
-    ]).then(([sp, tp]) => {
-      setProjects(sp)
-      setTaskProjects(tp)
-    }).finally(() => setLoadingProjects(false))
+    tasksApi.list({ is_project: true, program_id: selectedId, page_size: 50 })
+      .then(r => setTaskProjects(r.data.items))
+      .catch(() => setTaskProjects([]))
+      .finally(() => setLoadingProjects(false))
   }, [selectedId])
 
   useEffect(() => {
@@ -466,12 +460,12 @@ export default function NQ57DashboardPage() {
             </div>
 
             {/* Dự án */}
-            {(loadingProjects || projects.length > 0 || taskProjects.length > 0) && (
+            {(loadingProjects || taskProjects.length > 0) && (
               <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
                     <Briefcase size={14} className="text-blue-500" />
-                    Dự án ({projects.length + taskProjects.length})
+                    Dự án ({taskProjects.length})
                   </h3>
                   <button
                     onClick={() => navigate('/projects')}
@@ -484,39 +478,6 @@ export default function NQ57DashboardPage() {
                   <div className="text-center py-4 text-slate-400 text-xs">Đang tải...</div>
                 ) : (
                   <div className="space-y-2">
-                    {/* Strategic projects (cũ) */}
-                    {projects.map(p => {
-                      const statusColor = p.project_status === 'active' ? 'bg-blue-500'
-                        : p.project_status === 'completed' ? 'bg-emerald-500'
-                        : p.project_status === 'on_hold' ? 'bg-amber-400' : 'bg-slate-300'
-                      const statusLabel: Record<string, string> = {
-                        planning: 'Lập kế hoạch', active: 'Đang thực hiện',
-                        on_hold: 'Tạm dừng', completed: 'Hoàn thành', cancelled: 'Huỷ',
-                      }
-                      return (
-                        <div
-                          key={`sp-${p.id}`}
-                          onClick={() => navigate('/strategic')}
-                          className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer transition"
-                        >
-                          <div className={`w-2 h-2 rounded-full shrink-0 ${statusColor}`} />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="text-xs font-medium text-slate-800 truncate flex-1">{p.project_name}</p>
-                              <span className="text-[10px] text-slate-400 shrink-0">{statusLabel[p.project_status] ?? p.project_status}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1">
-                                <ProgressBar value={p.progress_percent} color="bg-blue-400" thin />
-                              </div>
-                              <span className="text-[10px] text-slate-400 shrink-0 w-8 text-right">{p.progress_percent}%</span>
-                            </div>
-                          </div>
-                          <ChevronRight size={12} className="text-slate-300 shrink-0" />
-                        </div>
-                      )
-                    })}
-                    {/* Task-based projects (mới) */}
                     {taskProjects.map(p => {
                       const statusColor = p.status === 'in_progress' ? 'bg-blue-500'
                         : p.status === 'completed' ? 'bg-emerald-500'
@@ -527,7 +488,7 @@ export default function NQ57DashboardPage() {
                       }
                       return (
                         <div
-                          key={`tp-${p.id}`}
+                          key={p.id}
                           onClick={() => navigate(`/tasks/${p.id}`)}
                           className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer transition"
                         >
