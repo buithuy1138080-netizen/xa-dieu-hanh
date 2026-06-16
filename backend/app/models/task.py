@@ -85,6 +85,7 @@ class Task(Base):
     is_project: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     project_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     budget_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    budget_disbursed: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # ── Classification (task_type discriminates nq57 vs regular) ──────────────
     task_type: Mapped[str] = mapped_column(String(20), default="regular", index=True)

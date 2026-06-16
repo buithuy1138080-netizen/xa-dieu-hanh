@@ -71,6 +71,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
   const [isProject, setIsProject] = useState<boolean>(task?.is_project ?? false)
   const [projectType, setProjectType] = useState<string>(task?.project_type ?? 'project')
   const [budgetAmount, setBudgetAmount] = useState<string>(task?.budget_amount != null ? String(task.budget_amount) : '')
+  const [budgetDisbursed, setBudgetDisbursed] = useState<string>(task?.budget_disbursed != null ? String(task.budget_disbursed) : '')
 
   // Parent task (project) picker — chỉ tìm task có is_project=true
   const [parentTaskId, setParentTaskId] = useState<number | null>(
@@ -309,6 +310,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
           is_project: isProject,
           project_type: isProject ? projectType : null,
           budget_amount: isProject && budgetAmount ? Number(budgetAmount) : null,
+          budget_disbursed: isProject && budgetDisbursed ? Number(budgetDisbursed) : null,
           due_date: dueDate ? new Date(dueDate + 'T23:59:59').toISOString() : null,
           assignee_id: assigneeId ? parseInt(assigneeId) : null,
           assignee_staff_id: assigneeStaffId,
@@ -329,6 +331,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
           is_project: isProject,
           project_type: isProject ? projectType : undefined,
           budget_amount: isProject && budgetAmount ? Number(budgetAmount) : undefined,
+          budget_disbursed: isProject && budgetDisbursed ? Number(budgetDisbursed) : undefined,
           start_date: startDate || undefined,
           due_date: dueDate ? new Date(dueDate + 'T23:59:59').toISOString() : undefined,
           program_id: programId ?? undefined,
@@ -416,7 +419,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
 
             {/* Loại dự án + Kinh phí — chỉ hiện khi isProject=true */}
             {isProject && (
-              <div className="grid grid-cols-2 gap-3 pl-1 border-l-2 border-indigo-200">
+              <div className="space-y-3 pl-1 border-l-2 border-indigo-200">
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Loại</label>
                   <select
@@ -430,16 +433,31 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
                     <option value="digital_transform">Chuyển đổi số</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Kinh phí (đồng)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={budgetAmount}
-                    onChange={e => setBudgetAmount(e.target.value)}
-                    placeholder="VD: 500000000"
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Kinh phí (triệu đồng)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={budgetAmount}
+                      onChange={e => setBudgetAmount(e.target.value)}
+                      placeholder="VD: 920"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Đã giải ngân (triệu đồng)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={budgetDisbursed}
+                      onChange={e => setBudgetDisbursed(e.target.value)}
+                      placeholder="VD: 500"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
                 </div>
               </div>
             )}

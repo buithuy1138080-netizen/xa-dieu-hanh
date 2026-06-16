@@ -107,7 +107,7 @@ const _preloadAll = () => {
     () => import('./pages/nq57/NQ57DashboardPage'),
     () => import('./pages/reports/ReportCenterPage'),
     () => import('./pages/staff/StaffPage'),
-    () => import('./pages/strategic/StrategicPage'),
+    () => import('./pages/projects/ProjectsPage'),
     () => import('./pages/departments/DepartmentPage'),
     () => import('./pages/programs/ProgramsPage'),
   ]

@@ -21,10 +21,10 @@ interface ProgramMin { id: number; name: string; short_name?: string | null }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-const fmt = (n: number) =>
-  n >= 1_000_000_000 ? `${(n / 1_000_000_000).toFixed(2)} tỷ`
-  : n >= 1_000_000   ? `${(n / 1_000_000).toFixed(1)} tr`
-  : n.toLocaleString('vi-VN')
+// n là triệu đồng
+const fmtTr = (n: number) =>
+  n >= 1_000 ? `${(n / 1_000).toLocaleString('vi-VN', { maximumFractionDigits: 2 })} tỷ`
+  : `${n.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} triệu`
 
 const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4']
 
@@ -163,9 +163,11 @@ function DashboardTab({ projects, onNavigate, onFilter }: {
     const completed     = projects.filter(p => p.status === 'completed').length
     const cancelled     = projects.filter(p => p.status === 'cancelled').length
     const overdue       = projects.filter(p => p.is_overdue).length
-    const total_budget  = projects.reduce((s, p) => s + (p.budget_amount ?? 0), 0)
-    const with_budget   = projects.filter(p => (p.budget_amount ?? 0) > 0).length
-    const avg_progress  = total ? Math.round(projects.reduce((s, p) => s + p.progress_percent, 0) / total) : 0
+    const total_budget     = projects.reduce((s, p) => s + (p.budget_amount ?? 0), 0)
+    const total_disbursed  = projects.reduce((s, p) => s + (p.budget_disbursed ?? 0), 0)
+    const with_budget      = projects.filter(p => (p.budget_amount ?? 0) > 0).length
+    const avg_progress     = total ? Math.round(projects.reduce((s, p) => s + p.progress_percent, 0) / total) : 0
+    const disbursed_pct    = total_budget > 0 ? Math.round(total_disbursed / total_budget * 100) : 0
 
     const byStatus: Record<string, number> = {}
     projects.forEach(p => { byStatus[p.status] = (byStatus[p.status] ?? 0) + 1 })
@@ -179,7 +181,7 @@ function DashboardTab({ projects, onNavigate, onFilter }: {
     const slow = projects.filter(p => p.status === 'in_progress' && p.progress_percent < 30 && !p.is_overdue)
     const warn = [...projects.filter(p => p.is_overdue), ...slow]
 
-    return { total, in_progress, completed, cancelled, overdue, total_budget, with_budget, avg_progress, byStatus, byType, warn }
+    return { total, in_progress, completed, cancelled, overdue, total_budget, total_disbursed, disbursed_pct, with_budget, avg_progress, byStatus, byType, warn }
   }, [projects])
 
   const statusChartData = Object.entries(stats.byStatus).map(([k, v]) => ({ name: STATUS_LABEL[k] ?? k, value: v }))
@@ -199,14 +201,15 @@ function DashboardTab({ projects, onNavigate, onFilter }: {
       </div>
 
       {/* Row 2 — budget */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <StatCard label="Tổng kinh phí"     value={stats.total_budget > 0 ? fmt(stats.total_budget) : '—'} sub="đồng" icon={Banknote}  color="bg-blue-500" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard label="Tổng kinh phí"     value={stats.total_budget > 0 ? fmtTr(stats.total_budget) : '—'} sub="triệu đồng" icon={Banknote}  color="bg-blue-500" />
+        <StatCard label="Đã giải ngân"       value={stats.total_disbursed > 0 ? fmtTr(stats.total_disbursed) : '—'} sub={`${stats.disbursed_pct}% kinh phí`} icon={TrendingUp} color="bg-emerald-500" />
         <StatCard label="Có kinh phí"        value={stats.with_budget} sub={`/ ${stats.total} dự án`} icon={BarChart2} color="bg-purple-500" />
-        <StatCard label="Tiến độ trung bình" value={`${stats.avg_progress}%`} icon={TrendingUp} color="bg-orange-500" />
+        <StatCard label="Tiến độ trung bình" value={`${stats.avg_progress}%`} icon={Target} color="bg-orange-500" />
       </div>
 
       {/* Progress bars */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
           <p className="text-sm font-semibold text-slate-700 mb-3">Tỷ lệ hoàn thành</p>
           <div className="flex items-center gap-4">
@@ -214,7 +217,7 @@ function DashboardTab({ projects, onNavigate, onFilter }: {
               <PBar value={stats.total ? Math.round(stats.completed / stats.total * 100) : 0}
                 color={progressColor(stats.total ? stats.completed / stats.total * 100 : 0)} />
             </div>
-            <span className="text-2xl font-bold text-slate-800 w-16 text-right">
+            <span className="text-2xl font-bold text-slate-800 w-14 text-right">
               {stats.total ? Math.round(stats.completed / stats.total * 100) : 0}%
             </span>
           </div>
@@ -223,8 +226,20 @@ function DashboardTab({ projects, onNavigate, onFilter }: {
           <p className="text-sm font-semibold text-slate-700 mb-3">Tiến độ trung bình</p>
           <div className="flex items-center gap-4">
             <div className="flex-1"><PBar value={stats.avg_progress} color={progressColor(stats.avg_progress)} /></div>
-            <span className="text-2xl font-bold text-slate-800 w-16 text-right">{stats.avg_progress}%</span>
+            <span className="text-2xl font-bold text-slate-800 w-14 text-right">{stats.avg_progress}%</span>
           </div>
+        </div>
+        <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
+          <p className="text-sm font-semibold text-slate-700 mb-3">Tỷ lệ giải ngân</p>
+          <div className="flex items-center gap-4">
+            <div className="flex-1"><PBar value={stats.disbursed_pct} color={progressColor(stats.disbursed_pct)} /></div>
+            <span className="text-2xl font-bold text-slate-800 w-14 text-right">{stats.disbursed_pct}%</span>
+          </div>
+          {stats.total_budget > 0 && (
+            <p className="text-[11px] text-slate-400 mt-2">
+              {fmtTr(stats.total_disbursed)} / {fmtTr(stats.total_budget)}
+            </p>
+          )}
         </div>
       </div>
 
@@ -386,7 +401,14 @@ function ProjectsTab({ projects, onNavigate, initStatus = '', initType = '' }: {
                 {p.due_date && <span>→ {new Date(p.due_date).toLocaleDateString('vi-VN')}</span>}
                 {p.subtasks_count > 0 && <span className="flex items-center gap-1"><Layers size={11}/>{p.subtasks_count} nhiệm vụ</span>}
                 {p.budget_amount != null && p.budget_amount > 0 && (
-                  <span className="text-emerald-600 font-medium flex items-center gap-1"><Banknote size={11}/>{fmt(p.budget_amount)} đ</span>
+                  <span className="text-emerald-600 font-medium flex items-center gap-1">
+                    <Banknote size={11}/>{fmtTr(p.budget_amount)}
+                    {p.budget_disbursed != null && p.budget_disbursed > 0 && (
+                      <span className="text-slate-400 font-normal">
+                        {' '}(giải ngân: {fmtTr(p.budget_disbursed)})
+                      </span>
+                    )}
+                  </span>
                 )}
               </div>
               <div className="mt-3 flex items-center gap-2">
@@ -408,7 +430,7 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
   const [form, setForm] = useState({
     title: '', description: '', priority: 'medium', project_type: 'project',
     start_date: '', due_date: '', assignee_id: '', lead_department_id: '',
-    program_id: '', budget_amount: '',
+    program_id: '', budget_amount: '', budget_disbursed: '',
   })
   const [users, setUsers]       = useState<UserPublic[]>([])
   const [depts, setDepts]       = useState<DeptRead[]>([])
@@ -436,6 +458,7 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
         is_project: true,
         project_type: form.project_type || undefined,
         budget_amount: form.budget_amount ? Number(form.budget_amount) : undefined,
+        budget_disbursed: form.budget_disbursed ? Number(form.budget_disbursed) : undefined,
         start_date: form.start_date || undefined,
         due_date: form.due_date ? form.due_date + 'T23:59:59' : undefined,
         program_id: form.program_id ? Number(form.program_id) : undefined,
@@ -514,11 +537,19 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
               {programs.map(p => <option key={p.id} value={p.id}>{p.short_name ? `[${p.short_name}] ` : ''}{p.name}</option>)}
             </select>
           </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Kinh phí (đồng)</label>
-            <input type="number" min="0" value={form.budget_amount} onChange={e => set('budget_amount', e.target.value)}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              placeholder="VD: 500000000" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Kinh phí (triệu đồng)</label>
+              <input type="number" min="0" step="0.1" value={form.budget_amount} onChange={e => set('budget_amount', e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                placeholder="VD: 920" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Đã giải ngân (triệu đồng)</label>
+              <input type="number" min="0" step="0.1" value={form.budget_disbursed} onChange={e => set('budget_disbursed', e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                placeholder="VD: 500" />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
