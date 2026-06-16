@@ -1103,7 +1103,9 @@ async def update_task(
 
     start = body.start_date if body.start_date is not None else t.start_date
     due = body.due_date if body.due_date is not None else t.due_date
-    if start and due and due < start:
+    start_d = start.date() if hasattr(start, 'date') else start
+    due_d = due.date() if hasattr(due, 'date') else due
+    if start_d and due_d and due_d < start_d:
         raise HTTPException(400, "Hạn hoàn thành không thể trước ngày bắt đầu")
 
     if body.incoming_document_id:
