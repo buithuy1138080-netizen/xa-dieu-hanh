@@ -192,6 +192,7 @@ class TaskRead(BaseModel):
     status: str
     priority: str
     progress_percent: int
+    is_project: bool = False
     start_date: date | None = None
     due_date: datetime | None = None
     completed_at: datetime | None = None
@@ -216,6 +217,7 @@ class TaskRead(BaseModel):
     updated_at: datetime | None = None
     is_overdue: bool = False
     project_ids: list[int] = []
+    subtasks_count: int = 0
     creator: UserMin | None = None
     assignee: UserMin | None = None
     assignee_staff: StaffMin | None = None
@@ -240,6 +242,7 @@ class TaskCreate(BaseModel):
     description: str | None = None
     content_summary: str | None = None
     priority: str = "medium"
+    is_project: bool = False
     start_date: date | None = None
     due_date: datetime | None = None
     program_id: int | None = None
@@ -268,6 +271,7 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     content_summary: str | None = None
     priority: str | None = None
+    is_project: bool | None = None
     start_date: date | None = None
     due_date: datetime | None = None
     program_id: int | None = None
@@ -368,6 +372,7 @@ def _is_overdue(t: Task) -> bool:
 def _to_read(t: Task) -> dict:
     d = {c.key: getattr(t, c.key) for c in t.__mapper__.column_attrs}
     d["is_overdue"] = _is_overdue(t)
+    d["subtasks_count"] = len(t.subtasks) if hasattr(t, "subtasks") and t.subtasks is not None else 0
     if hasattr(t, "creator") and t.creator is not None:
         d["creator"] = {"id": t.creator.id, "full_name": t.creator.full_name, "username": t.creator.username}
     else:
@@ -417,6 +422,7 @@ _LIST_LOADS = [
     selectinload(Task.assignee),
     selectinload(Task.assignee_staff),
     selectinload(Task.lead_department),
+    selectinload(Task.subtasks),
 ]
 
 
@@ -742,6 +748,7 @@ async def list_tasks(
     program_id: int | None = None,
     parent_task_id: int | None = None,
     task_type: str | None = None,
+    is_project: bool | None = None,
     overdue_only: bool = False,
     due_before: datetime | None = None,
     due_after: datetime | None = None,
@@ -806,6 +813,8 @@ async def list_tasks(
         q = q.where(Task.parent_task_id == parent_task_id)
     if task_type:
         q = q.where(Task.task_type == task_type)
+    if is_project is not None:
+        q = q.where(Task.is_project == is_project)
     if due_before:
         q = q.where(Task.due_date <= due_before)
     if due_after:
@@ -903,6 +912,7 @@ async def create_task(
         description=body.description,
         content_summary=body.content_summary,
         priority=body.priority,
+        is_project=body.is_project,
         status="pending",
         progress_percent=0,
         start_date=body.start_date,
@@ -1119,7 +1129,8 @@ async def update_task(
 
     old_program_id = t.program_id
 
-    fields = ["title", "description", "content_summary", "priority", "start_date", "due_date",
+    fields = ["title", "description", "content_summary", "priority", "is_project",
+              "start_date", "due_date",
               "incoming_document_id", "outgoing_document_id", "directive_id", "program_id",
               "assignee_id", "assignee_staff_id", "supervising_user_id", "lead_department_id",
               "reminder_enabled", "completion_note"]

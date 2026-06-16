@@ -81,6 +81,9 @@ class Task(Base):
         ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
+    # ── Project flag (Hướng B: task có thể là dự án) ─────────────────────────
+    is_project: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
     # ── Classification (task_type discriminates nq57 vs regular) ──────────────
     task_type: Mapped[str] = mapped_column(String(20), default="regular", index=True)
     task_group: Mapped[str | None] = mapped_column(String(100), nullable=True)

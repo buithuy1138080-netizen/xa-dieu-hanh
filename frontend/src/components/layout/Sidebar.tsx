@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   BarChart3, Bell, BookTemplate, Briefcase, Building,
   CheckSquare, ChevronRight, ClipboardList, FileText,
-  KeyRound, LayoutDashboard, LogOut,
+  FolderKanban, KeyRound, LayoutDashboard, LogOut,
   CalendarDays, PanelLeftClose, PanelLeftOpen,
   Shield, Target, Users, X,
 } from 'lucide-react'
@@ -27,7 +27,8 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: 'ĐIỀU HÀNH',
     items: [
       { to: '/dashboard', label: 'Tổng quan IOC', icon: LayoutDashboard },
-      { to: '/tasks',     label: 'Nhiệm vụ',       icon: CheckSquare },
+      { to: '/tasks',    label: 'Nhiệm vụ',  icon: CheckSquare },
+      { to: '/projects', label: 'Dự án',     icon: FolderKanban },
     ],
   },
   {

@@ -6,6 +6,7 @@ export interface TaskFilters {
   page_size?: number
   status?: string
   priority?: string
+  is_project?: boolean
   assignee_id?: number
   lead_dept_id?: number
   supervising_user_id?: number

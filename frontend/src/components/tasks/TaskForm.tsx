@@ -1,7 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { getApiErrorMessage } from '../../utils/apiError'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
-import { BookOpen, Building2, Check, ChevronDown, ClipboardList, FileText, Search, User as UserIcon, X } from 'lucide-react'
+import { BookOpen, Building2, Check, ChevronDown, ClipboardList, FileText, FolderKanban, Search, User as UserIcon, X } from 'lucide-react'
 import apiClient from '../../api/client'
 import { departmentsApi, type DeptRead } from '../../api/departments'
 import { directivesApi } from '../../api/directives'
@@ -68,8 +68,9 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? 'medium')
   const [dueDate, setDueDate] = useState(task?.due_date ? task.due_date.slice(0, 10) : '')
   const [startDate, setStartDate] = useState(task?.start_date ? task.start_date.slice(0, 10) : '')
+  const [isProject, setIsProject] = useState<boolean>(task?.is_project ?? false)
 
-  // Parent task picker
+  // Parent task (project) picker — chỉ tìm task có is_project=true
   const [parentTaskId, setParentTaskId] = useState<number | null>(
     task?.parent_task_id ?? initialParentTaskId ?? null
   )
@@ -183,11 +184,11 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
     }
   }, [sourceType])
 
-  // Load parent task candidates when search changes
+  // Load dự án candidates khi search thay đổi (chỉ is_project=true)
   useEffect(() => {
     if (!parentSearch.trim()) { setParentTasks([]); return }
     const timer = setTimeout(() => {
-      tasksApi.list({ search: parentSearch, page_size: 10 })
+      tasksApi.list({ search: parentSearch, is_project: true, page_size: 10 })
         .then((r) => setParentTasks(r.data.items.filter((t) => t.id !== task?.id)))
         .catch(() => {})
     }, 300)
@@ -303,6 +304,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
           title: title.trim(),
           description: description.trim() || undefined,
           priority,
+          is_project: isProject,
           due_date: dueDate ? new Date(dueDate + 'T23:59:59').toISOString() : null,
           assignee_id: assigneeId ? parseInt(assigneeId) : null,
           assignee_staff_id: assigneeStaffId,
@@ -320,6 +322,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
           title: title.trim(),
           description: description.trim() || undefined,
           priority,
+          is_project: isProject,
           start_date: startDate || undefined,
           due_date: dueDate ? new Date(dueDate + 'T23:59:59').toISOString() : undefined,
           program_id: programId ?? undefined,
@@ -391,9 +394,25 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
               />
             </div>
 
-            {/* Parent task picker */}
+            {/* Toggle is_project */}
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <div
+                onClick={() => setIsProject(v => !v)}
+                className={`relative w-10 h-5 rounded-full transition-colors ${isProject ? 'bg-indigo-500' : 'bg-slate-200'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isProject ? 'translate-x-5' : ''}`} />
+              </div>
+              <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+                <FolderKanban size={14} className={isProject ? 'text-indigo-500' : 'text-slate-400'} />
+                {isProject ? 'Đây là dự án' : 'Đánh dấu là dự án'}
+              </span>
+            </label>
+
+            {/* Parent task picker — chỉ tìm dự án (is_project=true) */}
             <div ref={parentRef} className="relative">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nhiệm vụ cha</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
+                <FolderKanban size={12} className="text-indigo-400" /> Thuộc dự án
+              </label>
               {parentTaskId ? (
                 <div className="flex items-center gap-2 px-3 py-2 border border-blue-400 bg-blue-50 rounded-lg text-sm">
                   <span className="flex-1 truncate text-blue-800 text-xs">{parentTaskLabel || `#${parentTaskId}`}</span>
