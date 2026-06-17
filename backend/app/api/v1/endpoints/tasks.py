@@ -71,8 +71,8 @@ async def _check_task_write_permission(
                     select(Staff).where(Staff.user_id == current_user.id)
                 )).scalar_one_or_none()
                 is_assignee = staff_rec is not None and t.assignee_staff_id == staff_rec.id
-            if not is_creator:
-                raise HTTPException(403, "Nhân viên chỉ được cập nhật nhiệm vụ do chính mình tạo ra")
+            if not is_creator and not is_assignee:
+                raise HTTPException(403, "Nhân viên chỉ được cập nhật nhiệm vụ do chính mình tạo hoặc được giao")
         return
 
     if current_user.role == "manager":
@@ -1301,6 +1301,7 @@ async def update_status(
         raise HTTPException(400, f"status must be one of {VALID_STATUSES}")
 
     t = await _get_task(db, task_id)
+    await _check_task_write_permission(db, current_user, t.lead_department_id, "update", task_id)
     old_status = t.status
     t.status = body.status
     t.updated_by = current_user.id
@@ -1342,6 +1343,7 @@ async def update_progress(
         raise HTTPException(400, "progress_percent must be 0-100")
 
     t = await _get_task(db, task_id)
+    await _check_task_write_permission(db, current_user, t.lead_department_id, "update", task_id)
     old_pct = t.progress_percent
     t.progress_percent = body.progress_percent
     t.updated_by = current_user.id
