@@ -372,33 +372,36 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-2rem)]">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-2rem)]">
         {/* Header - cố định */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 shrink-0">
-          <h2 className="text-base font-semibold text-slate-800">
-            {task ? 'Cập nhật nhiệm vụ' : 'Tạo nhiệm vụ mới'}
-          </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-            <X size={18} />
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-5 rounded-full bg-blue-500" />
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
+              {task ? 'Cập nhật nhiệm vụ' : 'Tạo nhiệm vụ mới'}
+            </h2>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors">
+            <X size={16} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-        <div className="flex-1 overflow-y-auto px-5 py-3">
-          <div className="flex gap-4 items-start">
+        <div className="flex-1 overflow-y-auto px-4 py-3">
+          <div className="flex gap-3 items-start">
 
             {/* ── CỘT TRÁI: thông tin cơ bản ── */}
-            <div className="flex-1 min-w-0 space-y-3">
+            <div className="flex-1 min-w-0 space-y-2.5">
 
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Tiêu đề <span className="text-red-500">*</span></label>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Tiêu đề <span className="text-red-500">*</span></label>
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required
                   placeholder="Nhập tiêu đề nhiệm vụ..."
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Mô tả</label>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Mô tả</label>
                 <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={1}
                   placeholder="Mô tả ngắn..."
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
@@ -420,7 +423,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
               {isProject && (
                 <div className="grid grid-cols-3 gap-2 pl-1 border-l-2 border-indigo-200">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Loại</label>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Loại</label>
                     <select value={projectType} onChange={e => setProjectType(e.target.value)}
                       className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">
                       <option value="project">Dự án</option>
@@ -430,13 +433,13 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Kinh phí (tr.đ)</label>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Kinh phí (tr.đ)</label>
                     <input type="number" min="0" step="0.1" value={budgetAmount} onChange={e => setBudgetAmount(e.target.value)}
                       placeholder="VD: 920"
                       className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Giải ngân (tr.đ)</label>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Giải ngân (tr.đ)</label>
                     <input type="number" min="0" step="0.1" value={budgetDisbursed} onChange={e => setBudgetDisbursed(e.target.value)}
                       placeholder="VD: 500"
                       className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400" />
@@ -446,7 +449,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
 
               {/* Parent task picker — chỉ hiện khi KHÔNG phải dự án */}
               {!isProject && <div ref={parentRef} className="relative">
-                <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1 flex items-center gap-1">
                   <FolderKanban size={11} className="text-indigo-400" /> Thuộc dự án
                 </label>
                 {parentTaskId ? (
@@ -480,7 +483,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
               {/* Ưu tiên + Ngày bắt đầu + Hạn xử lý */}
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Ưu tiên</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Ưu tiên</label>
                   <select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)}
                     className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="low">Thấp</option>
@@ -490,12 +493,12 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Ngày bắt đầu</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Ngày bắt đầu</label>
                   <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Hạn xử lý</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Hạn xử lý</label>
                   <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
@@ -503,7 +506,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
 
               {/* Chương trình / Nghị quyết */}
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1 flex items-center gap-1">
                   <BookOpen size={11} /> Chương trình / Nghị quyết
                 </label>
                 <select value={programId ?? ''} onChange={(e) => setProgramId(e.target.value ? Number(e.target.value) : null)}
@@ -517,7 +520,6 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
 
               {/* Nguồn sinh nhiệm vụ */}
               <div className="space-y-1.5">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nguồn sinh nhiệm vụ</p>
                 <div className="flex gap-1.5 flex-wrap">
                   {SOURCE_TABS.map((tab) => {
                     const Icon = tab.icon
@@ -584,11 +586,13 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
             </div>{/* END CỘT TRÁI */}
 
             {/* ── CỘT PHẢI: phân công & đơn vị ── */}
-            <div className="w-[210px] shrink-0 space-y-3">
+            <div className="w-[220px] shrink-0 bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-3">
+
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pb-1 border-b border-slate-200">Phân công & Đơn vị</p>
 
               {/* Người thực hiện */}
               <div ref={assigneeRef} className="relative">
-                <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1 flex items-center gap-1">
                   <UserIcon size={11} className="text-blue-500" /> Người thực hiện
                 </label>
                 <button type="button" onClick={() => setShowAssigneePicker((v) => !v)}
@@ -649,7 +653,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
 
               {/* Đơn vị chủ trì */}
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1 flex items-center gap-1">
                   <Building2 size={11} className="text-blue-500" /> Đơn vị chủ trì
                 </label>
                 <select value={leadDeptId ?? ''} onChange={(e) => setLeadDeptId(e.target.value ? parseInt(e.target.value) : null)}
@@ -663,7 +667,7 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
 
               {/* Đơn vị phối hợp */}
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1 flex items-center gap-1">
                   <Building2 size={11} className="text-slate-400" />
                   Đơn vị phối hợp
                   {coordIds.length > 0 && (
@@ -719,20 +723,20 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
         </div>
 
           {/* Footer - cố định, luôn hiển thị */}
-          <div className="shrink-0 px-5 py-3 border-t border-slate-100 bg-white rounded-b-2xl">
-            {error && <p className="text-red-500 text-xs mb-2">{error}</p>}
-            <div className="flex gap-3 justify-end">
+          <div className="shrink-0 px-4 py-3 border-t border-slate-100 bg-slate-50/80 rounded-b-2xl">
+            {error && <p className="text-red-500 text-xs mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">{error}</p>}
+            <div className="flex gap-2 justify-end">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors"
+                className="px-4 py-1.5 text-xs font-medium border border-slate-300 rounded-lg text-slate-600 hover:bg-white transition-colors"
               >
                 Hủy
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 font-medium"
+                className="px-5 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 tracking-wide uppercase"
               >
                 {loading ? 'Đang lưu...' : task ? 'Cập nhật' : 'Tạo nhiệm vụ'}
               </button>
