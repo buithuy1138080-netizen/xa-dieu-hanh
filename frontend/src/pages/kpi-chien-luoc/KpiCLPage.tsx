@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useAuthStore } from '../../store/authStore'
 import {
   Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
@@ -153,6 +154,9 @@ const INIT_FORM: KpiCLCreate = {
 }
 
 export default function KpiCLPage() {
+  const currentUser = useAuthStore(s => s.user)
+  const canCreate = currentUser?.role === 'admin' || currentUser?.role === 'leader' || currentUser?.role === 'manager'
+
   const [tab, setTab] = useState<'dashboard' | 'list'>('dashboard')
 
   // Dashboard state
@@ -361,12 +365,14 @@ export default function KpiCLPage() {
               <p className="text-sm text-slate-500">Hệ thống KPI quý · năm · nhiệm kỳ 5 năm</p>
             </div>
           </div>
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-semibold hover:bg-violet-700 transition"
-          >
-            + Thêm KPI
-          </button>
+          {canCreate && (
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-semibold hover:bg-violet-700 transition"
+            >
+              + Thêm KPI
+            </button>
+          )}
         </div>
 
         {/* Tabs */}
