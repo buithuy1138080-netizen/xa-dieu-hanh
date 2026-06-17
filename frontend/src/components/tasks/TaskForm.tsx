@@ -384,350 +384,231 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          <div className="flex gap-4 items-start">
 
-          {/* ── SECTION 1: Thông tin cơ bản ── */}
-          <div className="space-y-3">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Thông tin cơ bản</p>
+            {/* ── CỘT TRÁI: thông tin cơ bản ── */}
+            <div className="flex-1 min-w-0 space-y-3">
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Tiêu đề <span className="text-red-500">*</span></label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-                placeholder="Nhập tiêu đề nhiệm vụ..."
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Mô tả</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={2}
-                placeholder="Mô tả ngắn..."
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
-            </div>
-
-            {/* Toggle is_project */}
-            <label className="flex items-center gap-3 cursor-pointer select-none">
-              <div
-                onClick={() => setIsProject(v => !v)}
-                className={`relative w-10 h-5 rounded-full transition-colors ${isProject ? 'bg-indigo-500' : 'bg-slate-200'}`}
-              >
-                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isProject ? 'translate-x-5' : ''}`} />
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Tiêu đề <span className="text-red-500">*</span></label>
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required
+                  placeholder="Nhập tiêu đề nhiệm vụ..."
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
-              <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                <FolderKanban size={14} className={isProject ? 'text-indigo-500' : 'text-slate-400'} />
-                {isProject ? 'Đây là dự án' : 'Đánh dấu là dự án'}
-              </span>
-            </label>
 
-            {/* Loại dự án + Kinh phí — chỉ hiện khi isProject=true */}
-            {isProject && (
-              <div className="space-y-3 pl-1 border-l-2 border-indigo-200">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Mô tả</label>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={1}
+                  placeholder="Mô tả ngắn..."
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+              </div>
+
+              {/* Toggle is_project */}
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <div onClick={() => setIsProject(v => !v)}
+                  className={`relative w-9 h-5 rounded-full transition-colors ${isProject ? 'bg-indigo-500' : 'bg-slate-200'}`}>
+                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${isProject ? 'translate-x-4' : ''}`} />
+                </div>
+                <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+                  <FolderKanban size={13} className={isProject ? 'text-indigo-500' : 'text-slate-400'} />
+                  {isProject ? 'Đây là dự án' : 'Đánh dấu là dự án'}
+                </span>
+              </label>
+
+              {/* Loại + Kinh phí + Giải ngân — chỉ hiện khi isProject=true */}
+              {isProject && (
+                <div className="grid grid-cols-3 gap-2 pl-1 border-l-2 border-indigo-200">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Loại</label>
+                    <select value={projectType} onChange={e => setProjectType(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                      <option value="project">Dự án</option>
+                      <option value="plan">Đề án</option>
+                      <option value="program">Kế hoạch</option>
+                      <option value="digital_transform">CĐS</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Kinh phí (tr.đ)</label>
+                    <input type="number" min="0" step="0.1" value={budgetAmount} onChange={e => setBudgetAmount(e.target.value)}
+                      placeholder="VD: 920"
+                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Giải ngân (tr.đ)</label>
+                    <input type="number" min="0" step="0.1" value={budgetDisbursed} onChange={e => setBudgetDisbursed(e.target.value)}
+                      placeholder="VD: 500"
+                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  </div>
+                </div>
+              )}
+
+              {/* Parent task picker — chỉ hiện khi KHÔNG phải dự án */}
+              {!isProject && <div ref={parentRef} className="relative">
+                <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                  <FolderKanban size={11} className="text-indigo-400" /> Thuộc dự án
+                </label>
+                {parentTaskId ? (
+                  <div className="flex items-center gap-2 px-3 py-1.5 border border-blue-400 bg-blue-50 rounded-lg">
+                    <span className="flex-1 truncate text-blue-800 text-xs">{parentTaskLabel || `#${parentTaskId}`}</span>
+                    <button type="button" onClick={() => { setParentTaskId(null); setParentTaskLabel('') }} className="text-slate-400 hover:text-red-500"><X size={12} /></button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 border border-slate-300 rounded-lg">
+                    <Search size={12} className="text-slate-400 shrink-0" />
+                    <input type="text" placeholder="Tìm nhiệm vụ cha..." value={parentSearch}
+                      onChange={(e) => { setParentSearch(e.target.value); setShowParentPicker(true) }}
+                      onFocus={() => setShowParentPicker(true)}
+                      className="flex-1 text-xs outline-none text-slate-700 bg-transparent" />
+                  </div>
+                )}
+                {showParentPicker && parentTasks.length > 0 && (
+                  <div className="absolute z-30 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden max-h-36 overflow-y-auto">
+                    {parentTasks.map((t) => (
+                      <button key={t.id} type="button"
+                        onClick={() => { setParentTaskId(t.id); setParentTaskLabel(`${t.task_code ? t.task_code + ' – ' : ''}${t.title}`); setParentSearch(''); setShowParentPicker(false) }}
+                        className="w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-blue-50 transition-colors">
+                        {t.task_code && <span className="text-[10px] font-mono text-slate-400 shrink-0 mt-0.5">{t.task_code}</span>}
+                        <span className="text-xs text-slate-700 line-clamp-1">{t.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>}
+
+              {/* Ưu tiên + Ngày bắt đầu + Hạn xử lý */}
+              <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Loại</label>
-                  <select
-                    value={projectType}
-                    onChange={e => setProjectType(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  >
-                    <option value="project">Dự án</option>
-                    <option value="plan">Đề án</option>
-                    <option value="program">Kế hoạch</option>
-                    <option value="digital_transform">Chuyển đổi số</option>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Ưu tiên</label>
+                  <select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)}
+                    className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="low">Thấp</option>
+                    <option value="medium">Trung bình</option>
+                    <option value="high">Cao</option>
+                    <option value="urgent">Khẩn</option>
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Kinh phí (triệu đồng)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={budgetAmount}
-                      onChange={e => setBudgetAmount(e.target.value)}
-                      placeholder="VD: 920"
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Đã giải ngân (triệu đồng)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={budgetDisbursed}
-                      onChange={e => setBudgetDisbursed(e.target.value)}
-                      placeholder="VD: 500"
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Ngày bắt đầu</label>
+                  <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Hạn xử lý</label>
+                  <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
-            )}
 
-            {/* Parent task picker — chỉ hiện khi KHÔNG phải dự án */}
-            {!isProject && <div ref={parentRef} className="relative">
-              <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                <FolderKanban size={12} className="text-indigo-400" /> Thuộc dự án
-              </label>
-              {parentTaskId ? (
-                <div className="flex items-center gap-2 px-3 py-2 border border-blue-400 bg-blue-50 rounded-lg text-sm">
-                  <span className="flex-1 truncate text-blue-800 text-xs">{parentTaskLabel || `#${parentTaskId}`}</span>
-                  <button type="button" onClick={() => { setParentTaskId(null); setParentTaskLabel('') }} className="text-slate-400 hover:text-red-500">
-                    <X size={13} />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 px-2.5 py-2 border border-slate-300 rounded-lg">
-                  <Search size={13} className="text-slate-400 shrink-0" />
-                  <input
-                    type="text"
-                    placeholder="Tìm nhiệm vụ cha..."
-                    value={parentSearch}
-                    onChange={(e) => { setParentSearch(e.target.value); setShowParentPicker(true) }}
-                    onFocus={() => setShowParentPicker(true)}
-                    className="flex-1 text-xs outline-none text-slate-700 bg-transparent"
-                  />
-                </div>
-              )}
-              {showParentPicker && parentTasks.length > 0 && (
-                <div className="absolute z-30 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden max-h-40 overflow-y-auto">
-                  {parentTasks.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => {
-                        setParentTaskId(t.id)
-                        setParentTaskLabel(`${t.task_code ? t.task_code + ' – ' : ''}${t.title}`)
-                        setParentSearch('')
-                        setShowParentPicker(false)
-                      }}
-                      className="w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-blue-50 transition-colors"
-                    >
-                      {t.task_code && <span className="text-[10px] font-mono text-slate-400 shrink-0 mt-0.5">{t.task_code}</span>}
-                      <span className="text-xs text-slate-700 line-clamp-1">{t.title}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>}
-
-            <div className="grid grid-cols-3 gap-3">
+              {/* Chương trình / Nghị quyết */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Ưu tiên</label>
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value as TaskPriority)}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="low">Thấp</option>
-                  <option value="medium">Trung bình</option>
-                  <option value="high">Cao</option>
-                  <option value="urgent">Khẩn</option>
+                <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                  <BookOpen size={11} /> Chương trình / Nghị quyết
+                </label>
+                <select value={programId ?? ''} onChange={(e) => setProgramId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">-- Không thuộc chương trình nào --</option>
+                  {programs.map((p) => (
+                    <option key={p.id} value={p.id}>{p.short_name ? `[${p.short_name}] ` : ''}{p.name}</option>
+                  ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Ngày bắt đầu</label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Hạn xử lý</label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          </div>
 
-          {/* ── Chương trình / Nghị quyết ── */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-              <BookOpen size={11} /> Chương trình / Nghị quyết
-            </label>
-            <select
-              value={programId ?? ''}
-              onChange={(e) => setProgramId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">-- Không thuộc chương trình nào --</option>
-              {programs.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.short_name ? `[${p.short_name}] ` : ''}{p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* ── SECTION 2: Nguồn sinh nhiệm vụ ── */}
-          <div className="space-y-3">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nguồn sinh nhiệm vụ</p>
-
-            {/* Source type tabs */}
-            <div className="flex gap-2 flex-wrap">
-              {SOURCE_TABS.map((tab) => {
-                const Icon = tab.icon
-                const isActive = sourceType === tab.id
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => handleSourceTypeChange(tab.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border rounded-lg transition-all ${isActive ? TAB_ACTIVE[tab.id] : TAB_IDLE}`}
-                  >
-                    <Icon size={13} />
-                    {tab.label}
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Source picker */}
-            {sourceType !== 'none' && (
-              <div ref={sourceRef} className="relative">
-                {/* Selected chip or picker trigger */}
-                <button
-                  type="button"
-                  onClick={() => setShowSourcePicker((v) => !v)}
-                  className={`w-full flex items-center justify-between gap-2 border rounded-lg px-3 py-2 text-sm transition-colors ${
-                    (sourceType === 'directive' ? selectedDirId : selectedDocId)
-                      ? 'border-blue-400 bg-blue-50 text-blue-800'
-                      : 'border-slate-300 text-slate-400 hover:border-slate-400'
-                  }`}
-                >
-                  <span className="truncate text-left">
-                    {currentSourceLabel}
-                  </span>
-                  <ChevronDown size={14} className="shrink-0 text-slate-400" />
-                </button>
-
-                {/* Dropdown */}
-                {showSourcePicker && (
-                  <div className="absolute z-30 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
-                    <div className="p-2 border-b border-slate-100">
-                      <div className="flex items-center gap-2 px-2 py-1 bg-slate-50 rounded-lg">
-                        <Search size={13} className="text-slate-400 shrink-0" />
-                        <input
-                          autoFocus
-                          type="text"
-                          placeholder={sourceType === 'directive' ? 'Tìm chỉ đạo...' : 'Tìm văn bản...'}
-                          value={sourceSearch}
-                          onChange={(e) => setSourceSearch(e.target.value)}
-                          className="flex-1 bg-transparent text-sm outline-none text-slate-700"
-                        />
-                      </div>
-                    </div>
-                    <div className="max-h-52 overflow-y-auto">
-                      {loadingSrc && (
-                        <p className="text-xs text-slate-400 text-center py-4">Đang tải...</p>
-                      )}
-                      {!loadingSrc && sourceType !== 'directive' && filteredDocs.length === 0 && (
-                        <p className="text-xs text-slate-400 text-center py-4">Không có văn bản</p>
-                      )}
-                      {!loadingSrc && sourceType === 'directive' && filteredDirs.length === 0 && (
-                        <p className="text-xs text-slate-400 text-center py-4">Không có chỉ đạo</p>
-                      )}
-
-                      {sourceType !== 'directive' && filteredDocs.map((doc) => (
-                        <button
-                          key={doc.id}
-                          type="button"
-                          onClick={() => selectDoc(doc)}
-                          className={`w-full flex items-start gap-2 px-4 py-2.5 text-left hover:bg-blue-50 transition-colors ${
-                            selectedDocId === doc.id ? 'bg-blue-50' : ''
-                          }`}
-                        >
-                          <FileText size={13} className="text-slate-400 shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            {doc.doc_number && (
-                              <span className="text-xs font-mono text-slate-400 mr-1">{doc.doc_number}</span>
-                            )}
-                            <span className="text-sm text-slate-700 line-clamp-1">{doc.title}</span>
+              {/* Nguồn sinh nhiệm vụ */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nguồn sinh nhiệm vụ</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {SOURCE_TABS.map((tab) => {
+                    const Icon = tab.icon
+                    const isActive = sourceType === tab.id
+                    return (
+                      <button key={tab.id} type="button" onClick={() => handleSourceTypeChange(tab.id)}
+                        className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium border rounded-lg transition-all ${isActive ? TAB_ACTIVE[tab.id] : TAB_IDLE}`}>
+                        <Icon size={11} />{tab.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                {sourceType !== 'none' && (
+                  <div ref={sourceRef} className="relative">
+                    <button type="button" onClick={() => setShowSourcePicker((v) => !v)}
+                      className={`w-full flex items-center justify-between gap-2 border rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                        (sourceType === 'directive' ? selectedDirId : selectedDocId)
+                          ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-slate-300 text-slate-400 hover:border-slate-400'
+                      }`}>
+                      <span className="truncate text-left text-xs">{currentSourceLabel}</span>
+                      <ChevronDown size={13} className="shrink-0 text-slate-400" />
+                    </button>
+                    {showSourcePicker && (
+                      <div className="absolute z-30 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                        <div className="p-2 border-b border-slate-100">
+                          <div className="flex items-center gap-2 px-2 py-1 bg-slate-50 rounded-lg">
+                            <Search size={12} className="text-slate-400 shrink-0" />
+                            <input autoFocus type="text"
+                              placeholder={sourceType === 'directive' ? 'Tìm chỉ đạo...' : 'Tìm văn bản...'}
+                              value={sourceSearch} onChange={(e) => setSourceSearch(e.target.value)}
+                              className="flex-1 bg-transparent text-sm outline-none text-slate-700" />
                           </div>
-                          {selectedDocId === doc.id && <Check size={13} className="text-blue-600 shrink-0 mt-0.5" />}
-                        </button>
-                      ))}
-
-                      {sourceType === 'directive' && filteredDirs.map((dir) => (
-                        <button
-                          key={dir.id}
-                          type="button"
-                          onClick={() => selectDir(dir)}
-                          className={`w-full flex items-start gap-2 px-4 py-2.5 text-left hover:bg-purple-50 transition-colors ${
-                            selectedDirId === dir.id ? 'bg-purple-50' : ''
-                          }`}
-                        >
-                          <ClipboardList size={13} className="text-purple-400 shrink-0 mt-0.5" />
-                          <span className="text-sm text-slate-700 line-clamp-2">{dir.title}</span>
-                          {selectedDirId === dir.id && <Check size={13} className="text-purple-600 shrink-0 mt-0.5" />}
-                        </button>
-                      ))}
-                    </div>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto">
+                          {loadingSrc && <p className="text-xs text-slate-400 text-center py-4">Đang tải...</p>}
+                          {!loadingSrc && sourceType !== 'directive' && filteredDocs.length === 0 && <p className="text-xs text-slate-400 text-center py-4">Không có văn bản</p>}
+                          {!loadingSrc && sourceType === 'directive' && filteredDirs.length === 0 && <p className="text-xs text-slate-400 text-center py-4">Không có chỉ đạo</p>}
+                          {sourceType !== 'directive' && filteredDocs.map((doc) => (
+                            <button key={doc.id} type="button" onClick={() => selectDoc(doc)}
+                              className={`w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-blue-50 transition-colors ${selectedDocId === doc.id ? 'bg-blue-50' : ''}`}>
+                              <FileText size={12} className="text-slate-400 shrink-0 mt-0.5" />
+                              <div className="flex-1 min-w-0">
+                                {doc.doc_number && <span className="text-xs font-mono text-slate-400 mr-1">{doc.doc_number}</span>}
+                                <span className="text-xs text-slate-700 line-clamp-1">{doc.title}</span>
+                              </div>
+                              {selectedDocId === doc.id && <Check size={12} className="text-blue-600 shrink-0 mt-0.5" />}
+                            </button>
+                          ))}
+                          {sourceType === 'directive' && filteredDirs.map((dir) => (
+                            <button key={dir.id} type="button" onClick={() => selectDir(dir)}
+                              className={`w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-purple-50 transition-colors ${selectedDirId === dir.id ? 'bg-purple-50' : ''}`}>
+                              <ClipboardList size={12} className="text-purple-400 shrink-0 mt-0.5" />
+                              <span className="text-xs text-slate-700 line-clamp-2">{dir.title}</span>
+                              {selectedDirId === dir.id && <Check size={12} className="text-purple-600 shrink-0 mt-0.5" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
 
-          {/* ── SECTION 3: Phân công & Đơn vị ── */}
-          <div className="space-y-3">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Phân công & Đơn vị</p>
+            </div>{/* END CỘT TRÁI */}
 
-            <div className="grid grid-cols-2 gap-3">
-              {/* Assignee — searchable staff picker */}
+            {/* ── CỘT PHẢI: phân công & đơn vị ── */}
+            <div className="w-[210px] shrink-0 space-y-3">
+
+              {/* Người thực hiện */}
               <div ref={assigneeRef} className="relative">
-                <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                  <UserIcon size={12} className="text-blue-500" /> Người thực hiện
+                <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                  <UserIcon size={11} className="text-blue-500" /> Người thực hiện
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setShowAssigneePicker((v) => !v)}
-                  className={`w-full flex items-center justify-between gap-2 border rounded-lg px-3 py-2 text-sm transition-colors ${
-                    assigneeStaffId || assigneeId
-                      ? 'border-blue-400 bg-blue-50 text-blue-800'
-                      : 'border-slate-300 text-slate-400 hover:border-slate-400'
-                  }`}
-                >
-                  <span className="truncate text-left text-xs">
-                    {assigneeDisplayLabel ?? '-- Chưa phân công --'}
-                  </span>
-                  <ChevronDown size={13} className="shrink-0 text-slate-400" />
+                <button type="button" onClick={() => setShowAssigneePicker((v) => !v)}
+                  className={`w-full flex items-center justify-between gap-1 border rounded-lg px-2.5 py-1.5 text-xs transition-colors ${
+                    assigneeStaffId || assigneeId ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-slate-300 text-slate-400 hover:border-slate-400'
+                  }`}>
+                  <span className="truncate text-left">{assigneeDisplayLabel ?? '-- Chưa phân công --'}</span>
+                  <ChevronDown size={11} className="shrink-0 text-slate-400" />
                 </button>
-
                 {showAssigneePicker && (
-                  <div className="absolute z-40 top-full mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
-                    {/* Search + dept filter */}
+                  <div className="absolute z-40 top-full mt-1 right-0 w-72 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
                     <div className="p-2 border-b border-slate-100 space-y-1.5">
                       <div className="flex items-center gap-2 px-2 py-1 bg-slate-50 rounded-lg">
-                        <Search size={12} className="text-slate-400 shrink-0" />
-                        <input
-                          autoFocus
-                          type="text"
-                          placeholder="Tìm nhân sự..."
-                          value={staffSearch}
+                        <Search size={11} className="text-slate-400 shrink-0" />
+                        <input autoFocus type="text" placeholder="Tìm nhân sự..." value={staffSearch}
                           onChange={(e) => setStaffSearch(e.target.value)}
-                          className="flex-1 bg-transparent text-xs outline-none text-slate-700"
-                        />
+                          className="flex-1 bg-transparent text-xs outline-none text-slate-700" />
                       </div>
-                      <select
-                        value={staffDeptFilter}
-                        onChange={(e) => setStaffDeptFilter(e.target.value)}
-                        className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none"
-                      >
+                      <select value={staffDeptFilter} onChange={(e) => setStaffDeptFilter(e.target.value)}
+                        className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none">
                         <option value="">-- Tất cả đơn vị --</option>
                         {departments.filter((d) => d.is_active).map((d) => (
                           <option key={d.id} value={d.id}>{d.short_name || d.name}</option>
@@ -735,46 +616,29 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
                       </select>
                     </div>
                     <div className="max-h-52 overflow-y-auto">
-                      {/* Clear option */}
-                      <button
-                        type="button"
-                        onClick={() => { setAssigneeId(''); setAssigneeStaffId(null); setShowAssigneePicker(false) }}
-                        className="w-full px-3 py-2 text-left text-xs text-slate-400 hover:bg-slate-50 border-b border-slate-100"
-                      >
+                      <button type="button" onClick={() => { setAssigneeId(''); setAssigneeStaffId(null); setShowAssigneePicker(false) }}
+                        className="w-full px-3 py-2 text-left text-xs text-slate-400 hover:bg-slate-50 border-b border-slate-100">
                         -- Chưa phân công --
                       </button>
-                      {filteredStaff.length === 0 && (
-                        <p className="text-xs text-slate-400 text-center py-4">Không tìm thấy nhân sự</p>
-                      )}
+                      {filteredStaff.length === 0 && <p className="text-xs text-slate-400 text-center py-4">Không tìm thấy nhân sự</p>}
                       {filteredStaff.map((s) => {
                         const isSelected = s.id === assigneeStaffId
                         return (
-                          <button
-                            key={s.id}
-                            type="button"
-                            onClick={() => {
-                              setAssigneeStaffId(s.id)
-                              setAssigneeId('')
-                              setShowAssigneePicker(false)
-                              setStaffSearch('')
-                            }}
-                            className={`w-full flex items-start gap-2 px-3 py-2 text-left transition-colors ${
-                              isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'
-                            }`}
-                          >
+                          <button key={s.id} type="button"
+                            onClick={() => { setAssigneeStaffId(s.id); setAssigneeId(''); setShowAssigneePicker(false); setStaffSearch('') }}
+                            className={`w-full flex items-start gap-2 px-3 py-2 text-left transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
                             <div className="flex-1 min-w-0">
                               <p className={`text-xs font-medium truncate ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
-                                {s.full_name}
-                                {s.employee_code && <span className="text-slate-400 font-normal ml-1">({s.employee_code})</span>}
+                                {s.full_name}{s.employee_code && <span className="text-slate-400 font-normal ml-1">({s.employee_code})</span>}
                               </p>
                               {(s.position || s.department) && (
                                 <p className="text-[11px] text-slate-400 truncate mt-0.5">
                                   {[s.position, s.department?.short_name ?? s.department?.name].filter(Boolean).join(' · ')}
                                 </p>
                               )}
-                              {!s.user_id && <p className="text-[10px] text-amber-500">Không có tài khoản hệ thống</p>}
+                              {!s.user_id && <p className="text-[10px] text-amber-500">Không có tài khoản</p>}
                             </div>
-                            {isSelected && <Check size={12} className="text-blue-600 shrink-0 mt-0.5" />}
+                            {isSelected && <Check size={11} className="text-blue-600 shrink-0 mt-0.5" />}
                           </button>
                         )
                       })}
@@ -783,101 +647,75 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
                 )}
               </div>
 
-              {/* Lead department */}
+              {/* Đơn vị chủ trì */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                  <Building2 size={12} className="text-blue-500" /> Đơn vị chủ trì
+                <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                  <Building2 size={11} className="text-blue-500" /> Đơn vị chủ trì
                 </label>
-                <select
-                  value={leadDeptId ?? ''}
-                  onChange={(e) => setLeadDeptId(e.target.value ? parseInt(e.target.value) : null)}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
+                <select value={leadDeptId ?? ''} onChange={(e) => setLeadDeptId(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">-- Chưa xác định --</option>
                   {departments.filter((d) => d.is_active).map((d) => (
                     <option key={d.id} value={d.id}>{d.short_name || d.name}</option>
                   ))}
                 </select>
               </div>
-            </div>
 
-            {/* Coordinating departments */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
-                <Building2 size={12} className="text-slate-400" />
-                Đơn vị phối hợp
+              {/* Đơn vị phối hợp */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center gap-1">
+                  <Building2 size={11} className="text-slate-400" />
+                  Đơn vị phối hợp
+                  {coordIds.length > 0 && (
+                    <span className="ml-auto text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0 rounded-full font-medium">{coordIds.length}</span>
+                  )}
+                </label>
+                <div className="flex items-center gap-1 px-2 py-1 border border-slate-200 rounded-lg bg-slate-50 mb-1.5">
+                  <Search size={11} className="text-slate-400 shrink-0" />
+                  <input type="text" placeholder="Lọc..." value={deptSearch} onChange={(e) => setDeptSearch(e.target.value)}
+                    className="flex-1 bg-transparent text-xs outline-none text-slate-600" />
+                </div>
+                <div className="border border-slate-200 rounded-lg overflow-hidden max-h-36 overflow-y-auto">
+                  {filteredDepts.length === 0 && <p className="text-xs text-slate-400 text-center py-2">Không tìm thấy</p>}
+                  <div className="divide-y divide-slate-50">
+                    {filteredDepts.map((dept) => {
+                      const isLead = dept.id === leadDeptId
+                      const isChecked = coordIds.includes(dept.id)
+                      return (
+                        <label key={dept.id}
+                          className={`flex items-center gap-2 px-2.5 py-1.5 cursor-pointer transition-colors text-xs ${
+                            isLead ? 'opacity-40 cursor-not-allowed bg-slate-50' : isChecked ? 'bg-blue-50' : 'hover:bg-slate-50'
+                          }`} title={isLead ? 'Đã là đơn vị chủ trì' : undefined}>
+                          <input type="checkbox" checked={isChecked} disabled={isLead}
+                            onChange={() => !isLead && toggleCoord(dept.id)}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-400 shrink-0" />
+                          <span className={`truncate ${isChecked ? 'text-blue-700 font-medium' : 'text-slate-600'}`}>
+                            {dept.short_name || dept.name}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
                 {coordIds.length > 0 && (
-                  <span className="ml-auto text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                    Đã chọn {coordIds.length}
-                  </span>
-                )}
-              </label>
-
-              {/* Search */}
-              <div className="flex items-center gap-2 px-2.5 py-1.5 border border-slate-200 rounded-lg bg-slate-50 mb-2">
-                <Search size={12} className="text-slate-400 shrink-0" />
-                <input
-                  type="text"
-                  placeholder="Lọc đơn vị..."
-                  value={deptSearch}
-                  onChange={(e) => setDeptSearch(e.target.value)}
-                  className="flex-1 bg-transparent text-xs outline-none text-slate-600"
-                />
-              </div>
-
-              {/* Checkbox grid */}
-              <div className="border border-slate-200 rounded-lg overflow-hidden max-h-40 overflow-y-auto">
-                {filteredDepts.length === 0 && (
-                  <p className="text-xs text-slate-400 text-center py-3">Không tìm thấy đơn vị</p>
-                )}
-                <div className="grid grid-cols-2">
-                  {filteredDepts.map((dept, i) => {
-                    const isLead = dept.id === leadDeptId
-                    const isChecked = coordIds.includes(dept.id)
-                    return (
-                      <label
-                        key={dept.id}
-                        className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors select-none text-xs ${
-                          i % 2 === 0 ? 'border-r border-slate-100' : ''
-                        } ${isLead ? 'opacity-40 cursor-not-allowed bg-slate-50' : isChecked ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
-                        title={isLead ? 'Đã là đơn vị chủ trì' : undefined}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          disabled={isLead}
-                          onChange={() => !isLead && toggleCoord(dept.id)}
-                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-400 shrink-0"
-                        />
-                        <span className={`truncate ${isChecked ? 'text-blue-700 font-medium' : 'text-slate-600'}`}>
-                          {dept.short_name || dept.name}
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {coordIds.map((id) => {
+                      const d = departments.find((dep) => dep.id === id)
+                      if (!d) return null
+                      return (
+                        <span key={id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[11px] rounded-full">
+                          {d.short_name || d.name}
+                          <button type="button" onClick={() => toggleCoord(id)} className="hover:text-red-500 ml-0.5"><X size={9} /></button>
                         </span>
-                      </label>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
-              {/* Selected chips */}
-              {coordIds.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {coordIds.map((id) => {
-                    const d = departments.find((dep) => dep.id === id)
-                    if (!d) return null
-                    return (
-                      <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
-                        {d.short_name || d.name}
-                        <button type="button" onClick={() => toggleCoord(id)} className="hover:text-red-500 ml-0.5">
-                          <X size={10} />
-                        </button>
-                      </span>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+            </div>{/* END CỘT PHẢI */}
 
+          </div>
         </div>
 
           {/* Footer - cố định, luôn hiển thị */}
