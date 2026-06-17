@@ -129,13 +129,17 @@ export default function TaskListPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuthStore()
-  const canDelete = user?.role === 'admin' || user?.role === 'leader'
   function canEditTask(task: Task): boolean {
     if (user?.role === 'admin' || user?.role === 'leader') return true
-    // Nhân viên chỉ được sửa nhiệm vụ do chính mình tạo ra
     if (user?.role === 'staff') return task.created_by === user?.id
-    // Manager: nhiệm vụ của đơn vị mình (backend kiểm tra thêm)
     return task.created_by === user?.id
+  }
+  function canDeleteTask(task: Task): boolean {
+    if (user?.role === 'admin' || user?.role === 'leader') return true
+    // Nhân viên chỉ xóa task do mình tạo
+    if (user?.role === 'staff') return task.created_by === user?.id
+    // Manager: không xóa (backend cũng chặn)
+    return false
   }
 
   // ── View ──
@@ -513,7 +517,7 @@ export default function TaskListPage() {
                           <button onClick={(e) => { e.stopPropagation(); setEditTask(task); setShowForm(true) }}
                             className="px-2.5 py-1 text-[11px] text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg">Sửa</button>
                         )}
-                        {canDelete && (
+                        {canDeleteTask(task) && (
                           <button onClick={(e) => { e.stopPropagation(); handleDelete(task.id) }}
                             className="px-2.5 py-1 text-[11px] text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg">Xóa</button>
                         )}
@@ -640,7 +644,7 @@ export default function TaskListPage() {
                                 Sửa
                               </button>
                             )}
-                            {canDelete && (
+                            {canDeleteTask(task) && (
                               <button onClick={() => handleDelete(task.id)}
                                 className="px-2.5 py-1 text-[11px] font-medium text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                                 Xóa

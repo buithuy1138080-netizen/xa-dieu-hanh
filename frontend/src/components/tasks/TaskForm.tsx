@@ -62,6 +62,7 @@ function initSourceType(t?: Task): SourceType {
 export default function TaskForm({ task, onClose, onSuccess, initialProgramId, initialParentTaskId }: Props) {
   const { user } = useAuthStore()
   const isManager = user?.role === 'manager'
+  const isStaff = user?.role === 'staff'
   // Basic fields
   const [title, setTitle] = useState(task?.title ?? '')
   const [description, setDescription] = useState(task?.description ?? '')
@@ -270,14 +271,14 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
     )
   )
 
-  // Manager chỉ thấy nhân sự đơn vị mình
-  const myStaffDeptId = isManager
+  // Manager/Staff chỉ thấy nhân sự đơn vị mình
+  const myStaffDeptId = (isManager || isStaff)
     ? staffList.find(s => s.user_id === user?.id)?.department_id
     : undefined
 
   const filteredStaff = staffList.filter((s) => {
-    // Manager: chỉ nhân sự đơn vị mình (trừ khi họ tự chọn)
-    if (isManager && myStaffDeptId && s.department_id !== myStaffDeptId) return false
+    // Manager/Staff: chỉ nhân sự đơn vị mình
+    if ((isManager || isStaff) && myStaffDeptId && s.department_id !== myStaffDeptId) return false
     const matchDept = !staffDeptFilter || String(s.department_id) === staffDeptFilter
     const term = staffSearch.toLowerCase()
     const matchSearch = !term ||
