@@ -463,11 +463,10 @@ async def create_task_from_directive(
 ):
     d = await _get_or_404(db, directive_id)
 
-    from app.api.v1.endpoints.tasks import _next_task_code
-    task_code = await _next_task_code(db)
+    from app.api.v1.endpoints.tasks import _make_task_code
 
     task = Task(
-        task_code=task_code,
+        task_code=None,
         title=body.title,
         description=body.description,
         priority=body.priority,
@@ -481,6 +480,7 @@ async def create_task_from_directive(
     )
     db.add(task)
     await db.flush()
+    task.task_code = _make_task_code(task.id)
 
     db.add(TaskAuditLog(
         task_id=task.id, user_id=current_user.id,

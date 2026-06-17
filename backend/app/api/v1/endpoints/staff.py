@@ -113,7 +113,7 @@ async def _get_or_404(db: AsyncSession, staff_id: int) -> Staff:
     stmt = (
         select(Staff)
         .options(selectinload(Staff.department), selectinload(Staff.user))
-        .where(Staff.id == staff_id)
+        .where(Staff.id == staff_id, Staff.deleted_at.is_(None))
     )
     s = (await db.execute(stmt)).scalar_one_or_none()
     if not s:
@@ -172,7 +172,7 @@ async def list_staff(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    conditions = []
+    conditions = [Staff.deleted_at.is_(None)]
     if search:
         conditions.append(or_(
             Staff.full_name.ilike(f"%{search}%"),
@@ -218,7 +218,7 @@ async def export_staff_excel(
     from fastapi.responses import StreamingResponse
     from datetime import datetime as _dt
 
-    conditions = []
+    conditions = [Staff.deleted_at.is_(None)]
     if search:
         conditions.append(or_(
             Staff.full_name.ilike(f"%{search}%"),
@@ -232,7 +232,7 @@ async def export_staff_excel(
     if role:
         conditions.append(Staff.role == role)
 
-    base_q = select(Staff).where(*conditions) if conditions else select(Staff)
+    base_q = select(Staff).where(*conditions)
     stmt = base_q.options(selectinload(Staff.department), selectinload(Staff.user)).order_by(Staff.full_name)
     items = (await db.execute(stmt)).scalars().all()
 
@@ -508,5 +508,6 @@ async def delete_staff(
     if current_user.role != "admin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Chỉ Admin mới được xóa nhân sự")
     s = await _get_or_404(db, staff_id)
-    await db.delete(s)
+    s.deleted_at = datetime.now(timezone.utc)
+    s.is_active = False
     await db.commit()

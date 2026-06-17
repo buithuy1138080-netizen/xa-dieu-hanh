@@ -24,7 +24,9 @@ router = APIRouter()
 
 async def _get_user_dept_id(db: AsyncSession, user_id: int) -> int | None:
     """Get the department_id of the user via their Staff record."""
-    staff = (await db.execute(select(Staff).where(Staff.user_id == user_id))).scalar_one_or_none()
+    staff = (await db.execute(
+        select(Staff).where(Staff.user_id == user_id, Staff.deleted_at.is_(None))
+    )).scalar_one_or_none()
     return staff.department_id if staff else None
 
 
@@ -346,26 +348,10 @@ class PaginatedTasks(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-async def _next_task_code(db: AsyncSession) -> str:
-    """Generate next task code using MAX(id substring) to avoid race conditions."""
+def _make_task_code(task_id: int) -> str:
+    """Generate task code from task ID (after DB flush). Race-condition-free."""
     year = datetime.now().year
-    prefix = f"NV-{year}-"
-    result = await db.execute(
-        select(Task.task_code)
-        .where(Task.task_code.like(f"{prefix}%"))
-        .order_by(Task.task_code.desc())
-        .limit(1)
-    )
-    last_code = result.scalar_one_or_none()
-    if last_code:
-        try:
-            last_seq = int(last_code.split("-")[-1])
-        except (ValueError, IndexError):
-            last_seq = 0
-        next_seq = last_seq + 1
-    else:
-        next_seq = 1
-    return f"{prefix}{next_seq:04d}"
+    return f"NV-{year}-{task_id:04d}"
 
 
 def _is_overdue(t: Task) -> bool:
@@ -911,9 +897,8 @@ async def create_task(
         if not p or getattr(p, 'deleted_at', None):
             raise HTTPException(404, "Chương trình không tồn tại")
 
-    task_code = await _next_task_code(db)
     t = Task(
-        task_code=task_code,
+        task_code=None,
         title=body.title,
         description=body.description,
         content_summary=body.content_summary,
@@ -940,6 +925,7 @@ async def create_task(
     )
     db.add(t)
     await db.flush()
+    t.task_code = _make_task_code(t.id)
 
     await _set_departments(db, t, body.lead_department_id, body.coordinating_department_ids)
     await _audit(db, t.id, current_user.id, "created")
@@ -1036,6 +1022,24 @@ async def get_task(
     current_user: User = Depends(get_current_user),
 ):
     t = await _get_task(db, task_id, detail=True)
+
+    if current_user.role not in ("admin", "leader"):
+        user_dept_id = await _get_user_dept_id(db, current_user.id)
+        dept_match = (await db.execute(
+            select(TaskDepartment.task_id).where(
+                TaskDepartment.task_id == task_id,
+                TaskDepartment.department_id == user_dept_id,
+            ).limit(1)
+        )).scalar_one_or_none() if user_dept_id else None
+        has_access = (
+            t.lead_department_id == user_dept_id
+            or dept_match is not None
+            or t.assignee_id == current_user.id
+            or t.created_by == current_user.id
+        )
+        if not has_access:
+            raise HTTPException(403, "Bạn không có quyền xem nhiệm vụ này")
+
     d = _to_read(t)
 
     def _user_min(u: User | None) -> dict | None:
@@ -1459,9 +1463,8 @@ async def import_tasks_excel(
             except ValueError:
                 pass
         priority = r["priority"] if r["priority"] in VALID else "medium"
-        task_code = await _next_task_code(db)
         t = Task(
-            task_code=task_code,
+            task_code=None,
             title=r["title"],
             description=r["description"] or None,
             content_summary=r["responsible_unit"] or None,
@@ -1474,6 +1477,7 @@ async def import_tasks_excel(
         )
         db.add(t)
         await db.flush()
+        t.task_code = _make_task_code(t.id)
         await _audit(db, t.id, current_user.id, "created")
         imported += 1
 

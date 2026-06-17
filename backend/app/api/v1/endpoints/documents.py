@@ -779,11 +779,10 @@ async def create_task_from_doc(
 ):
     await _get_doc_or_404(db, doc_id)
 
-    from app.api.v1.endpoints.tasks import _next_task_code
-    task_code = await _next_task_code(db)
+    from app.api.v1.endpoints.tasks import _make_task_code
 
     task = Task(
-        task_code=task_code,
+        task_code=None,
         title=body.title,
         description=body.description,
         priority=body.priority,
@@ -796,6 +795,7 @@ async def create_task_from_doc(
     )
     db.add(task)
     await db.flush()
+    task.task_code = _make_task_code(task.id)
 
     db.add(TaskAuditLog(
         task_id=task.id,
@@ -925,13 +925,12 @@ async def bulk_create_tasks(
     if not body.tasks:
         raise HTTPException(400, "Danh sách nhiệm vụ trống")
 
-    from app.api.v1.endpoints.tasks import _next_task_code
+    from app.api.v1.endpoints.tasks import _make_task_code
 
     created_ids: list[int] = []
     for item in body.tasks:
-        task_code = await _next_task_code(db)
         task = Task(
-            task_code=task_code,
+            task_code=None,
             title=item.title,
             description=item.description,
             priority=item.priority if item.priority in ("low", "medium", "high", "urgent") else "medium",
@@ -944,6 +943,7 @@ async def bulk_create_tasks(
         )
         db.add(task)
         await db.flush()
+        task.task_code = _make_task_code(task.id)
 
         db.add(TaskAuditLog(
             task_id=task.id,
@@ -1043,8 +1043,7 @@ async def capture_from_dhtn(
     task_id = None
     if body.create_task and body.task_title:
         from app.models.task import Task as TaskModel, TaskDepartment as TDept
-        from app.api.v1.endpoints.tasks import _next_task_code
-        task_code = await _next_task_code(db)
+        from app.api.v1.endpoints.tasks import _make_task_code
         due_dt = None
         if body.task_due_date:
             try:
@@ -1052,7 +1051,7 @@ async def capture_from_dhtn(
             except ValueError:
                 pass
         t = TaskModel(
-            task_code=task_code,
+            task_code=None,
             title=body.task_title or body.title,
             incoming_document_id=doc.id if body.doc_type == "incoming" else None,
             outgoing_document_id=doc.id if body.doc_type == "outgoing" else None,
@@ -1064,6 +1063,7 @@ async def capture_from_dhtn(
         )
         db.add(t)
         await db.flush()
+        t.task_code = _make_task_code(t.id)
         db.add(DocumentTask(doc_id=doc.id, task_id=t.id))
         if body.lead_department_id:
             db.add(TDept(task_id=t.id, department_id=body.lead_department_id, role="lead"))
