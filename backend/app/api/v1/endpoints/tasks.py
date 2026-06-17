@@ -988,9 +988,16 @@ async def create_task(
     await _set_departments(db, t, body.lead_department_id, body.coordinating_department_ids)
     await _audit(db, t.id, current_user.id, "created")
 
-    if body.assignee_id and body.assignee_id != current_user.id:
+    # Resolve notify_user_id: form gửi assignee_staff_id (không gửi assignee_id)
+    notify_user_id = body.assignee_id
+    if not notify_user_id and body.assignee_staff_id:
+        assigned_staff = await db.get(Staff, body.assignee_staff_id)
+        if assigned_staff and assigned_staff.user_id:
+            notify_user_id = assigned_staff.user_id
+
+    if notify_user_id and notify_user_id != current_user.id:
         db.add(Notification(
-            user_id=body.assignee_id,
+            user_id=notify_user_id,
             task_id=t.id,
             type="task_assigned",
             title="Bạn được giao nhiệm vụ mới",
@@ -1000,11 +1007,11 @@ async def create_task(
 
     await db.commit()
 
-    if body.assignee_id and body.assignee_id != current_user.id:
+    if notify_user_id and notify_user_id != current_user.id:
         due_str = t.due_date.strftime("%d/%m/%Y") if t.due_date else "Chưa xác định"
         background_tasks.add_task(
             _notify_task_assigned_zalo,
-            t.id, body.assignee_id, t.task_code or "", body.title, due_str,
+            t.id, notify_user_id, t.task_code or "", body.title, due_str,
         )
 
     task = await _get_task(db, t.id, detail=False)
@@ -1221,6 +1228,7 @@ async def update_task(
 
     old_program_id = t.program_id
     old_assignee_id = t.assignee_id
+    old_assignee_staff_id = t.assignee_staff_id
 
     fields = ["title", "description", "content_summary", "priority", "is_project",
               "project_type", "budget_amount", "budget_disbursed",
@@ -1248,11 +1256,20 @@ async def update_task(
     if new_program_id:
         await _sync_program_progress(db, new_program_id)
 
-    # In-app notification khi assignee thay đổi
-    new_assignee_id = t.assignee_id
-    if new_assignee_id and new_assignee_id != old_assignee_id and new_assignee_id != current_user.id:
+    # Resolve notify_user_id khi assignee thay đổi
+    # Form gửi assignee_staff_id (không gửi assignee_id) nên cần lookup user_id từ staff
+    assignee_changed = (t.assignee_id != old_assignee_id) or (t.assignee_staff_id != old_assignee_staff_id)
+    notify_user_id_update: int | None = None
+    if assignee_changed:
+        notify_user_id_update = t.assignee_id
+        if not notify_user_id_update and t.assignee_staff_id:
+            assigned_staff = await db.get(Staff, t.assignee_staff_id)
+            if assigned_staff and assigned_staff.user_id:
+                notify_user_id_update = assigned_staff.user_id
+
+    if notify_user_id_update and notify_user_id_update != current_user.id:
         db.add(Notification(
-            user_id=new_assignee_id,
+            user_id=notify_user_id_update,
             task_id=t.id,
             type="task_assigned",
             title="Bạn được giao nhiệm vụ",
@@ -1262,11 +1279,11 @@ async def update_task(
 
     await db.commit()
 
-    if new_assignee_id and new_assignee_id != old_assignee_id and new_assignee_id != current_user.id:
+    if notify_user_id_update and notify_user_id_update != current_user.id:
         due_str = t.due_date.strftime("%d/%m/%Y") if t.due_date else "Chưa xác định"
         background_tasks.add_task(
             _notify_task_assigned_zalo,
-            t.id, new_assignee_id, t.task_code or "", t.title, due_str,
+            t.id, notify_user_id_update, t.task_code or "", t.title, due_str,
         )
 
     task = await _get_task(db, t.id, detail=False)

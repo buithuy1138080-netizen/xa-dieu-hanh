@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { User } from '../types'
+import { queryClient } from '../lib/queryClient'
 
 interface AuthState {
   token: string | null        // in-memory only (WebSocket auth), NOT persisted
@@ -15,9 +16,15 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       token: null,
       user: null,
-      setToken: (token) => set({ token }),
+      setToken: (token) => {
+        queryClient.clear()
+        set({ token })
+      },
       setUser: (user) => set({ user }),
-      logout: () => set({ token: null, user: null }),
+      logout: () => {
+        queryClient.clear()
+        set({ token: null, user: null })
+      },
     }),
     {
       name: 'auth-storage',
