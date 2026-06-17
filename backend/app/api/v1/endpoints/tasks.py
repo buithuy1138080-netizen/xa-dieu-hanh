@@ -7,7 +7,7 @@ from math import ceil
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import and_, case, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.models.notification import Notification
 from app.models.staff import Staff
 from app.models.task import Task, TaskAuditLog, TaskAttachment, TaskComment, TaskDepartment
 from app.models.user import User
@@ -542,6 +543,58 @@ async def _sync_project_progress(db: AsyncSession, task_id: int) -> None:
             project.progress_percent = new_prog
 
 
+async def _sync_parent_task_progress(db: AsyncSession, task_id: int) -> None:
+    """Recalculate parent task progress from subtasks. Walks up the tree."""
+    task = await db.get(Task, task_id)
+    if not task or not task.parent_task_id:
+        return
+    parent_id = task.parent_task_id
+
+    rows = (await db.execute(
+        select(Task.progress_percent, Task.status).where(
+            Task.parent_task_id == parent_id,
+            Task.deleted_at.is_(None),
+        )
+    )).all()
+    if not rows:
+        return
+
+    parent = await db.get(Task, parent_id)
+    if not parent or parent.status == "cancelled":
+        return
+
+    avg_pct = round(sum(r.progress_percent for r in rows) / len(rows))
+    all_done = all(r.status == "completed" for r in rows)
+
+    parent.progress_percent = avg_pct
+    if all_done and parent.status not in ("completed", "cancelled"):
+        parent.status = "completed"
+        parent.completed_at = datetime.now(timezone.utc)
+    elif avg_pct > 0 and parent.status == "pending":
+        parent.status = "in_progress"
+
+    await _sync_parent_task_progress(db, parent_id)
+
+
+async def _notify_task_assigned_zalo(
+    task_id: int, assignee_id: int, task_code: str, task_title: str, due_date_str: str
+) -> None:
+    """Background: gửi Zalo khi nhiệm vụ được giao."""
+    try:
+        from app.core.database import AsyncSessionLocal
+        from app.services import zalo_notify_engine
+        async with AsyncSessionLocal() as session:
+            await zalo_notify_engine.notify_event(
+                session, "task_assigned",
+                {"task_code": task_code, "task_title": task_title, "due_date": due_date_str},
+                [assignee_id],
+                entity_type="task", entity_id=task_id,
+                triggered_by="task_assigned",
+            )
+    except Exception:
+        pass
+
+
 async def _set_departments(
     db: AsyncSession, task: Task,
     lead_dept_id: int | None,
@@ -867,6 +920,7 @@ async def list_tasks(
 @router.post("", response_model=TaskRead, status_code=201)
 async def create_task(
     body: TaskCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -896,6 +950,10 @@ async def create_task(
         p = await db.get(Program, body.program_id)
         if not p or getattr(p, 'deleted_at', None):
             raise HTTPException(404, "Chương trình không tồn tại")
+    if body.parent_task_id:
+        parent_task = await db.get(Task, body.parent_task_id)
+        if not parent_task or parent_task.deleted_at is not None:
+            raise HTTPException(404, "Nhiệm vụ cha không tồn tại")
 
     t = Task(
         task_code=None,
@@ -929,7 +987,25 @@ async def create_task(
 
     await _set_departments(db, t, body.lead_department_id, body.coordinating_department_ids)
     await _audit(db, t.id, current_user.id, "created")
+
+    if body.assignee_id and body.assignee_id != current_user.id:
+        db.add(Notification(
+            user_id=body.assignee_id,
+            task_id=t.id,
+            type="task_assigned",
+            title="Bạn được giao nhiệm vụ mới",
+            body=f"{t.task_code} – {body.title}",
+            link_url=f"/tasks/{t.id}",
+        ))
+
     await db.commit()
+
+    if body.assignee_id and body.assignee_id != current_user.id:
+        due_str = t.due_date.strftime("%d/%m/%Y") if t.due_date else "Chưa xác định"
+        background_tasks.add_task(
+            _notify_task_assigned_zalo,
+            t.id, body.assignee_id, t.task_code or "", body.title, due_str,
+        )
 
     task = await _get_task(db, t.id, detail=False)
     return TaskRead.model_validate(_to_read(task))
@@ -1105,6 +1181,7 @@ async def get_task(
 async def update_task(
     task_id: int,
     body: TaskUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1143,6 +1220,7 @@ async def update_task(
             raise HTTPException(404, "Chương trình không tồn tại")
 
     old_program_id = t.program_id
+    old_assignee_id = t.assignee_id
 
     fields = ["title", "description", "content_summary", "priority", "is_project",
               "project_type", "budget_amount", "budget_disbursed",
@@ -1170,7 +1248,27 @@ async def update_task(
     if new_program_id:
         await _sync_program_progress(db, new_program_id)
 
+    # In-app notification khi assignee thay đổi
+    new_assignee_id = t.assignee_id
+    if new_assignee_id and new_assignee_id != old_assignee_id and new_assignee_id != current_user.id:
+        db.add(Notification(
+            user_id=new_assignee_id,
+            task_id=t.id,
+            type="task_assigned",
+            title="Bạn được giao nhiệm vụ",
+            body=f"{t.task_code} – {t.title}",
+            link_url=f"/tasks/{t.id}",
+        ))
+
     await db.commit()
+
+    if new_assignee_id and new_assignee_id != old_assignee_id and new_assignee_id != current_user.id:
+        due_str = t.due_date.strftime("%d/%m/%Y") if t.due_date else "Chưa xác định"
+        background_tasks.add_task(
+            _notify_task_assigned_zalo,
+            t.id, new_assignee_id, t.task_code or "", t.title, due_str,
+        )
+
     task = await _get_task(db, t.id, detail=False)
     return TaskRead.model_validate(_to_read(task))
 
@@ -1208,6 +1306,7 @@ async def update_status(
     if t.program_id:
         await _sync_program_progress(db, t.program_id)
     await _sync_project_progress(db, t.id)
+    await _sync_parent_task_progress(db, t.id)
 
     await db.commit()
 
@@ -1245,6 +1344,7 @@ async def update_progress(
     if t.program_id:
         await _sync_program_progress(db, t.program_id)
     await _sync_project_progress(db, t.id)
+    await _sync_parent_task_progress(db, t.id)
 
     await db.commit()
 
@@ -1300,8 +1400,8 @@ async def delete_comment(
     c = result.scalar_one_or_none()
     if c is None:
         raise HTTPException(404, "Comment not found")
-    if c.user_id != current_user.id and current_user.role not in ("admin", "manager"):
-        raise HTTPException(403, "Forbidden")
+    if c.user_id != current_user.id and current_user.role not in ("admin", "leader", "manager"):
+        raise HTTPException(403, "Bạn không có quyền xóa bình luận này")
     await db.delete(c)
     await db.commit()
 
@@ -1356,6 +1456,8 @@ async def delete_attachment(
     a = result.scalar_one_or_none()
     if a is None:
         raise HTTPException(404, "Attachment not found")
+    if a.user_id != current_user.id and current_user.role not in ("admin", "leader", "manager"):
+        raise HTTPException(403, "Bạn không có quyền xóa file đính kèm này")
     try:
         Path(a.file_path).unlink(missing_ok=True)
     except Exception:

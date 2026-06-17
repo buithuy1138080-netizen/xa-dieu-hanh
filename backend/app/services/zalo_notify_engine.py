@@ -86,6 +86,22 @@ _DEFAULT_TEMPLATES = [
         "variables": ["title", "body", "sender"],
         "channel": "oa_message",
     },
+    {
+        "notif_type": "task_assigned",
+        "name": "Giao nhiệm vụ mới",
+        "subject": "📋 Bạn có nhiệm vụ mới",
+        "content": "Nhiệm vụ [{task_code}] – {task_title} vừa được giao cho bạn. Hạn: {due_date}. Vào IOC để xem chi tiết.",
+        "variables": ["task_code", "task_title", "due_date"],
+        "channel": "oa_message",
+    },
+    {
+        "notif_type": "task_completed",
+        "name": "Nhiệm vụ hoàn thành",
+        "subject": "✅ Nhiệm vụ đã hoàn thành",
+        "content": "Nhiệm vụ [{task_code}] – {task_title} đã được đánh dấu hoàn thành bởi {completed_by}.",
+        "variables": ["task_code", "task_title", "completed_by"],
+        "channel": "oa_message",
+    },
 ]
 
 
