@@ -381,7 +381,7 @@ def _is_overdue(t: Task) -> bool:
 def _to_read(t: Task) -> dict:
     d = {c.key: getattr(t, c.key) for c in t.__mapper__.column_attrs}
     d["is_overdue"] = _is_overdue(t)
-    d["subtasks_count"] = len(t.subtasks) if hasattr(t, "subtasks") and t.subtasks is not None else 0
+    d["subtasks_count"] = sum(1 for s in t.subtasks if s.deleted_at is None) if hasattr(t, "subtasks") and t.subtasks is not None else 0
     if hasattr(t, "creator") and t.creator is not None:
         d["creator"] = {"id": t.creator.id, "full_name": t.creator.full_name, "username": t.creator.username}
     else:
@@ -1093,7 +1093,7 @@ async def get_task(
         }
         for lg in t.audit_logs
     ]
-    d["subtasks"] = [TaskRead.model_validate(_to_read(sub)) for sub in t.subtasks]
+    d["subtasks"] = [TaskRead.model_validate(_to_read(sub)) for sub in t.subtasks if sub.deleted_at is None]
     return TaskReadDetail.model_validate(d)
 
 
