@@ -61,6 +61,12 @@ LIST_CATALOG: list[dict] = [
         "example": "{{#phan_tich_don_vi}} ... {{/phan_tich_don_vi}}",
         "item_fields": ["stt", "ten_don_vi", "tong", "hoan_thanh", "ti_le"],
     },
+    {
+        "name": "danh_sach_nq57",
+        "description": "Danh sách nhiệm vụ NQ57",
+        "example": "{{#danh_sach_nq57}} ... {{/danh_sach_nq57}}",
+        "item_fields": ["stt", "ma", "ten", "nhom", "don_vi", "tien_do", "trang_thai", "han"],
+    },
 ]
 
 
@@ -161,6 +167,29 @@ async def resolve_variables(
             "ti_le":     f'{row.get("rate", 0):.1f}%',
         }
         for i, row in enumerate(dept_breakdown)
+    ]
+
+    # ── NQ57 task list ───────────────────────────────────────────────────────────
+    from app.models.nq57 import NQ57Task
+    nq57_rows = (await db.execute(
+        select(NQ57Task).where(NQ57Task.deleted_at.is_(None)).order_by(NQ57Task.id)
+    )).scalars().all()
+    _status_label = {
+        "pending": "Chưa bắt đầu", "in_progress": "Đang thực hiện",
+        "completed": "Hoàn thành", "delayed": "Chậm tiến độ",
+    }
+    scalars["danh_sach_nq57"] = [
+        {
+            "stt":       str(i + 1),
+            "ma":        row.code or "",
+            "ten":       row.title or "",
+            "nhom":      row.group or "",
+            "don_vi":    row.responsible_unit or "",
+            "tien_do":   f"{row.progress or 0}%",
+            "trang_thai": _status_label.get(row.status or "", row.status or ""),
+            "han":       _fmt_date(str(row.deadline)) if row.deadline else "",
+        }
+        for i, row in enumerate(nq57_rows)
     ]
 
     return scalars
