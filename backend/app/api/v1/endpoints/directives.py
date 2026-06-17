@@ -47,6 +47,7 @@ DIR_UPLOAD.mkdir(parents=True, exist_ok=True)
 
 VALID_STATUSES = {"draft", "active", "completed", "cancelled"}
 ALLOWED_UPLOAD_EXTS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg"}
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -567,20 +568,22 @@ async def upload_attachment(
             f"Định dạng file không được phép: '{ext or 'không rõ'}'. "
             f"Chấp nhận: {', '.join(sorted(ALLOWED_UPLOAD_EXTS))}"
         )
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File quá lớn. Kích thước tối đa: 20 MB")
     import uuid as _uuid
     d_dir = DIR_UPLOAD / str(directive_id)
     d_dir.mkdir(exist_ok=True)
     stored_name = f"{_uuid.uuid4().hex}{ext}"
     file_path = d_dir / stored_name
-    with open(file_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    file_path.write_bytes(content)
 
     att = DirectiveAttachment(
         directive_id=directive_id,
         user_id=current_user.id,
         filename=original_name,    # original name shown to user
         file_path=str(file_path),  # UUID-based path on disk
-        file_size=file_path.stat().st_size,
+        file_size=len(content),
         file_mime=file.content_type or "application/octet-stream",
     )
     db.add(att)
@@ -611,6 +614,8 @@ async def delete_attachment(
     )).scalar_one_or_none()
     if not att:
         raise HTTPException(404, "Không tìm thấy file")
+    if att.user_id != current_user.id and current_user.role not in ("admin", "leader", "manager"):
+        raise HTTPException(403, "Bạn không có quyền xóa file đính kèm này")
     p = Path(att.file_path)
     if p.exists():
         p.unlink()

@@ -103,6 +103,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 VALID_STATUSES   = {"pending", "in_progress", "completed", "cancelled", "overdue"}
 VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
 ALLOWED_UPLOAD_EXTS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg"}
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 VALID_SORT_COLS  = {"created_at", "updated_at", "due_date", "title", "priority", "status", "progress_percent"}
 
 
@@ -1444,10 +1445,12 @@ async def upload_attachment(
             f"Định dạng file không được phép: '{ext or 'không rõ'}'. "
             f"Chấp nhận: {', '.join(sorted(ALLOWED_UPLOAD_EXTS))}"
         )
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"File quá lớn. Kích thước tối đa: 20 MB")
     dest = UPLOAD_DIR / f"{uuid.uuid4().hex}_{safe_name}"
-    with dest.open("wb") as f:
-        shutil.copyfileobj(file.file, f)
-    size = dest.stat().st_size
+    dest.write_bytes(content)
+    size = len(content)
 
     a = TaskAttachment(
         task_id=task_id, user_id=current_user.id,
@@ -1494,6 +1497,8 @@ async def add_department(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role not in ("admin", "leader", "manager"):
+        raise HTTPException(403, "Chỉ admin/lãnh đạo/quản lý được thêm đơn vị vào nhiệm vụ")
     await _get_task(db, task_id)
     existing = (await db.execute(
         select(TaskDepartment).where(
@@ -1521,6 +1526,8 @@ async def remove_department(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role not in ("admin", "leader", "manager"):
+        raise HTTPException(403, "Chỉ admin/lãnh đạo/quản lý được xóa đơn vị khỏi nhiệm vụ")
     result = await db.execute(
         select(TaskDepartment).where(
             TaskDepartment.task_id == task_id,
