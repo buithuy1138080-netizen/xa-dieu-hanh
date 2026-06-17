@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useAuthStore } from '../../store/authStore'
 import apiClient from '../../api/client'
 import { kpiApi } from '../../api/kpi'
 import { programsApi } from '../../api/programs'
@@ -45,6 +46,9 @@ export default function KPIDetailPage() {
   const { id } = useParams<{ id: string }>()
   const kpiId = Number(id)
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const canEdit = user?.role === 'admin' || user?.role === 'leader' || user?.role === 'manager'
+  const canDelete = user?.role === 'admin' || user?.role === 'leader'
 
   const [kpi, setKpi] = useState<KPIReadDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -166,8 +170,12 @@ export default function KPIDetailPage() {
             {kpi.code && <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{kpi.code}</span>}
           </div>
           <div className="flex gap-2 shrink-0">
-            <button onClick={() => { setEditOpen(true); setEditError(null) }} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition text-slate-600">✏ Sửa</button>
-            <button onClick={handleDelete} className="px-3 py-1.5 text-sm border border-red-200 rounded-lg hover:bg-red-50 transition text-red-600">🗑 Xóa</button>
+            {canEdit && (
+              <button onClick={() => { setEditOpen(true); setEditError(null) }} className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition text-slate-600">✏ Sửa</button>
+            )}
+            {canDelete && (
+              <button onClick={handleDelete} className="px-3 py-1.5 text-sm border border-red-200 rounded-lg hover:bg-red-50 transition text-red-600">🗑 Xóa</button>
+            )}
           </div>
         </div>
 

@@ -156,6 +156,7 @@ const INIT_FORM: KpiCLCreate = {
 export default function KpiCLPage() {
   const currentUser = useAuthStore(s => s.user)
   const canCreate = currentUser?.role === 'admin' || currentUser?.role === 'leader' || currentUser?.role === 'manager'
+  const canDeleteKpi = currentUser?.role === 'admin' || currentUser?.role === 'leader'
 
   const [tab, setTab] = useState<'dashboard' | 'list'>('dashboard')
 
@@ -758,10 +759,14 @@ export default function KpiCLPage() {
                               className="text-xs px-2 py-1 text-emerald-600 hover:bg-emerald-50 rounded-lg transition font-medium"
                               title="Cập nhật tiến độ"
                             >📊</button>
-                            <button onClick={() => openEdit(item)}
-                              className="text-xs px-2 py-1 text-slate-500 hover:bg-slate-100 rounded-lg transition">✏️</button>
-                            <button onClick={() => handleDelete(item.id)}
-                              className="text-xs px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-500 rounded-lg transition">🗑️</button>
+                            {canCreate && (
+                              <button onClick={() => openEdit(item)}
+                                className="text-xs px-2 py-1 text-slate-500 hover:bg-slate-100 rounded-lg transition">✏️</button>
+                            )}
+                            {canDeleteKpi && (
+                              <button onClick={() => handleDelete(item.id)}
+                                className="text-xs px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-500 rounded-lg transition">🗑️</button>
+                            )}
                           </div>
                         </td>
                       </tr>
