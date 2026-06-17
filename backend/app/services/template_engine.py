@@ -134,7 +134,7 @@ def _expand_loops_xlsx(ws, variables: dict[str, Any]) -> None:
                 for tpl_offset, tpl_row in enumerate(template_rows):
                     actual_row = insert_at + item_idx * num_tpl + tpl_offset
                     for col_idx, val in enumerate(tpl_row, start=1):
-                        new_val = _sub(str(val) if val is not None else "", enriched, None)
+                        new_val = _sub(str(val) if val is not None else "", {}, enriched)
                         ws.cell(row=actual_row, column=col_idx).value = new_val or None
 
         # After inserting num_insert rows at start_row+1:
