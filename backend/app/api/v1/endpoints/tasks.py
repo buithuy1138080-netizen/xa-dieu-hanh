@@ -911,9 +911,6 @@ async def create_task(
         if not p or getattr(p, 'deleted_at', None):
             raise HTTPException(404, "Chương trình không tồn tại")
 
-    if body.start_date and body.due_date and body.due_date < body.start_date:
-        raise HTTPException(400, "Hạn hoàn thành không thể trước ngày bắt đầu")
-
     task_code = await _next_task_code(db)
     t = Task(
         task_code=task_code,

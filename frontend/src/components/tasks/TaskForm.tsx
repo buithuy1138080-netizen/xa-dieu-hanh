@@ -187,6 +187,15 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
     }
   }, [sourceType])
 
+  // Load tên task cha khi mở form từ project detail (initialParentTaskId được truyền vào)
+  useEffect(() => {
+    if (!initialParentTaskId || parentTaskLabel) return
+    tasksApi.get(initialParentTaskId).then((r) => {
+      const t = r.data as any
+      setParentTaskLabel(`${t.task_code ? t.task_code + ' – ' : ''}${t.title}`)
+    }).catch(() => {})
+  }, [initialParentTaskId])
+
   // Load dự án candidates khi search thay đổi (chỉ is_project=true)
   useEffect(() => {
     if (!parentSearch.trim()) { setParentTasks([]); return }
@@ -362,11 +371,11 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
       : null
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-4">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-800">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-2rem)]">
+        {/* Header - cố định */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 shrink-0">
+          <h2 className="text-base font-semibold text-slate-800">
             {task ? 'Cập nhật nhiệm vụ' : 'Tạo nhiệm vụ mới'}
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
@@ -374,7 +383,8 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
 
           {/* ── SECTION 1: Thông tin cơ bản ── */}
           <div className="space-y-3">
@@ -868,24 +878,27 @@ export default function TaskForm({ task, onClose, onSuccess, initialProgramId, i
             </div>
           </div>
 
-          {error && <p className="text-red-500 text-sm">{error}</p>}
+        </div>
 
-          {/* Actions */}
-          <div className="flex gap-3 justify-end pt-1 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors"
-            >
-              Hủy
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 font-medium"
-            >
-              {loading ? 'Đang lưu...' : task ? 'Cập nhật' : 'Tạo nhiệm vụ'}
-            </button>
+          {/* Footer - cố định, luôn hiển thị */}
+          <div className="shrink-0 px-5 py-3 border-t border-slate-100 bg-white rounded-b-2xl">
+            {error && <p className="text-red-500 text-xs mb-2">{error}</p>}
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 font-medium"
+              >
+                {loading ? 'Đang lưu...' : task ? 'Cập nhật' : 'Tạo nhiệm vụ'}
+              </button>
+            </div>
           </div>
         </form>
       </div>
