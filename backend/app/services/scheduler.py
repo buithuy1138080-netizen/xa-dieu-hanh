@@ -304,18 +304,22 @@ scheduler.add_job(
 # ── Zalo notification jobs ────────────────────────────────────────────────────
 
 async def _zalo_task_warnings() -> None:
-    """Send Zalo alerts for tasks overdue or due within 3 days."""
-    from datetime import timedelta
+    """Send Zalo alerts for tasks overdue or due within 3 days.
+
+    Groups tasks per user into a single consolidated message to avoid
+    flooding the same recipient with many individual notifications.
+    """
+    from collections import defaultdict
     from app.models.task import Task
     from app.models.zalo import ZaloConfig, ZaloUserLink
-    from app.services.zalo_notify_engine import notify_event
+    from app.services import zalo_api_service
+    from app.services.zalo_notify_engine import _ensure_token_valid
 
     today = datetime.now(timezone.utc)
     warning_cutoff = today + timedelta(days=3)
 
     try:
         async with AsyncSessionLocal() as db:
-            # Skip entirely if Zalo not configured or no users have zalo_user_id
             cfg = (await db.execute(
                 select(ZaloConfig).where(ZaloConfig.is_active == True).limit(1)
             )).scalar_one_or_none()
@@ -330,7 +334,11 @@ async def _zalo_task_warnings() -> None:
             if not has_uid:
                 log.debug("Zalo task warnings: no users with zalo_user_id, skipping")
                 return
-            # Overdue tasks
+
+            await _ensure_token_valid(db, cfg)
+
+            # Collect overdue tasks grouped by recipient
+            overdue_by_user: dict[int, list[Task]] = defaultdict(list)
             result = await db.execute(
                 select(Task).where(
                     Task.due_date.isnot(None),
@@ -339,30 +347,11 @@ async def _zalo_task_warnings() -> None:
                     Task.status.notin_(["completed", "cancelled"]),
                 )
             )
-            overdue = result.scalars().all()
-            overdue_sent = overdue_failed = 0
-            for task in overdue:
-                target = task.assignee_id or task.created_by
-                due_utc = task.due_date if task.due_date.tzinfo else task.due_date.replace(tzinfo=timezone.utc)
-                days_late = max(0, (today - due_utc).days)
-                logs = await notify_event(
-                    db, "task_overdue",
-                    context={
-                        "task_title": task.title or "",
-                        "days_late": days_late,
-                        "due_date": task.due_date.strftime("%d/%m/%Y"),
-                    },
-                    recipient_user_ids=[target],
-                    entity_type="task", entity_id=task.id,
-                    triggered_by="scheduler", dedup_hours=24,
-                )
-                for l in logs:
-                    if l.status == "sent":
-                        overdue_sent += 1
-                    else:
-                        overdue_failed += 1
+            for task in result.scalars().all():
+                overdue_by_user[task.assignee_id or task.created_by].append(task)
 
-            # Tasks due within 3 days
+            # Collect upcoming tasks grouped by recipient
+            warning_by_user: dict[int, list[Task]] = defaultdict(list)
             result2 = await db.execute(
                 select(Task).where(
                     Task.due_date.isnot(None),
@@ -372,32 +361,67 @@ async def _zalo_task_warnings() -> None:
                     Task.status.notin_(["completed", "cancelled"]),
                 )
             )
-            warn_sent = warn_failed = 0
             for task in result2.scalars().all():
-                target = task.assignee_id or task.created_by
-                due_utc = task.due_date if task.due_date.tzinfo else task.due_date.replace(tzinfo=timezone.utc)
-                days_left = max(0, (due_utc - today).days)
-                logs = await notify_event(
-                    db, "task_warning",
-                    context={
-                        "task_title": task.title or "",
-                        "days_left": days_left,
-                        "due_date": task.due_date.strftime("%d/%m/%Y"),
-                    },
-                    recipient_user_ids=[target],
-                    entity_type="task", entity_id=task.id,
-                    triggered_by="scheduler", dedup_hours=24,
-                )
-                for l in logs:
-                    if l.status == "sent":
-                        warn_sent += 1
-                    else:
-                        warn_failed += 1
+                warning_by_user[task.assignee_id or task.created_by].append(task)
 
-            log.info(
-                "Zalo task warnings: overdue sent=%d failed=%d | warning sent=%d failed=%d",
-                overdue_sent, overdue_failed, warn_sent, warn_failed,
+            all_user_ids = set(overdue_by_user) | set(warning_by_user)
+            if not all_user_ids:
+                return
+
+            # Batch load ZaloUserLinks
+            links_result = await db.execute(
+                select(ZaloUserLink).where(
+                    ZaloUserLink.user_id.in_(all_user_ids),
+                    ZaloUserLink.zalo_user_id.isnot(None),
+                    ZaloUserLink.is_active == True,
+                )
             )
+            links = {lnk.user_id: lnk.zalo_user_id for lnk in links_result.scalars()}
+
+            sent = failed = 0
+            for user_id in all_user_ids:
+                zalo_uid = links.get(user_id)
+                if not zalo_uid:
+                    continue
+
+                lines: list[str] = []
+                overdue_tasks = overdue_by_user.get(user_id, [])
+                warn_tasks = warning_by_user.get(user_id, [])
+
+                if overdue_tasks:
+                    lines.append("⚠️ NHIỆM VỤ QUÁ HẠN:")
+                    for t in overdue_tasks[:10]:
+                        due_utc = t.due_date if t.due_date.tzinfo else t.due_date.replace(tzinfo=timezone.utc)
+                        days_late = max(0, (today - due_utc).days)
+                        lines.append(f"• {t.title} ({days_late} ngày, hạn {t.due_date.strftime('%d/%m/%Y')})")
+                    if len(overdue_tasks) > 10:
+                        lines.append(f"  ... và {len(overdue_tasks) - 10} nhiệm vụ khác")
+
+                if warn_tasks:
+                    if lines:
+                        lines.append("")
+                    lines.append("⏰ SẮP ĐẾN HẠN (3 ngày):")
+                    for t in warn_tasks[:10]:
+                        due_utc = t.due_date if t.due_date.tzinfo else t.due_date.replace(tzinfo=timezone.utc)
+                        days_left = max(0, (due_utc - today).days)
+                        lines.append(f"• {t.title} (còn {days_left} ngày, {t.due_date.strftime('%d/%m/%Y')})")
+                    if len(warn_tasks) > 10:
+                        lines.append(f"  ... và {len(warn_tasks) - 10} nhiệm vụ khác")
+
+                if not lines:
+                    continue
+
+                lines.append("\nVui lòng cập nhật tiến độ trên IOC.")
+                msg = "\n".join(lines)
+
+                result_zalo = await zalo_api_service.send_oa_message(cfg.access_token, zalo_uid, msg)
+                if result_zalo.get("error") == 0:
+                    sent += 1
+                else:
+                    failed += 1
+                    log.warning("Zalo task warnings failed user=%s: %s", user_id, result_zalo.get("message"))
+
+            log.info("Zalo task warnings: sent=%d failed=%d", sent, failed)
     except Exception:
         log.exception("Zalo task warnings job failed")
 
@@ -462,8 +486,9 @@ async def _zalo_kpi_alerts() -> None:
 # Hourly task warnings (06:00–22:00)
 scheduler.add_job(
     _zalo_task_warnings,
-    "interval",
-    hours=1,
+    "cron",
+    hour="6-22",
+    minute=15,
     id="zalo_task_warnings",
     replace_existing=True,
     misfire_grace_time=300,
