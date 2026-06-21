@@ -663,7 +663,7 @@ async def export_tasks_excel(
 
     q = select(Task).where(Task.deleted_at.is_(None))
 
-    if current_user.role not in ("admin", "leader"):
+    if current_user.role == "manager":
         user_dept_id = await _get_user_dept_id(db, current_user.id)
         dept_task_ids = select(TaskDepartment.task_id).where(
             TaskDepartment.department_id == user_dept_id,
@@ -810,10 +810,10 @@ async def list_tasks(
     q = select(Task).where(Task.deleted_at.is_(None))
 
     # ── Role-based visibility filter ──────────────────────────────────────────
-    # admin + leader: see everything
-    # manager + staff: see only tasks where their dept is lead/coordinating,
-    #                  OR they are personally assigned
-    if current_user.role not in ("admin", "leader"):
+    # admin + leader + staff: see everything (write restrictions still apply)
+    # manager: see only tasks where their dept is lead/coordinating,
+    #          OR they are personally assigned/created
+    if current_user.role == "manager":
         user_dept_id = await _get_user_dept_id(db, current_user.id)
         dept_task_ids = select(TaskDepartment.task_id).where(
             TaskDepartment.department_id == user_dept_id,
@@ -1026,7 +1026,7 @@ async def get_stats(
     base_cond = [Task.deleted_at.is_(None)]
 
     # Same role-based filter as list_tasks
-    if current_user.role not in ("admin", "leader"):
+    if current_user.role == "manager":
         user_dept_id = await _get_user_dept_id(db, current_user.id)
         dept_task_ids = select(TaskDepartment.task_id).where(
             TaskDepartment.department_id == user_dept_id,
@@ -1082,16 +1082,25 @@ async def get_overdue(
     current_user: User = Depends(get_current_user),
 ):
     now = datetime.now(timezone.utc)
-    q = (
-        select(Task)
-        .where(
-            Task.deleted_at.is_(None),
-            Task.due_date < now,
-            Task.status.notin_(["completed", "cancelled"]),
+    where = [
+        Task.deleted_at.is_(None),
+        Task.due_date < now,
+        Task.status.notin_(["completed", "cancelled"]),
+    ]
+    if current_user.role == "manager":
+        user_dept_id = await _get_user_dept_id(db, current_user.id)
+        dept_task_ids = select(TaskDepartment.task_id).where(
+            TaskDepartment.department_id == user_dept_id,
+        ) if user_dept_id else select(TaskDepartment.task_id).where(False)
+        where.append(
+            or_(
+                Task.lead_department_id == user_dept_id,
+                Task.id.in_(dept_task_ids),
+                Task.assignee_id == current_user.id,
+                Task.created_by == current_user.id,
+            )
         )
-        .order_by(Task.due_date.asc())
-        .limit(limit)
-    )
+    q = select(Task).where(*where).order_by(Task.due_date.asc()).limit(limit)
     for ld in _LIST_LOADS:
         q = q.options(ld)
     rows = (await db.execute(q)).scalars().all()
@@ -1106,7 +1115,7 @@ async def get_task(
 ):
     t = await _get_task(db, task_id, detail=True)
 
-    if current_user.role not in ("admin", "leader"):
+    if current_user.role == "manager":
         user_dept_id = await _get_user_dept_id(db, current_user.id)
         dept_match = (await db.execute(
             select(TaskDepartment.task_id).where(
