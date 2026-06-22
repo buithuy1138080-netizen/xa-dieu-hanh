@@ -268,12 +268,17 @@ export default function TaskDetailPage() {
     return `/api/v1/tasks/${taskId}/attachments/${attId}/download`
   }
 
+  // apiClient.baseURL = '/api/v1' → truyền path không có prefix /api/v1
+  function toApiPath(fullUrl: string) {
+    return fullUrl.replace(/^\/api\/v1/, '')
+  }
+
   async function openPdf(apiUrl: string) {
     if (viewerUrl === apiUrl) { setViewerUrl(null); return }
     if (blobUrls[apiUrl]) { setViewerUrl(apiUrl); return }
     setPdfLoadingUrl(apiUrl)
     try {
-      const res = await apiClient.get(apiUrl, { responseType: 'blob' })
+      const res = await apiClient.get(toApiPath(apiUrl), { responseType: 'blob' })
       const url = URL.createObjectURL(res.data)
       setBlobUrls(prev => ({ ...prev, [apiUrl]: url }))
       setViewerUrl(apiUrl)
@@ -286,7 +291,7 @@ export default function TaskDetailPage() {
     if (docBlobUrl) { setShowDocViewer(true); return }
     setDocBlobLoading(true)
     try {
-      const res = await apiClient.get(fileUrl, { responseType: 'blob' })
+      const res = await apiClient.get(toApiPath(fileUrl), { responseType: 'blob' })
       const url = URL.createObjectURL(res.data)
       setDocBlobUrl(url)
       setShowDocViewer(true)
