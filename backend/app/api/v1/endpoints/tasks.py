@@ -137,6 +137,11 @@ class DocMin(BaseModel):
     id: int
     title: str
     doc_number: str | None = None
+    summary: str | None = None
+    issue_date: date | None = None
+    received_date: date | None = None
+    file_name: str | None = None
+    file_mime: str | None = None
 
 
 class DirectiveMin(BaseModel):
@@ -1494,6 +1499,126 @@ async def delete_attachment(
         pass
     await db.delete(a)
     await db.commit()
+
+
+@router.get("/{task_id}/attachments/{attachment_id}/download")
+async def download_attachment(
+    task_id: int,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from fastapi.responses import FileResponse as _FR
+    result = await db.execute(
+        select(TaskAttachment).where(
+            TaskAttachment.id == attachment_id,
+            TaskAttachment.task_id == task_id,
+        )
+    )
+    a = result.scalar_one_or_none()
+    if a is None:
+        raise HTTPException(404, "Không tìm thấy file")
+    path = Path(a.file_path)
+    if not path.exists():
+        raise HTTPException(404, "File không tồn tại trên server")
+    ext = Path(a.filename).suffix.lower()
+    mime_map = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+    mime = mime_map.get(ext, "application/octet-stream")
+    disposition = "inline" if ext == ".pdf" else "attachment"
+    return _FR(path=str(path), filename=a.filename, media_type=mime,
+               headers={"Content-Disposition": f'{disposition}; filename="{a.filename}"'})
+
+
+@router.post("/{task_id}/attachments/{attachment_id}/extract")
+async def extract_from_attachment(
+    task_id: int,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Dùng AI trích xuất số văn bản và ngày ban hành từ file đính kèm."""
+    result = await db.execute(
+        select(TaskAttachment).where(
+            TaskAttachment.id == attachment_id,
+            TaskAttachment.task_id == task_id,
+        )
+    )
+    a = result.scalar_one_or_none()
+    if a is None:
+        raise HTTPException(404, "Không tìm thấy file")
+    path = Path(a.file_path)
+    if not path.exists():
+        raise HTTPException(404, "File không tồn tại trên server")
+
+    from app.core.config import settings as _s
+    import base64 as _b64
+
+    ext = Path(a.filename).suffix.lower()
+    if ext not in {".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx"}:
+        raise HTTPException(400, "Định dạng file không hỗ trợ trích xuất AI")
+
+    # Build prompt for extraction
+    prompt = (
+        "Đây là văn bản hành chính Việt Nam. "
+        "Hãy trích xuất chính xác:\n"
+        "1. Số/ký hiệu văn bản (ví dụ: 123/UBND-VP, 45/QĐ-UBND)\n"
+        "2. Ngày ban hành (định dạng DD/MM/YYYY)\n"
+        "Trả về JSON: {\"doc_number\": \"...\", \"issue_date\": \"DD/MM/YYYY\"}\n"
+        "Nếu không tìm thấy thông tin, trả về null cho trường đó."
+    )
+
+    try:
+        if _s.GEMINI_API_KEY and ext in {".pdf", ".png", ".jpg", ".jpeg"}:
+            from google import genai as _genai
+            client = _genai.Client(api_key=_s.GEMINI_API_KEY)
+            mime_map = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+            file_mime = mime_map.get(ext, "application/octet-stream")
+            raw = path.read_bytes()
+            b64 = _b64.b64encode(raw).decode()
+            response = client.models.generate_content(
+                model="models/gemini-2.5-flash",
+                contents=[
+                    _genai.types.Content(role="user", parts=[
+                        _genai.types.Part.from_bytes(data=_b64.b64decode(b64), mime_type=file_mime),
+                        _genai.types.Part.from_text(text=prompt),
+                    ])
+                ],
+            )
+            text = response.text or ""
+        elif _s.GROQ_API_KEY and ext in {".doc", ".docx"}:
+            # For Word docs, extract text first then use Groq
+            import docx2txt as _docx2txt
+            text_content = _docx2txt.process(str(path))[:3000]
+            from groq import AsyncGroq
+            groq = AsyncGroq(api_key=_s.GROQ_API_KEY)
+            resp = await groq.chat.completions.create(
+                model=_s.GROQ_MODEL,
+                messages=[
+                    {"role": "user", "content": f"{prompt}\n\nNội dung văn bản:\n{text_content}"}
+                ],
+                max_tokens=200,
+                temperature=0.1,
+            )
+            text = resp.choices[0].message.content or ""
+        else:
+            raise HTTPException(503, "Chưa cấu hình API AI để trích xuất")
+
+        # Parse JSON from response
+        import re as _re
+        import json as _json
+        m = _re.search(r'\{[^{}]+\}', text, _re.DOTALL)
+        if m:
+            data = _json.loads(m.group())
+            return {
+                "doc_number": data.get("doc_number"),
+                "issue_date": data.get("issue_date"),
+                "raw_response": text,
+            }
+        return {"doc_number": None, "issue_date": None, "raw_response": text}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(500, f"Lỗi trích xuất AI: {str(exc)[:200]}")
 
 
 # ── Departments ───────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle, ChevronRight, ClipboardList, FileText, Paperclip, Send,
   Trash2, Activity, Clock, User, Building2, MessageSquare, Pencil, X, ListTree, Plus,
+  Download, Eye, Bot, CalendarDays, Hash, BookOpen,
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { tasksApi } from '../../api/tasks'
@@ -75,6 +76,9 @@ export default function TaskDetailPage() {
   const [showCreateSubtask, setShowCreateSubtask] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null)
+  const [extracting, setExtracting] = useState<number | null>(null)
+  const [extractResult, setExtractResult] = useState<Record<number, { doc_number: string | null; issue_date: string | null }>>({})
   const fileRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
 
@@ -236,6 +240,26 @@ export default function TaskDetailPage() {
     }
   }
 
+  async function handleExtractAI(attId: number) {
+    if (!task) return
+    setExtracting(attId)
+    try {
+      const { data } = await import('../../api/client').then(m => m.default.post(
+        `/tasks/${task.id}/attachments/${attId}/extract`
+      ))
+      setExtractResult(prev => ({ ...prev, [attId]: data }))
+      showToast('Trích xuất thành công')
+    } catch {
+      showToast('Trích xuất thất bại — kiểm tra lại cấu hình AI', 'error')
+    } finally {
+      setExtracting(null)
+    }
+  }
+
+  function attachmentDownloadUrl(taskId: number, attId: number) {
+    return `/api/v1/tasks/${taskId}/attachments/${attId}/download`
+  }
+
   async function handleDelete() {
     if (!task || !confirm(`Xóa nhiệm vụ "${task.title}"?`)) return
     try {
@@ -293,8 +317,69 @@ export default function TaskDetailPage() {
           <span className="text-slate-600 font-medium truncate max-w-xs">{task.title}</span>
         </nav>
 
-        {/* Source banner */}
-        {sourceLabel && (
+        {/* Linked document panel */}
+        {(task.incoming_document || task.outgoing_document) && (() => {
+          const doc = task.incoming_document || task.outgoing_document
+          const isIncoming = !!task.incoming_document
+          if (!doc) return null
+          return (
+            <div className="bg-blue-50 border border-blue-100 rounded-xl overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-blue-100">
+                <FileText size={14} className={isIncoming ? 'text-blue-500' : 'text-teal-500'} />
+                <span className="text-xs font-bold uppercase tracking-wide text-blue-600 opacity-80">
+                  {isIncoming ? 'Văn bản đến' : 'Văn bản đi'} liên kết
+                </span>
+                <a
+                  href={`/documents/${doc.id}`}
+                  className="ml-auto text-xs text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-1"
+                >
+                  <BookOpen size={11} /> Mở văn bản
+                </a>
+              </div>
+              {/* Content */}
+              <div className="px-4 py-3 space-y-2">
+                <p className="text-sm font-semibold text-slate-800">{doc.title}</p>
+                <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+                  {doc.doc_number && (
+                    <span className="flex items-center gap-1.5 text-xs text-slate-600">
+                      <Hash size={11} className="text-blue-400" />
+                      <span className="font-mono font-semibold">{doc.doc_number}</span>
+                    </span>
+                  )}
+                  {doc.issue_date && (
+                    <span className="flex items-center gap-1.5 text-xs text-slate-600">
+                      <CalendarDays size={11} className="text-blue-400" />
+                      Ngày ban hành: <span className="font-medium">{new Date(doc.issue_date).toLocaleDateString('vi-VN')}</span>
+                    </span>
+                  )}
+                  {doc.received_date && (
+                    <span className="flex items-center gap-1.5 text-xs text-slate-600">
+                      <CalendarDays size={11} className="text-slate-400" />
+                      Ngày nhận: <span className="font-medium">{new Date(doc.received_date).toLocaleDateString('vi-VN')}</span>
+                    </span>
+                  )}
+                  {doc.file_name && (
+                    <a
+                      href={`/api/v1/documents/${doc.id}/file`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 font-medium"
+                    >
+                      <Eye size={11} /> {doc.file_mime === 'application/pdf' ? 'Xem PDF' : 'Tải file'}
+                    </a>
+                  )}
+                </div>
+                {doc.summary && (
+                  <p className="text-xs text-slate-500 leading-relaxed border-t border-blue-100 pt-2 mt-1 line-clamp-3">
+                    {doc.summary}
+                  </p>
+                )}
+              </div>
+            </div>
+          )
+        })()}
+        {task.directive_id && sourceLabel && (
           <div className={`flex items-center gap-2.5 px-4 py-2.5 border rounded-xl text-sm font-medium ${sourceLabel.cls}`}>
             {sourceLabel.icon}
             <span className="font-semibold text-xs uppercase tracking-wide opacity-70 mr-1">Nguồn:</span>
@@ -558,25 +643,97 @@ export default function TaskDetailPage() {
                 </div>
               )}
               <div className="space-y-2">
-                {task.attachments.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors group">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                        <Paperclip size={13} className="text-blue-400" />
+                {task.attachments.map((a) => {
+                  const isPdf = a.filename.toLowerCase().endsWith('.pdf')
+                  const dlUrl = attachmentDownloadUrl(task.id, a.id)
+                  const res = extractResult[a.id]
+                  return (
+                    <div key={a.id} className="flex flex-col gap-1.5 px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors group">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                            <Paperclip size={13} className="text-blue-400" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm text-slate-700 font-medium truncate">{a.filename}</p>
+                            <p className="text-[10px] text-slate-400">{fmtBytes(a.file_size)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isPdf && (
+                            <button
+                              onClick={() => setViewerUrl(viewerUrl === dlUrl ? null : dlUrl)}
+                              className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
+                            >
+                              <Eye size={11} />{viewerUrl === dlUrl ? 'Đóng' : 'Xem'}
+                            </button>
+                          )}
+                          <a
+                            href={dlUrl}
+                            download={!isPdf}
+                            target={isPdf ? '_blank' : undefined}
+                            rel="noreferrer"
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors"
+                          >
+                            <Download size={11} />Tải
+                          </a>
+                          <button
+                            onClick={() => handleExtractAI(a.id)}
+                            disabled={extracting === a.id}
+                            title="Dùng AI trích xuất số và ngày văn bản"
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-purple-200 text-purple-600 hover:bg-purple-50 disabled:opacity-50 transition-colors"
+                          >
+                            <Bot size={11} />{extracting === a.id ? '...' : 'AI'}
+                          </button>
+                          {!isViewOnly && (
+                            <button
+                              onClick={() => handleDeleteAttachment(a.id)}
+                              className="text-slate-300 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm text-slate-700 font-medium">{a.filename}</p>
-                        <p className="text-[10px] text-slate-400">{fmtBytes(a.file_size)}</p>
-                      </div>
+                      {/* AI extraction result */}
+                      {res && (
+                        <div className="flex flex-wrap gap-3 px-2.5 py-2 bg-purple-50 rounded-lg border border-purple-100 text-xs">
+                          <span className="flex items-center gap-1 font-semibold text-purple-700">
+                            <Bot size={10} /> Kết quả AI:
+                          </span>
+                          {res.doc_number && (
+                            <span className="flex items-center gap-1 text-slate-700">
+                              <Hash size={10} className="text-purple-400" />
+                              Số: <span className="font-mono font-semibold">{res.doc_number}</span>
+                              <button onClick={() => navigator.clipboard.writeText(res.doc_number!)} className="text-purple-400 hover:text-purple-600 ml-1">⎘</button>
+                            </span>
+                          )}
+                          {res.issue_date && (
+                            <span className="flex items-center gap-1 text-slate-700">
+                              <CalendarDays size={10} className="text-purple-400" />
+                              Ngày: <span className="font-semibold">{res.issue_date}</span>
+                              <button onClick={() => navigator.clipboard.writeText(res.issue_date!)} className="text-purple-400 hover:text-purple-600 ml-1">⎘</button>
+                            </span>
+                          )}
+                          {!res.doc_number && !res.issue_date && (
+                            <span className="text-slate-400 italic">Không tìm thấy thông tin</span>
+                          )}
+                        </div>
+                      )}
+                      {/* Inline PDF viewer */}
+                      {viewerUrl === dlUrl && (
+                        <div className="mt-1 rounded-lg overflow-hidden border border-slate-200 bg-white">
+                          <iframe
+                            src={dlUrl}
+                            title={a.filename}
+                            className="w-full"
+                            style={{ height: '600px' }}
+                          />
+                        </div>
+                      )}
                     </div>
-                    <button
-                      onClick={() => handleDeleteAttachment(a.id)}
-                      className="text-slate-300 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </Card>
             </div>{/* end data-section="attachments" */}

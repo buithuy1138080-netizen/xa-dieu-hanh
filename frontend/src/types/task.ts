@@ -26,6 +26,11 @@ export interface DocMin {
   id: number
   title: string
   doc_number: string | null
+  summary: string | null
+  issue_date: string | null
+  received_date: string | null
+  file_name: string | null
+  file_mime: string | null
 }
 
 export interface DirectiveMin {
