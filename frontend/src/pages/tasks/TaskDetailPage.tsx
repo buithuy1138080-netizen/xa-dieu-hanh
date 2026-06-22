@@ -79,6 +79,7 @@ export default function TaskDetailPage() {
   const [viewerUrl, setViewerUrl] = useState<string | null>(null)
   const [extracting, setExtracting] = useState<number | null>(null)
   const [extractResult, setExtractResult] = useState<Record<number, { doc_number: string | null; issue_date: string | null }>>({})
+  const [showFullDirective, setShowFullDirective] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
 
@@ -379,13 +380,74 @@ export default function TaskDetailPage() {
             </div>
           )
         })()}
-        {task.directive_id && sourceLabel && (
-          <div className={`flex items-center gap-2.5 px-4 py-2.5 border rounded-xl text-sm font-medium ${sourceLabel.cls}`}>
-            {sourceLabel.icon}
-            <span className="font-semibold text-xs uppercase tracking-wide opacity-70 mr-1">Nguồn:</span>
-            <span>{sourceLabel.text}</span>
-          </div>
-        )}
+        {/* Directive content panel */}
+        {task.directive && (() => {
+          const d = task.directive
+          const priorityMap: Record<string, string> = { urgent: '🔴 Khẩn', high: '🟠 Cao', normal: '🟢 Thường', low: '⚪ Thấp' }
+          const hasLongContent = (d.content?.length ?? 0) > 400
+          return (
+            <div className="bg-purple-50 border border-purple-100 rounded-xl overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-purple-100">
+                <ClipboardList size={14} className="text-purple-500" />
+                <span className="text-xs font-bold uppercase tracking-wide text-purple-700 opacity-80">Chỉ đạo liên kết</span>
+                {d.priority && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-600 ml-1">
+                    {priorityMap[d.priority] ?? d.priority}
+                  </span>
+                )}
+                <a
+                  href={`/directives/${d.id}`}
+                  className="ml-auto text-xs text-purple-500 hover:text-purple-700 font-semibold flex items-center gap-1"
+                >
+                  <BookOpen size={11} /> Mở chỉ đạo
+                </a>
+              </div>
+              {/* Body */}
+              <div className="px-4 py-3 space-y-2">
+                <p className="text-sm font-semibold text-slate-800">{d.title}</p>
+                <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+                  {d.issued_date && (
+                    <span className="flex items-center gap-1.5 text-xs text-slate-600">
+                      <CalendarDays size={11} className="text-purple-400" />
+                      Ngày ban hành: <span className="font-medium">{new Date(d.issued_date).toLocaleDateString('vi-VN')}</span>
+                    </span>
+                  )}
+                  {d.deadline && (
+                    <span className="flex items-center gap-1.5 text-xs text-slate-600">
+                      <Clock size={11} className="text-orange-400" />
+                      Hạn thực hiện: <span className="font-medium">{new Date(d.deadline).toLocaleDateString('vi-VN')}</span>
+                    </span>
+                  )}
+                  {d.progress > 0 && (
+                    <span className="flex items-center gap-1.5 text-xs text-slate-600">
+                      <Activity size={11} className="text-purple-400" />
+                      Tiến độ: <span className="font-semibold text-purple-600">{d.progress}%</span>
+                    </span>
+                  )}
+                </div>
+                {d.content && (
+                  <div className="border-t border-purple-100 pt-2 mt-1">
+                    <p className={`text-sm text-slate-700 leading-relaxed whitespace-pre-wrap ${!showFullDirective && hasLongContent ? 'line-clamp-5' : ''}`}>
+                      {d.content}
+                    </p>
+                    {hasLongContent && (
+                      <button
+                        onClick={() => setShowFullDirective(!showFullDirective)}
+                        className="mt-1.5 text-xs text-purple-500 hover:text-purple-700 font-semibold"
+                      >
+                        {showFullDirective ? '▲ Thu gọn' : '▼ Xem toàn bộ nội dung'}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {!d.content && (
+                  <p className="text-xs text-slate-400 italic border-t border-purple-100 pt-2">Chưa có nội dung chỉ đạo</p>
+                )}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Title + actions */}
         <div className="flex items-start justify-between gap-4">

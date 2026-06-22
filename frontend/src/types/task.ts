@@ -36,6 +36,11 @@ export interface DocMin {
 export interface DirectiveMin {
   id: number
   title: string
+  content: string | null
+  issued_date: string | null
+  deadline: string | null
+  priority: string | null
+  progress: number
 }
 
 export interface TaskDepartment {

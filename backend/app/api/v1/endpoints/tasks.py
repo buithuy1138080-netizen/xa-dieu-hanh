@@ -148,6 +148,11 @@ class DirectiveMin(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     title: str
+    content: str | None = None
+    issued_date: date | None = None
+    deadline: datetime | None = None
+    priority: str | None = None
+    progress: int = 0
 
 
 class TaskDeptRead(BaseModel):
