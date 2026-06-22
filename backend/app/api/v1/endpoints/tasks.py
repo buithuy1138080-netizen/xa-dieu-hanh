@@ -138,6 +138,7 @@ class DocMin(BaseModel):
     title: str
     doc_number: str | None = None
     summary: str | None = None
+    raw_text: str | None = None
     issue_date: date | None = None
     received_date: date | None = None
     file_name: str | None = None

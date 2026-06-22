@@ -80,6 +80,7 @@ export default function TaskDetailPage() {
   const [extracting, setExtracting] = useState<number | null>(null)
   const [extractResult, setExtractResult] = useState<Record<number, { doc_number: string | null; issue_date: string | null }>>({})
   const [showFullDirective, setShowFullDirective] = useState(false)
+  const [showFullDocument, setShowFullDocument] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
 
@@ -293,14 +294,6 @@ export default function TaskDetailPage() {
     </AppLayout>
   )
 
-  const sourceLabel = task.directive_id
-    ? { icon: <ClipboardList size={13} className="text-purple-500" />, text: `Chỉ đạo #${task.directive_id}${task.directive ? ': ' + task.directive.title : ''}`, cls: 'bg-purple-50 border-purple-100 text-purple-700' }
-    : task.incoming_document_id
-    ? { icon: <FileText size={13} className="text-blue-500" />, text: `VB đến #${task.incoming_document_id}${task.incoming_document ? ': ' + (task.incoming_document.doc_number || task.incoming_document.title) : ''}`, cls: 'bg-blue-50 border-blue-100 text-blue-700' }
-    : task.outgoing_document_id
-    ? { icon: <FileText size={13} className="text-teal-500" />, text: `VB đi #${task.outgoing_document_id}${task.outgoing_document ? ': ' + (task.outgoing_document.doc_number || task.outgoing_document.title) : ''}`, cls: 'bg-teal-50 border-teal-100 text-teal-700' }
-    : null
-
   return (
     <AppLayout>
       {toast && (
@@ -323,6 +316,8 @@ export default function TaskDetailPage() {
           const doc = task.incoming_document || task.outgoing_document
           const isIncoming = !!task.incoming_document
           if (!doc) return null
+          const docContent = doc.raw_text || doc.summary || null
+          const hasLongDocContent = (docContent?.length ?? 0) > 500
           return (
             <div className="bg-blue-50 border border-blue-100 rounded-xl overflow-hidden">
               {/* Header */}
@@ -331,9 +326,19 @@ export default function TaskDetailPage() {
                 <span className="text-xs font-bold uppercase tracking-wide text-blue-600 opacity-80">
                   {isIncoming ? 'Văn bản đến' : 'Văn bản đi'} liên kết
                 </span>
+                {doc.file_name && (
+                  <a
+                    href={`/api/v1/documents/${doc.id}/file`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-auto text-xs text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-1"
+                  >
+                    <Eye size={11} /> {doc.file_mime === 'application/pdf' ? 'Xem PDF' : 'Tải file'}
+                  </a>
+                )}
                 <a
                   href={`/documents/${doc.id}`}
-                  className="ml-auto text-xs text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-1"
+                  className={`${doc.file_name ? 'ml-3' : 'ml-auto'} text-xs text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-1`}
                 >
                   <BookOpen size={11} /> Mở văn bản
                 </a>
@@ -360,21 +365,23 @@ export default function TaskDetailPage() {
                       Ngày nhận: <span className="font-medium">{new Date(doc.received_date).toLocaleDateString('vi-VN')}</span>
                     </span>
                   )}
-                  {doc.file_name && (
-                    <a
-                      href={`/api/v1/documents/${doc.id}/file`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 font-medium"
-                    >
-                      <Eye size={11} /> {doc.file_mime === 'application/pdf' ? 'Xem PDF' : 'Tải file'}
-                    </a>
-                  )}
                 </div>
-                {doc.summary && (
-                  <p className="text-xs text-slate-500 leading-relaxed border-t border-blue-100 pt-2 mt-1 line-clamp-3">
-                    {doc.summary}
-                  </p>
+                {docContent ? (
+                  <div className="border-t border-blue-100 pt-2 mt-1">
+                    <p className={`text-sm text-slate-700 leading-relaxed whitespace-pre-wrap ${!showFullDocument && hasLongDocContent ? 'line-clamp-5' : ''}`}>
+                      {docContent}
+                    </p>
+                    {hasLongDocContent && (
+                      <button
+                        onClick={() => setShowFullDocument(!showFullDocument)}
+                        className="mt-1.5 text-xs text-blue-500 hover:text-blue-700 font-semibold"
+                      >
+                        {showFullDocument ? '▲ Thu gọn' : '▼ Xem toàn bộ nội dung'}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic border-t border-blue-100 pt-2">Chưa có nội dung văn bản</p>
                 )}
               </div>
             </div>
