@@ -81,6 +81,7 @@ export default function TaskDetailPage() {
   const [extractResult, setExtractResult] = useState<Record<number, { doc_number: string | null; issue_date: string | null }>>({})
   const [showFullDirective, setShowFullDirective] = useState(false)
   const [showFullDocument, setShowFullDocument] = useState(false)
+  const [showDocViewer, setShowDocViewer] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
 
@@ -318,6 +319,8 @@ export default function TaskDetailPage() {
           if (!doc) return null
           const docContent = doc.raw_text || doc.summary || null
           const hasLongDocContent = (docContent?.length ?? 0) > 500
+          const isPdf = doc.file_mime === 'application/pdf'
+          const fileUrl = doc.file_name ? `/api/v1/documents/${doc.id}/file` : null
           return (
             <div className="bg-blue-50 border border-blue-100 rounded-xl overflow-hidden">
               {/* Header */}
@@ -326,24 +329,25 @@ export default function TaskDetailPage() {
                 <span className="text-xs font-bold uppercase tracking-wide text-blue-600 opacity-80">
                   {isIncoming ? 'Văn bản đến' : 'Văn bản đi'} liên kết
                 </span>
-                {doc.file_name && (
+                <div className="ml-auto flex items-center gap-2">
+                  {fileUrl && (
+                    <button
+                      onClick={() => setShowDocViewer(v => !v)}
+                      className={`text-xs font-semibold flex items-center gap-1 px-2.5 py-1 rounded-lg transition-colors ${showDocViewer ? 'bg-blue-200 text-blue-800' : 'bg-blue-100 hover:bg-blue-200 text-blue-600 hover:text-blue-800'}`}
+                    >
+                      <Eye size={11} /> {showDocViewer ? 'Đóng' : (isPdf ? 'Xem văn bản' : 'Tải file')}
+                    </button>
+                  )}
                   <a
-                    href={`/api/v1/documents/${doc.id}/file`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="ml-auto text-xs text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-1"
+                    href={`/documents/${doc.id}`}
+                    className="text-xs text-blue-400 hover:text-blue-600 font-medium flex items-center gap-1"
+                    title="Mở trang quản lý văn bản"
                   >
-                    <Eye size={11} /> {doc.file_mime === 'application/pdf' ? 'Xem PDF' : 'Tải file'}
+                    <BookOpen size={11} /> Trang VB
                   </a>
-                )}
-                <a
-                  href={`/documents/${doc.id}`}
-                  className={`${doc.file_name ? 'ml-3' : 'ml-auto'} text-xs text-blue-500 hover:text-blue-700 font-semibold flex items-center gap-1`}
-                >
-                  <BookOpen size={11} /> Mở văn bản
-                </a>
+                </div>
               </div>
-              {/* Content */}
+              {/* Meta */}
               <div className="px-4 py-3 space-y-2">
                 <p className="text-sm font-semibold text-slate-800">{doc.title}</p>
                 <div className="flex flex-wrap gap-x-5 gap-y-1.5">
@@ -366,21 +370,34 @@ export default function TaskDetailPage() {
                     </span>
                   )}
                 </div>
-                {docContent ? (
+                {/* Inline PDF viewer */}
+                {showDocViewer && fileUrl && isPdf && (
+                  <div className="border-t border-blue-100 pt-2 mt-1">
+                    <iframe
+                      src={fileUrl}
+                      className="w-full rounded-lg border border-blue-200 bg-white"
+                      style={{ height: '65vh', minHeight: '400px' }}
+                      title={doc.title}
+                    />
+                  </div>
+                )}
+                {/* Text content (khi không có file hoặc file không phải PDF) */}
+                {!showDocViewer && docContent && (
                   <div className="border-t border-blue-100 pt-2 mt-1">
                     <p className={`text-sm text-slate-700 leading-relaxed whitespace-pre-wrap ${!showFullDocument && hasLongDocContent ? 'line-clamp-5' : ''}`}>
                       {docContent}
                     </p>
                     {hasLongDocContent && (
                       <button
-                        onClick={() => setShowFullDocument(!showFullDocument)}
+                        onClick={() => setShowFullDocument(v => !v)}
                         className="mt-1.5 text-xs text-blue-500 hover:text-blue-700 font-semibold"
                       >
-                        {showFullDocument ? '▲ Thu gọn' : '▼ Xem toàn bộ nội dung'}
+                        {showFullDocument ? '▲ Thu gọn' : '▼ Xem toàn bộ nội dung văn bản'}
                       </button>
                     )}
                   </div>
-                ) : (
+                )}
+                {!showDocViewer && !docContent && !fileUrl && (
                   <p className="text-xs text-slate-400 italic border-t border-blue-100 pt-2">Chưa có nội dung văn bản</p>
                 )}
               </div>
