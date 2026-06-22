@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { tasksApi } from '../../api/tasks'
+import apiClient from '../../api/client'
 import { getApiErrorMessage } from '../../utils/apiError'
 import AppLayout from '../../components/layout/AppLayout'
 import PriorityBadge from '../../components/tasks/PriorityBadge'
@@ -82,6 +83,10 @@ export default function TaskDetailPage() {
   const [showFullDirective, setShowFullDirective] = useState(false)
   const [showFullDocument, setShowFullDocument] = useState(false)
   const [showDocViewer, setShowDocViewer] = useState(false)
+  const [blobUrls, setBlobUrls] = useState<Record<string, string>>({})
+  const [pdfLoadingUrl, setPdfLoadingUrl] = useState<string | null>(null)
+  const [docBlobUrl, setDocBlobUrl] = useState<string | null>(null)
+  const [docBlobLoading, setDocBlobLoading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
 
@@ -263,6 +268,32 @@ export default function TaskDetailPage() {
     return `/api/v1/tasks/${taskId}/attachments/${attId}/download`
   }
 
+  async function openPdf(apiUrl: string) {
+    if (viewerUrl === apiUrl) { setViewerUrl(null); return }
+    if (blobUrls[apiUrl]) { setViewerUrl(apiUrl); return }
+    setPdfLoadingUrl(apiUrl)
+    try {
+      const res = await apiClient.get(apiUrl, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      setBlobUrls(prev => ({ ...prev, [apiUrl]: url }))
+      setViewerUrl(apiUrl)
+    } catch { showToast('Không thể tải file PDF', 'error') }
+    finally { setPdfLoadingUrl(null) }
+  }
+
+  async function openDocPdf(fileUrl: string) {
+    if (showDocViewer && docBlobUrl) { setShowDocViewer(false); return }
+    if (docBlobUrl) { setShowDocViewer(true); return }
+    setDocBlobLoading(true)
+    try {
+      const res = await apiClient.get(fileUrl, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      setDocBlobUrl(url)
+      setShowDocViewer(true)
+    } catch { showToast('Không thể tải file văn bản', 'error') }
+    finally { setDocBlobLoading(false) }
+  }
+
   async function handleDelete() {
     if (!task || !confirm(`Xóa nhiệm vụ "${task.title}"?`)) return
     try {
@@ -330,13 +361,19 @@ export default function TaskDetailPage() {
                   {isIncoming ? 'Văn bản đến' : 'Văn bản đi'} liên kết
                 </span>
                 <div className="ml-auto flex items-center gap-2">
-                  {fileUrl && (
+                  {fileUrl && isPdf && (
                     <button
-                      onClick={() => setShowDocViewer(v => !v)}
+                      onClick={() => openDocPdf(fileUrl)}
+                      disabled={docBlobLoading}
                       className={`text-xs font-semibold flex items-center gap-1 px-2.5 py-1 rounded-lg transition-colors ${showDocViewer ? 'bg-blue-200 text-blue-800' : 'bg-blue-100 hover:bg-blue-200 text-blue-600 hover:text-blue-800'}`}
                     >
-                      <Eye size={11} /> {showDocViewer ? 'Đóng' : (isPdf ? 'Xem văn bản' : 'Tải file')}
+                      <Eye size={11} /> {docBlobLoading ? 'Đang tải...' : showDocViewer ? 'Đóng' : 'Xem văn bản'}
                     </button>
+                  )}
+                  {fileUrl && !isPdf && (
+                    <a href={fileUrl} download className="text-xs font-semibold flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors">
+                      <Download size={11} /> Tải file
+                    </a>
                   )}
                   <a
                     href={`/documents/${doc.id}`}
@@ -371,10 +408,10 @@ export default function TaskDetailPage() {
                   )}
                 </div>
                 {/* Inline PDF viewer */}
-                {showDocViewer && fileUrl && isPdf && (
+                {showDocViewer && docBlobUrl && (
                   <div className="border-t border-blue-100 pt-2 mt-1">
                     <iframe
-                      src={fileUrl}
+                      src={docBlobUrl}
                       className="w-full rounded-lg border border-blue-200 bg-white"
                       style={{ height: '65vh', minHeight: '400px' }}
                       title={doc.title}
@@ -748,10 +785,11 @@ export default function TaskDetailPage() {
                         <div className="flex items-center gap-1.5 shrink-0">
                           {isPdf && (
                             <button
-                              onClick={() => setViewerUrl(viewerUrl === dlUrl ? null : dlUrl)}
-                              className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
+                              onClick={() => openPdf(dlUrl)}
+                              disabled={pdfLoadingUrl === dlUrl}
+                              className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 disabled:opacity-50 transition-colors"
                             >
-                              <Eye size={11} />{viewerUrl === dlUrl ? 'Đóng' : 'Xem'}
+                              <Eye size={11} />{pdfLoadingUrl === dlUrl ? '...' : viewerUrl === dlUrl ? 'Đóng' : 'Xem'}
                             </button>
                           )}
                           <a
@@ -807,10 +845,10 @@ export default function TaskDetailPage() {
                         </div>
                       )}
                       {/* Inline PDF viewer */}
-                      {viewerUrl === dlUrl && (
+                      {viewerUrl === dlUrl && blobUrls[dlUrl] && (
                         <div className="mt-1 rounded-lg overflow-hidden border border-slate-200 bg-white">
                           <iframe
-                            src={dlUrl}
+                            src={blobUrls[dlUrl]}
                             title={a.filename}
                             className="w-full"
                             style={{ height: '600px' }}

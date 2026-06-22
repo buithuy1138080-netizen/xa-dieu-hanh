@@ -1153,12 +1153,30 @@ async def get_task(
     def _doc_min(doc: Any) -> dict | None:
         if doc is None:
             return None
-        return {"id": doc.id, "title": doc.title, "doc_number": getattr(doc, "doc_number", None)}
+        return {
+            "id": doc.id,
+            "title": doc.title,
+            "doc_number": getattr(doc, "doc_number", None),
+            "summary": getattr(doc, "summary", None),
+            "raw_text": getattr(doc, "raw_text", None),
+            "issue_date": getattr(doc, "issue_date", None),
+            "received_date": getattr(doc, "received_date", None),
+            "file_name": getattr(doc, "file_name", None),
+            "file_mime": getattr(doc, "file_mime", None),
+        }
 
     def _dir_min(drv: Any) -> dict | None:
         if drv is None:
             return None
-        return {"id": drv.id, "title": drv.title}
+        return {
+            "id": drv.id,
+            "title": drv.title,
+            "content": getattr(drv, "content", None),
+            "issued_date": getattr(drv, "issued_date", None),
+            "deadline": getattr(drv, "deadline", None),
+            "priority": getattr(drv, "priority", None),
+            "progress": getattr(drv, "progress", 0),
+        }
 
     d["updater"] = _user_min(t.updater)
     d["supervisor"] = _user_min(t.supervisor)
