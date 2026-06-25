@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Eye, EyeOff, KeyRound, X } from 'lucide-react'
 import apiClient from '../../api/client'
 
@@ -53,7 +54,7 @@ export default function ChangePasswordModal({ onClose }: Props) {
     }
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
         {/* Header */}
@@ -175,6 +176,7 @@ export default function ChangePasswordModal({ onClose }: Props) {
           )}
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
