@@ -45,6 +45,10 @@ router = APIRouter()
 DIR_UPLOAD = Path(_settings.UPLOAD_DIR) / "directives"
 DIR_UPLOAD.mkdir(parents=True, exist_ok=True)
 
+
+def _like(s: str) -> str:
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
 VALID_STATUSES = {"draft", "active", "completed", "cancelled"}
 ALLOWED_UPLOAD_EXTS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg"}
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
@@ -172,8 +176,8 @@ async def list_directives(
     conditions = [Directive.deleted_at.is_(None)]
     if search:
         conditions.append(or_(
-            Directive.title.ilike(f"%{search}%"),
-            Directive.content.ilike(f"%{search}%"),
+            Directive.title.ilike(f"%{_like(search)}%", escape="\\"),
+            Directive.content.ilike(f"%{_like(search)}%", escape="\\"),
         ))
     if dir_status:
         conditions.append(Directive.status == dir_status)
@@ -639,7 +643,9 @@ async def download_attachment(
     )).scalar_one_or_none()
     if not att:
         raise HTTPException(404, "Không tìm thấy file")
-    p = Path(att.file_path)
+    p = Path(att.file_path).resolve()
+    if not str(p).startswith(str(DIR_UPLOAD.resolve().parent)):
+        raise HTTPException(403, "Đường dẫn file không hợp lệ")
     if not p.exists():
         raise HTTPException(404, "File không tồn tại")
     return FileResponse(path=str(p), filename=att.filename, media_type=att.file_mime or "application/octet-stream")

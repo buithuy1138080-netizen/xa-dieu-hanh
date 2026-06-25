@@ -40,6 +40,11 @@ router = APIRouter()
 DOC_UPLOAD_DIR = Path(_settings.UPLOAD_DIR) / "documents"
 DOC_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+
+def _like(s: str) -> str:
+    """Escape LIKE wildcards để tránh kết quả tìm kiếm sai."""
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
 VALID_STATUSES = {"pending", "processing", "done", "archived"}
 VALID_TYPES = {"incoming", "outgoing", "internal"}
 VALID_PRIORITIES = {"normal", "urgent", "very_urgent"}
@@ -299,9 +304,9 @@ async def list_documents(
     conditions = [Document.deleted_at.is_(None)]
     if search:
         conditions.append(or_(
-            Document.title.ilike(f"%{search}%"),
-            Document.doc_number.ilike(f"%{search}%"),
-            Document.issuer.ilike(f"%{search}%"),
+            Document.title.ilike(f"%{_like(search)}%", escape="\\"),
+            Document.doc_number.ilike(f"%{_like(search)}%", escape="\\"),
+            Document.issuer.ilike(f"%{_like(search)}%", escape="\\"),
         ))
     if doc_type:
         conditions.append(Document.doc_type == doc_type)
@@ -310,7 +315,7 @@ async def list_documents(
     if priority:
         conditions.append(Document.priority == priority)
     if issuer:
-        conditions.append(Document.issuer.ilike(f"%{issuer}%"))
+        conditions.append(Document.issuer.ilike(f"%{_like(issuer)}%", escape="\\"))
     if assignee_id:
         conditions.append(Document.assignee_id == assignee_id)
     if from_date:
@@ -375,9 +380,9 @@ async def export_documents(
     conditions = [Document.deleted_at.is_(None)]
     if search:
         conditions.append(or_(
-            Document.title.ilike(f"%{search}%"),
-            Document.doc_number.ilike(f"%{search}%"),
-            Document.issuer.ilike(f"%{search}%"),
+            Document.title.ilike(f"%{_like(search)}%", escape="\\"),
+            Document.doc_number.ilike(f"%{_like(search)}%", escape="\\"),
+            Document.issuer.ilike(f"%{_like(search)}%", escape="\\"),
         ))
     if doc_type:
         conditions.append(Document.doc_type == doc_type)
@@ -707,7 +712,9 @@ async def serve_file(
     doc = await _get_doc_or_404(db, doc_id)
     if not doc.file_path:
         raise HTTPException(404, "Văn bản chưa có file đính kèm")
-    path = Path(doc.file_path)
+    path = Path(doc.file_path).resolve()
+    if not str(path).startswith(str(Path(_settings.UPLOAD_DIR).resolve())):
+        raise HTTPException(403, "Đường dẫn file không hợp lệ")
     if not path.exists():
         raise HTTPException(404, "File không tồn tại trên server")
 
@@ -717,7 +724,7 @@ async def serve_file(
         path=str(path),
         filename=doc.file_name,
         media_type=mime,
-        headers={"Content-Disposition": f'{disposition}; filename="{doc.file_name}"'},
+        headers={"Content-Disposition": f'{disposition}; filename="{doc.file_name}"'},  # type: ignore[arg-type]
     )
 
 
@@ -1004,12 +1011,17 @@ async def capture_from_dhtn(
             .where(Document.doc_number == body.doc_number.strip(), Document.deleted_at.is_(None))
         )).first()
         if existing:
-            raise HTTPException(409, detail={
-                "code": "DUPLICATE_DOC_NUMBER",
-                "message": f"Văn bản ký hiệu '{body.doc_number}' đã tồn tại trong hệ thống.",
-                "existing_doc_id": existing.id,
-                "existing_doc_title": existing.title or body.doc_number,
-            })
+            detail: dict | str
+            if current_user.role in ("admin", "leader"):
+                detail = {
+                    "code": "DUPLICATE_DOC_NUMBER",
+                    "message": f"Văn bản ký hiệu '{body.doc_number}' đã tồn tại trong hệ thống.",
+                    "existing_doc_id": existing.id,
+                    "existing_doc_title": existing.title or body.doc_number,
+                }
+            else:
+                detail = f"Văn bản ký hiệu '{body.doc_number}' đã tồn tại trong hệ thống."
+            raise HTTPException(409, detail=detail)
 
     # Parse issue_date (dd/mm/yyyy)
     issue_date = None

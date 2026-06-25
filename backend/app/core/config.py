@@ -77,6 +77,9 @@ class Settings(BaseSettings):
         if self.SYNC_WEBHOOK_SECRET == "sync-secret-change-me-in-production":
             errors.append("SYNC_WEBHOOK_SECRET vẫn là giá trị mặc định — hãy đặt giá trị mới trong .env")
 
+        if "*" in self.CORS_ORIGINS:
+            errors.append("CORS_ORIGINS không được chứa wildcard '*' trong môi trường production")
+
         if errors:
             raise ValueError(
                 "Cấu hình production không hợp lệ:\n" + "\n".join(f"  • {e}" for e in errors)

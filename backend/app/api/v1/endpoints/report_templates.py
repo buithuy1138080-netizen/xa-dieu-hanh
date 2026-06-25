@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings as _settings
 from app.core.deps import get_current_user, get_db
 from app.models.report_template import ReportTemplate
 from app.models.user import User
@@ -28,7 +29,6 @@ from app.services import template_engine, variable_registry
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-from app.core.config import settings as _settings
 _TEMPLATE_DIR = Path(_settings.UPLOAD_DIR) / "templates"
 _EXPORT_DIR   = Path(_settings.UPLOAD_DIR) / "reports"
 _TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -311,9 +311,12 @@ async def render_template(
         actual_path = await asyncio.to_thread(
             template_engine.render_pdf, str(tpl_path), variables, out_path
         )
+        actual_resolved = Path(actual_path).resolve()
+        if not str(actual_resolved).startswith(str(Path(_settings.UPLOAD_DIR).resolve())):
+            raise HTTPException(403, "Đường dẫn xuất không hợp lệ")
         is_pdf = actual_path.endswith(".pdf")
         mime = "application/pdf" if is_pdf else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        return FileResponse(actual_path, media_type=mime, filename=Path(actual_path).name)
+        return FileResponse(str(actual_resolved), media_type=mime, filename=actual_resolved.name)
 
     raise HTTPException(400, "Format không hợp lệ")
 

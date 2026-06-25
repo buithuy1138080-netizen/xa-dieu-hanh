@@ -24,6 +24,11 @@ from app.models.user import User
 
 router = APIRouter()
 
+
+def _like(s: str) -> str:
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 VALID_ROLES = {"admin", "leader", "manager", "staff"}
 ROLE_LABELS = {
     "admin":   "Admin",
@@ -175,11 +180,11 @@ async def list_staff(
     conditions = [Staff.deleted_at.is_(None)]
     if search:
         conditions.append(or_(
-            Staff.full_name.ilike(f"%{search}%"),
-            Staff.position.ilike(f"%{search}%"),
-            Staff.employee_code.ilike(f"%{search}%"),
-            Staff.phone.ilike(f"%{search}%"),
-            Staff.email.ilike(f"%{search}%"),
+            Staff.full_name.ilike(f"%{_like(search)}%", escape="\\"),
+            Staff.position.ilike(f"%{_like(search)}%", escape="\\"),
+            Staff.employee_code.ilike(f"%{_like(search)}%", escape="\\"),
+            Staff.phone.ilike(f"%{_like(search)}%", escape="\\"),
+            Staff.email.ilike(f"%{_like(search)}%", escape="\\"),
         ))
     if department_id:
         conditions.append(Staff.department_id == department_id)
@@ -221,11 +226,11 @@ async def export_staff_excel(
     conditions = [Staff.deleted_at.is_(None)]
     if search:
         conditions.append(or_(
-            Staff.full_name.ilike(f"%{search}%"),
-            Staff.position.ilike(f"%{search}%"),
-            Staff.employee_code.ilike(f"%{search}%"),
-            Staff.phone.ilike(f"%{search}%"),
-            Staff.email.ilike(f"%{search}%"),
+            Staff.full_name.ilike(f"%{_like(search)}%", escape="\\"),
+            Staff.position.ilike(f"%{_like(search)}%", escape="\\"),
+            Staff.employee_code.ilike(f"%{_like(search)}%", escape="\\"),
+            Staff.phone.ilike(f"%{_like(search)}%", escape="\\"),
+            Staff.email.ilike(f"%{_like(search)}%", escape="\\"),
         ))
     if department_id:
         conditions.append(Staff.department_id == department_id)
@@ -479,12 +484,12 @@ async def reset_password(
     """Admin/leader can reset any staff password. Staff can reset their own."""
     s = await _get_or_404(db, staff_id)
 
-    is_self = (s.user_id == current_user.id)
+    is_self = s.user_id is not None and s.user_id == current_user.id
     if not is_self and current_user.role not in ("admin", "leader"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Không có quyền đổi mật khẩu này")
 
-    if len(body.new_password) < 6:
-        raise HTTPException(400, "Mật khẩu phải có ít nhất 6 ký tự")
+    if len(body.new_password) < 8:
+        raise HTTPException(400, "Mật khẩu phải có ít nhất 8 ký tự")
 
     new_hash = hash_password(body.new_password)
     s.password_hash = new_hash

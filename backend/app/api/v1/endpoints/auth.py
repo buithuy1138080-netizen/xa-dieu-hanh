@@ -171,8 +171,8 @@ async def change_password(
     current_user: User = Depends(get_current_user),
 ):
     """Người dùng đổi mật khẩu (yêu cầu nhập mật khẩu cũ)."""
-    if len(body.new_password) < 6:
-        raise HTTPException(400, "Mật khẩu mới phải có ít nhất 6 ký tự")
+    if len(body.new_password) < 8:
+        raise HTTPException(400, "Mật khẩu mới phải có ít nhất 8 ký tự")
 
     # Xác minh mật khẩu cũ — ưu tiên Staff.password_hash (giao diện login dùng)
     staff_row = (await db.execute(
