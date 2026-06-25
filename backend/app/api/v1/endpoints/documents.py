@@ -983,6 +983,7 @@ class CaptureRequest(BaseModel):
     task_title: str | None = None
     task_due_date: str | None = None
     lead_department_id: int | None = None
+    assignee_id: int | None = None
 
 
 class CaptureResponse(BaseModel):
@@ -1038,13 +1039,15 @@ async def capture_from_dhtn(
         title=body.title,
         doc_type=body.doc_type,
         issuer=body.issuer,
-        summary=body.trich_yeu,          # trích yếu → summary
-        category=body.do_mat or None,    # độ mật → category
+        summary=body.trich_yeu,
+        category=body.do_mat or None,
         issue_date=issue_date,
         received_date=dt_date.today() if body.doc_type == "incoming" else None,
         status="pending",
         priority="normal",
         created_by=current_user.id,
+        responsible_department_id=body.lead_department_id or None,
+        assignee_id=body.assignee_id or None,
     )
     db.add(doc)
     await db.flush()
