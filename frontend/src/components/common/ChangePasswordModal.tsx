@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Eye, EyeOff, KeyRound, X } from 'lucide-react'
 import apiClient from '../../api/client'
 
@@ -7,6 +7,12 @@ interface Props {
 }
 
 export default function ChangePasswordModal({ onClose }: Props) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+
   const [oldPwd,  setOldPwd]  = useState('')
   const [newPwd,  setNewPwd]  = useState('')
   const [confPwd, setConfPwd] = useState('')

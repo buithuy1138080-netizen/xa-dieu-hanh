@@ -172,7 +172,7 @@ async def _chat_gemini(
     from app.services.ai_tools import GEMINI_TOOL_DECLARATIONS
 
     if not settings.GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY chưa được cấu hình trong .env")
+        raise ValueError("Trợ lý AI tạm thời không khả dụng, vui lòng thử lại sau")
 
     client = _genai.Client(api_key=settings.GEMINI_API_KEY)
 

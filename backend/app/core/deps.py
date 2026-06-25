@@ -1,7 +1,7 @@
 from typing import Optional
 
 from fastapi import Cookie, Depends, HTTPException, Request, status
-from jose import JWTError
+from jose import ExpiredSignatureError, JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +30,12 @@ async def get_current_user(
     try:
         payload = decode_token(token)
         user_id = int(payload["sub"])
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Phiên đăng nhập đã hết hạn",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     except (JWTError, KeyError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

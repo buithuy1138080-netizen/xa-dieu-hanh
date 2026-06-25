@@ -35,6 +35,7 @@ export interface SessionListResponse {
 
 export interface AiStatus {
   ready: boolean
+  provider: string
   model: string
   tools: number
   configured: boolean

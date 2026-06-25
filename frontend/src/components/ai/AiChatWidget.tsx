@@ -188,6 +188,7 @@ export default function AiChatWidget() {
   const [error, setError] = useState<string | null>(null)
   const [showSidebar, setShowSidebar] = useState(false)
   const [aiReady, setAiReady] = useState(true)
+  const [aiModel, setAiModel] = useState('AI IOC')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -195,7 +196,15 @@ export default function AiChatWidget() {
   useEffect(() => {
     if (open) {
       aiChatApi.getStatus()
-        .then((s) => setAiReady(s.ready))
+        .then((s) => {
+          setAiReady(s.ready)
+          if (s.ready) {
+            const label = s.provider === 'groq'
+              ? `Groq · ${s.model.replace('llama-', 'Llama-')}`
+              : `Gemini · ${s.model.replace('models/', '')}`
+            setAiModel(label)
+          }
+        })
         .catch(() => setAiReady(false))
     }
   }, [open])
@@ -340,7 +349,7 @@ export default function AiChatWidget() {
                 <div>
                   <p className="text-sm font-bold text-white leading-none">Trợ lý AI IOC</p>
                   <p className="text-[10px] text-indigo-200 leading-none mt-0.5">
-                    {aiReady ? '● Sẵn sàng · Gemini 2.5 Flash' : '○ Chưa cấu hình GEMINI_API_KEY'}
+                    {aiReady ? `● Sẵn sàng · ${aiModel}` : '○ AI chưa sẵn sàng'}
                   </p>
                 </div>
               </div>
@@ -440,7 +449,7 @@ export default function AiChatWidget() {
                 <div className="px-4 pb-4 pt-2 border-t border-slate-100 shrink-0">
                   {!aiReady && (
                     <div className="mb-2 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-100 text-xs text-amber-700 text-center">
-                      AI chưa cấu hình — thêm GEMINI_API_KEY vào file .env
+                      Trợ lý AI chưa sẵn sàng — vui lòng liên hệ quản trị viên
                     </div>
                   )}
                   <div className="flex items-end gap-2">
@@ -473,7 +482,7 @@ export default function AiChatWidget() {
                     </button>
                   </div>
                   <p className="text-[10px] text-slate-400 mt-1.5 text-center">
-                    Dữ liệu từ hệ thống IOC · Gemini 2.5 Flash · Không lưu trữ bên ngoài
+                    Dữ liệu từ hệ thống IOC · {aiModel} · Không lưu trữ bên ngoài
                   </p>
                 </div>
               </div>

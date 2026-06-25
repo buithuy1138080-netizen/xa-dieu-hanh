@@ -471,31 +471,31 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
     } finally { setSaving(false) }
   }
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg my-4">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-4">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
           <div className="flex items-center gap-2">
-            <FolderKanban size={18} className="text-indigo-600" />
+            <FolderKanban size={17} className="text-indigo-600" />
             <h2 className="font-bold text-slate-800">Tạo dự án mới</h2>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2">{error}</p>}
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Tên dự án *</label>
-            <input value={form.title} onChange={e => set('title', e.target.value)} autoFocus
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              placeholder="Nhập tên dự án..." />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Mô tả</label>
-            <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={2}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-              placeholder="Mô tả ngắn về dự án..." />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+        <form onSubmit={handleSubmit} className="p-5">
+          {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2 mb-3">{error}</p>}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div className="col-span-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Tên dự án *</label>
+              <input value={form.title} onChange={e => set('title', e.target.value)} autoFocus
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                placeholder="Nhập tên dự án..." />
+            </div>
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Loại</label>
               <select value={form.project_type} onChange={e => set('project_type', e.target.value)}
@@ -516,8 +516,6 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
                 <option value="urgent">Khẩn</option>
               </select>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Ngày bắt đầu</label>
               <input type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)}
@@ -528,30 +526,6 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
               <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)}
                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             </div>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Thuộc chương trình / NQ</label>
-            <select value={form.program_id} onChange={e => set('program_id', e.target.value)}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
-              <option value="">-- Không liên kết --</option>
-              {programs.map(p => <option key={p.id} value={p.id}>{p.short_name ? `[${p.short_name}] ` : ''}{p.name}</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Kinh phí (triệu đồng)</label>
-              <input type="number" min="0" step="0.1" value={form.budget_amount} onChange={e => set('budget_amount', e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                placeholder="VD: 920" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Đã giải ngân (triệu đồng)</label>
-              <input type="number" min="0" step="0.1" value={form.budget_disbursed} onChange={e => set('budget_disbursed', e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                placeholder="VD: 500" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Quản lý dự án</label>
               <select value={form.assignee_id} onChange={e => set('assignee_id', e.target.value)}
@@ -568,8 +542,34 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
                 {depts.map(d => <option key={d.id} value={d.id}>{d.short_name || d.name}</option>)}
               </select>
             </div>
+            <div className="col-span-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Thuộc chương trình / NQ</label>
+              <select value={form.program_id} onChange={e => set('program_id', e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                <option value="">-- Không liên kết --</option>
+                {programs.map(p => <option key={p.id} value={p.id}>{p.short_name ? `[${p.short_name}] ` : ''}{p.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Kinh phí (triệu đồng)</label>
+              <input type="number" min="0" step="0.1" value={form.budget_amount} onChange={e => set('budget_amount', e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                placeholder="VD: 920" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Đã giải ngân (triệu đồng)</label>
+              <input type="number" min="0" step="0.1" value={form.budget_disbursed} onChange={e => set('budget_disbursed', e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                placeholder="VD: 500" />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase block mb-1">Mô tả</label>
+              <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={2}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                placeholder="Mô tả ngắn về dự án..." />
+            </div>
           </div>
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-3 pt-4">
             <button type="button" onClick={onClose}
               className="px-4 py-2 text-sm rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition">Huỷ</button>
             <button type="submit" disabled={saving}

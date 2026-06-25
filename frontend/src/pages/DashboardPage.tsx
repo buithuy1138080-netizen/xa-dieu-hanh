@@ -367,10 +367,18 @@ export default function DashboardPage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#94a3b8' }} tickLine={false}
-                    tickFormatter={v => new Date(v).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })} />
+                    tickFormatter={v => {
+                      if (typeof v !== 'string') return String(v)
+                      const parts = v.split('-')
+                      return parts.length === 3 ? `${parts[2]}/${parts[1]}` : v
+                    }} />
                   <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} tickLine={false} />
                   <Tooltip contentStyle={{ borderRadius: 10, fontSize: 11 }}
-                    labelFormatter={v => new Date(v).toLocaleDateString('vi-VN')} />
+                    labelFormatter={v => {
+                      if (typeof v !== 'string') return String(v)
+                      const parts = v.split('-')
+                      return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : v
+                    }} />
                   <Area type="monotone" dataKey="created" stroke="#3b82f6" strokeWidth={2} fill="url(#gc)" name="Tạo mới" dot={false} />
                   <Area type="monotone" dataKey="completed" stroke="#22c55e" strokeWidth={2} fill="url(#gd)" name="Hoàn thành" dot={false} />
                 </AreaChart>

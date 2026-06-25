@@ -182,13 +182,18 @@ async def change_password(
     if staff_row and staff_row.password_hash:
         if not verify_password(body.old_password, staff_row.password_hash):
             raise HTTPException(400, "Mật khẩu cũ không đúng")
-        staff_row.password_hash = hash_password(body.new_password)
+        new_hash = hash_password(body.new_password)
+        staff_row.password_hash = new_hash
+        current_user.hashed_password = new_hash
     else:
         if not current_user.hashed_password:
             raise HTTPException(400, "Tài khoản chưa có mật khẩu, vui lòng liên hệ quản trị viên")
         if not verify_password(body.old_password, current_user.hashed_password):
             raise HTTPException(400, "Mật khẩu cũ không đúng")
-        current_user.hashed_password = hash_password(body.new_password)
+        new_hash = hash_password(body.new_password)
+        current_user.hashed_password = new_hash
+        if staff_row:
+            staff_row.password_hash = new_hash
 
     await db.commit()
     return {"message": "Đổi mật khẩu thành công"}

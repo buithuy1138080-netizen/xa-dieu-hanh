@@ -49,6 +49,17 @@ apiClient.interceptors.response.use(
       _waitQueue.forEach((cb) => cb(false))
       _waitQueue = []
       logout()
+      // Hiển thị thông báo nhỏ rồi redirect về login
+      const msg = document.createElement('div')
+      msg.textContent = 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại'
+      msg.style.cssText = [
+        'position:fixed', 'bottom:24px', 'left:50%', 'transform:translateX(-50%)',
+        'background:#1e293b', 'color:#f1f5f9', 'padding:10px 20px',
+        'border-radius:10px', 'font-size:14px', 'z-index:99999',
+        'box-shadow:0 4px 12px rgba(0,0,0,0.3)',
+      ].join(';')
+      document.body.appendChild(msg)
+      setTimeout(() => window.location.replace('/login'), 1800)
       return Promise.reject(error)
     } finally {
       _refreshing = false
