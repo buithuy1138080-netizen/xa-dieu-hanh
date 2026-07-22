@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import {
-  AlertTriangle, Calendar, CheckCircle2, CheckSquare, CircleDashed,
+  AlertTriangle, Calendar, CheckCircle2, CheckSquare, ChevronDown, CircleDashed,
   Clock, Columns3, Download, FileSpreadsheet, Filter, ListChecks,
   Plus, TrendingUp, XCircle,
 } from 'lucide-react'
@@ -170,6 +170,8 @@ export default function TaskListPage() {
   const [listLoading, setListLoading] = useState(false)
   const [fetchError, setFetchError]   = useState<string | null>(null)
   const [exporting, setExporting]     = useState(false)
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Kanban view ──
@@ -229,6 +231,39 @@ export default function TaskListPage() {
       setExporting(false)
     }
   }, [filters]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleExportTemplate = useCallback(async () => {
+    setExporting(true)
+    setShowExportMenu(false)
+    try {
+      await tasksApi.exportExcelTemplate({
+        status:       filters.status       || undefined,
+        priority:     filters.priority     || undefined,
+        assignee_id:  filters.assignee_id  ? parseInt(filters.assignee_id)  : undefined,
+        lead_dept_id: filters.lead_dept_id ? parseInt(filters.lead_dept_id) : undefined,
+        program_id:   filters.program_id   ? parseInt(filters.program_id)   : undefined,
+        search:       filters.search       || undefined,
+        overdue_only: filters.overdue_only || undefined,
+        due_after:    filters.date_from    || undefined,
+        due_before:   filters.date_to      || undefined,
+      })
+    } catch {
+      showToast('Xuất file mẫu thất bại. Vui lòng thử lại.')
+    } finally {
+      setExporting(false)
+    }
+  }, [filters]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Close export dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const fetchKanban = useCallback(async () => {
     setKanbanLoading(true)
@@ -368,14 +403,42 @@ export default function TaskListPage() {
 
             {view === 'list' && (
               <>
-                <button
-                  onClick={handleExport}
-                  disabled={exporting}
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-50 transition-all disabled:opacity-60"
-                >
-                  <Download size={15} className="text-blue-500" />
-                  {exporting ? 'Đang xuất...' : 'Xuất Excel'}
-                </button>
+                <div ref={exportRef} className="relative hidden sm:block">
+                  <button
+                    onClick={() => setShowExportMenu(!showExportMenu)}
+                    disabled={exporting}
+                    className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-50 transition-all disabled:opacity-60"
+                  >
+                    <Download size={15} className="text-blue-500" />
+                    {exporting ? 'Đang xuất...' : 'Xuất Excel'}
+                    <ChevronDown size={13} className={`text-slate-400 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+                  </button>
+                  {showExportMenu && (
+                    <div className="absolute right-0 mt-1.5 w-56 bg-white border border-slate-200 rounded-xl shadow-xl z-30 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                      <button
+                        onClick={() => { setShowExportMenu(false); handleExport() }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-blue-50 transition-colors text-left"
+                      >
+                        <Download size={14} className="text-blue-500 shrink-0" />
+                        <div>
+                          <p className="font-semibold text-[13px]">Xuất báo cáo</p>
+                          <p className="text-[11px] text-slate-400">Đầy đủ trạng thái, tiến độ</p>
+                        </div>
+                      </button>
+                      <div className="border-t border-slate-100" />
+                      <button
+                        onClick={handleExportTemplate}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 transition-colors text-left"
+                      >
+                        <FileSpreadsheet size={14} className="text-emerald-500 shrink-0" />
+                        <div>
+                          <p className="font-semibold text-[13px]">Xuất mẫu import</p>
+                          <p className="text-[11px] text-slate-400">Chỉnh sửa rồi import lại</p>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={() => setShowImport(true)}
                   className="hidden sm:flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-50 transition-all"

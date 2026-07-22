@@ -89,4 +89,20 @@ export const tasksApi = {
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
   },
+
+  exportExcelTemplate: async (params: Omit<TaskFilters, 'page' | 'page_size' | 'sort_by' | 'sort_dir'> = {}) => {
+    const res = await apiClient.get('/tasks/export/excel-template', {
+      params,
+      responseType: 'blob',
+    })
+    const url = window.URL.createObjectURL(res.data as Blob)
+    const a = document.createElement('a')
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    a.href = url
+    a.download = `nhiem-vu-mau-import-${today}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  },
 }

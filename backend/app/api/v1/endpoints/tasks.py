@@ -1719,6 +1719,8 @@ async def import_tasks_excel(
     current_user: User = Depends(get_current_user),
 ):
     from app.services.excel_import import parse_tasks
+    from app.models.department import Department
+
     if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(400, "Chỉ chấp nhận file .xlsx hoặc .xls")
 
@@ -1730,9 +1732,33 @@ async def import_tasks_excel(
     if not records and errors:
         raise HTTPException(422, {"errors": errors})
 
+    # ── Pre-load department + staff lookup maps ──────────────────────────
+    all_depts = (await db.execute(
+        select(Department).where(Department.is_active.is_(True))
+    )).scalars().all()
+    # Map: lowercase name/short_name → department.id
+    dept_map: dict[str, int] = {}
+    for d in all_depts:
+        if d.name:
+            dept_map[d.name.strip().lower()] = d.id
+        if d.short_name:
+            dept_map[d.short_name.strip().lower()] = d.id
+
+    all_staff = (await db.execute(
+        select(Staff).where(Staff.is_active.is_(True), Staff.deleted_at.is_(None))
+    )).scalars().all()
+    # Map: lowercase full_name → staff.id
+    staff_map: dict[str, int] = {}
+    for s in all_staff:
+        if s.full_name:
+            staff_map[s.full_name.strip().lower()] = s.id
+
+    # ── Process records ──────────────────────────────────────────────────
     VALID = {"low", "medium", "high", "urgent"}
+    warnings: list[str] = list(errors)  # keep parse errors
     imported = 0
-    for r in records:
+    for idx, r in enumerate(records, start=2):
+        # Parse dates
         due_dt = None
         if r.get("due_date_str"):
             try:
@@ -1747,18 +1773,52 @@ async def import_tasks_excel(
                 start_dt = datetime.strptime(r["start_date_str"], "%d/%m/%Y").date()
             except ValueError:
                 pass
+
         priority = r["priority"] if r["priority"] in VALID else "medium"
+        task_type = r.get("task_type", "regular") or "regular"
+
+        # Resolve department name → id
+        lead_dept_id = None
+        unit_name = r.get("responsible_unit", "").strip()
+        if unit_name:
+            lead_dept_id = dept_map.get(unit_name.lower())
+            if lead_dept_id is None:
+                # Try fuzzy: find first department whose name contains the search term
+                for dname, did in dept_map.items():
+                    if unit_name.lower() in dname or dname in unit_name.lower():
+                        lead_dept_id = did
+                        break
+                if lead_dept_id is None:
+                    warnings.append(f"Hàng {idx}: Không tìm thấy đơn vị '{unit_name}', bỏ qua gán đơn vị")
+
+        # Resolve staff name → id
+        assignee_staff_id = None
+        staff_name = r.get("assignee_name", "").strip()
+        if staff_name:
+            assignee_staff_id = staff_map.get(staff_name.lower())
+            if assignee_staff_id is None:
+                # Try fuzzy
+                for sname, sid in staff_map.items():
+                    if staff_name.lower() in sname or sname in staff_name.lower():
+                        assignee_staff_id = sid
+                        break
+                if assignee_staff_id is None:
+                    warnings.append(f"Hàng {idx}: Không tìm thấy cán bộ '{staff_name}', bỏ qua gán người thực hiện")
+
         t = Task(
             task_code=None,
             title=r["title"],
             description=r["description"] or None,
-            content_summary=r["responsible_unit"] or None,
             priority=priority,
             status="pending",
             progress_percent=0,
             start_date=start_dt,
             due_date=due_dt,
             created_by=current_user.id,
+            lead_department_id=lead_dept_id,
+            assignee_staff_id=assignee_staff_id,
+            task_type=task_type,
+            is_project=(task_type == "project"),
         )
         db.add(t)
         await db.flush()
@@ -1767,4 +1827,146 @@ async def import_tasks_excel(
         imported += 1
 
     await db.commit()
-    return {"imported": imported, "errors": errors}
+    return {"imported": imported, "errors": warnings}
+
+
+# ── Excel Export (Import-compatible template format) ──────────────────────────
+
+@router.get("/export/excel-template")
+async def export_tasks_as_template(
+    status: str | None = None,
+    priority: str | None = None,
+    lead_dept_id: int | None = None,
+    assignee_id: int | None = None,
+    program_id: int | None = None,
+    overdue_only: bool = False,
+    due_before: datetime | None = None,
+    due_after: datetime | None = None,
+    search: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export tasks in import-template format (8 cols) so users can edit & re-import."""
+    import io as _io
+    from fastapi.responses import StreamingResponse
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    from app.services.excel_import import TASK_COLUMNS
+
+    q = select(Task).where(Task.deleted_at.is_(None))
+
+    if current_user.role == "manager":
+        user_dept_id = await _get_user_dept_id(db, current_user.id)
+        dept_task_ids = select(TaskDepartment.task_id).where(
+            TaskDepartment.department_id == user_dept_id,
+        ) if user_dept_id else select(TaskDepartment.task_id).where(False)
+        q = q.where(
+            or_(
+                Task.lead_department_id == user_dept_id,
+                Task.id.in_(dept_task_ids),
+                Task.assignee_id == current_user.id,
+                Task.created_by == current_user.id,
+            )
+        )
+
+    if status == "overdue":
+        _now = datetime.now(timezone.utc)
+        q = q.where(Task.due_date.isnot(None), Task.due_date < _now, Task.status.notin_(["completed", "cancelled"]))
+    elif status:
+        q = q.where(Task.status == status)
+    if priority:
+        q = q.where(Task.priority == priority)
+    if lead_dept_id:
+        q = q.where(Task.lead_department_id == lead_dept_id)
+    if assignee_id:
+        q = q.where(Task.assignee_id == assignee_id)
+    if program_id:
+        q = q.where(Task.program_id == program_id)
+    if due_before:
+        q = q.where(Task.due_date <= due_before)
+    if due_after:
+        q = q.where(Task.due_date >= due_after)
+    if search:
+        term = f"%{search}%"
+        q = q.where(or_(Task.title.ilike(term), Task.task_code.ilike(term)))
+    if overdue_only:
+        now = datetime.now(timezone.utc)
+        q = q.where(Task.due_date < now, Task.status.notin_(["completed", "cancelled"]))
+
+    q = q.order_by(Task.created_at.desc()).limit(5000)
+    for ld in _LIST_LOADS:
+        q = q.options(ld)
+    rows = (await db.execute(q)).scalars().all()
+
+    def fmt_dt(v):
+        if not v:
+            return ""
+        try:
+            return v.strftime("%d/%m/%Y")
+        except Exception:
+            return str(v)
+
+    # Build workbook with import-template column headers
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Nhiệm vụ (mẫu import)"
+
+    hdr_fill = PatternFill("solid", fgColor="1E40AF")
+    req_fill = PatternFill("solid", fgColor="1D4ED8")
+    hdr_font = Font(color="FFFFFF", bold=True, size=11)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    ws.row_dimensions[1].height = 36
+    for ci, col in enumerate(TASK_COLUMNS, 1):
+        cell = ws.cell(1, ci, col["header"])
+        cell.font = hdr_font
+        cell.fill = req_fill if col.get("required") else hdr_fill
+        cell.alignment = center
+        ws.column_dimensions[get_column_letter(ci)].width = col["width"]
+
+    ws.freeze_panes = "A2"
+
+    alt_fill = PatternFill("solid", fgColor="E3F2FD")
+    for ri, t in enumerate(rows, 2):
+        fill = alt_fill if ri % 2 == 0 else None
+
+        assignee_name = ""
+        if t.assignee_staff:
+            assignee_name = t.assignee_staff.full_name or ""
+        elif t.assignee:
+            assignee_name = t.assignee.full_name or t.assignee.username or ""
+
+        dept_name = ""
+        if t.lead_department:
+            dept_name = t.lead_department.name or ""
+
+        # Column order must match TASK_COLUMNS:
+        # title, description, responsible_unit, assignee_name, due_date, priority, start_date, task_type
+        vals = [
+            t.title or "",
+            t.description or "",
+            dept_name,
+            assignee_name,
+            fmt_dt(t.due_date),
+            t.priority or "medium",
+            fmt_dt(t.start_date),
+            t.task_type or "regular",
+        ]
+        for ci, v in enumerate(vals, 1):
+            cell = ws.cell(ri, ci, v)
+            if fill:
+                cell.fill = fill
+            cell.alignment = Alignment(vertical="center", wrap_text=True)
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    from datetime import datetime as _dt
+    fname = f"nhiem-vu-mau-import-{_dt.now().strftime('%Y%m%d-%H%M')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+

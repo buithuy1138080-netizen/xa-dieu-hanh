@@ -14,12 +14,14 @@ from openpyxl.utils import get_column_letter
 # ── Column definitions ────────────────────────────────────────────────────────
 
 TASK_COLUMNS = [
-    {"key": "title",         "header": "Tiêu đề nhiệm vụ (*)",        "width": 40, "required": True},
-    {"key": "description",   "header": "Mô tả",                        "width": 30, "required": False},
-    {"key": "responsible_unit", "header": "Đơn vị phụ trách",          "width": 25, "required": False},
-    {"key": "due_date",      "header": "Deadline (dd/mm/yyyy)",        "width": 18, "required": False},
-    {"key": "priority",      "header": "Ưu tiên (low/medium/high/urgent)", "width": 28, "required": False},
-    {"key": "start_date",    "header": "Ngày bắt đầu (dd/mm/yyyy)",    "width": 22, "required": False},
+    {"key": "title",            "header": "Tiêu đề nhiệm vụ (*)",            "width": 40, "required": True},
+    {"key": "description",      "header": "Mô tả",                            "width": 30, "required": False},
+    {"key": "responsible_unit", "header": "Đơn vị phụ trách (tên đơn vị)",    "width": 28, "required": False},
+    {"key": "assignee_name",    "header": "Cán bộ thực hiện (họ tên)",         "width": 25, "required": False},
+    {"key": "due_date",         "header": "Deadline (dd/mm/yyyy)",             "width": 18, "required": False},
+    {"key": "priority",         "header": "Ưu tiên (low/medium/high/urgent)", "width": 28, "required": False},
+    {"key": "start_date",       "header": "Ngày bắt đầu (dd/mm/yyyy)",        "width": 22, "required": False},
+    {"key": "task_type",        "header": "Loại (regular/project)",            "width": 22, "required": False},
 ]
 
 NQ57_COLUMNS = [
@@ -86,8 +88,8 @@ def _build_template(columns: list[dict], sample_rows: list[list]) -> bytes:
 
 def task_template() -> bytes:
     sample = [
-        ["Hoàn thiện báo cáo tháng 5", "Tổng hợp kết quả công tác", "Phòng Hành chính", "31/05/2026", "high", "01/05/2026"],
-        ["Triển khai phần mềm quản lý", "", "Phòng Kỹ thuật", "30/06/2026", "medium", ""],
+        ["Hoàn thiện báo cáo tháng 5", "Tổng hợp kết quả công tác", "Phòng Hành chính", "Nguyễn Văn A", "31/05/2026", "high", "01/05/2026", "regular"],
+        ["Triển khai phần mềm quản lý", "", "Phòng Kỹ thuật", "Trần Thị B", "30/06/2026", "medium", "", "project"],
     ]
     return _build_template(TASK_COLUMNS, sample)
 
@@ -145,11 +147,16 @@ def _str(val: Any) -> str:
 
 
 def parse_tasks(data: bytes) -> tuple[list[dict], list[str]]:
+    """Parse task import Excel. Column order (0-indexed):
+    0=title, 1=description, 2=responsible_unit, 3=assignee_name,
+    4=due_date, 5=priority, 6=start_date, 7=task_type
+    """
     wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     ws = wb.active
     rows = list(ws.iter_rows(min_row=2, values_only=True))
 
     records, errors = [], []
+    valid_types = {"regular", "project"}
     for i, row in enumerate(rows, start=2):
         if not row or not any(row):
             continue
@@ -157,13 +164,18 @@ def parse_tasks(data: bytes) -> tuple[list[dict], list[str]]:
         if not title:
             errors.append(f"Hàng {i}: 'Tiêu đề' là bắt buộc")
             continue
+        task_type = _str(row[7] if len(row) > 7 else "").lower()
+        if task_type not in valid_types:
+            task_type = "regular"
         records.append({
             "title":            title,
             "description":      _str(row[1] if len(row) > 1 else ""),
             "responsible_unit": _str(row[2] if len(row) > 2 else ""),
-            "due_date_str":     _parse_date(row[3] if len(row) > 3 else None),
-            "priority":         _str(row[4] if len(row) > 4 else "").lower() or "medium",
-            "start_date_str":   _parse_date(row[5] if len(row) > 5 else None),
+            "assignee_name":    _str(row[3] if len(row) > 3 else ""),
+            "due_date_str":     _parse_date(row[4] if len(row) > 4 else None),
+            "priority":         _str(row[5] if len(row) > 5 else "").lower() or "medium",
+            "start_date_str":   _parse_date(row[6] if len(row) > 6 else None),
+            "task_type":        task_type,
         })
     return records, errors
 
